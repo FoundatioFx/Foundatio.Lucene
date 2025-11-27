@@ -1,0 +1,55 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build",
+			"type": "shell",
+			"command": "dotnet build",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "test",
+			"type": "shell",
+			"command": "dotnet test",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always"
+			}
+		},
+		{
+			"label": "watch",
+			"type": "shell",
+			"command": "dotnet watch build",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "benchmark",
+			"type": "shell",
+			"command": "dotnet run -c Release",
+			"options": {
+				"cwd": "${workspaceFolder}/benchmarks/Foundatio.LuceneQueryParser.Benchmarks"
+			},
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		}
+	]
+}

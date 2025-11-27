@@ -1,0 +1,18 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Foundatio.LuceneQueryParser/Foundatio.LuceneQueryParser.csproj" />
+    <Project Path="src/Foundatio.LuceneQueryParser.EntityFramework/Foundatio.LuceneQueryParser.EntityFramework.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Foundatio.LuceneQueryParser.Tests/Foundatio.LuceneQueryParser.Tests.csproj" />
+    <Project Path="tests/Foundatio.LuceneQueryParser.EntityFramework.Tests/Foundatio.LuceneQueryParser.EntityFramework.Tests.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Foundatio.LuceneQueryParser.Benchmarks/Foundatio.LuceneQueryParser.Benchmarks.csproj" />
+  </Folder>
+</Solution>
