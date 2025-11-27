@@ -248,13 +248,13 @@ public class QueryValidatorTests
     }
 
     [Fact]
-    public async Task Document_ValidateAndThrowAsync_ThrowsOnInvalid()
+    public Task Document_ValidateAndThrowAsync_ThrowsOnInvalid()
     {
         var document = LuceneQuery.Parse("title:hello").Document;
         var options = new QueryValidationOptions();
         options.AllowedFields.Add("author");
 
-        await Assert.ThrowsAsync<QueryValidationException>(() =>
+        return Assert.ThrowsAsync<QueryValidationException>(() =>
             document.ValidateAndThrowAsync(options));
     }
 
