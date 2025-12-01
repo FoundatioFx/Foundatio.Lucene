@@ -1,4 +1,4 @@
-# Foundatio.LuceneQueryParser
+# Foundatio.LuceneQuery
 
 A high-performance Lucene query string parser for .NET that converts query strings into an Abstract Syntax Tree (AST). Supports query transformation via visitors and includes Entity Framework Core integration for generating LINQ expressions.
 
@@ -15,10 +15,10 @@ A high-performance Lucene query string parser for .NET that converts query strin
 
 ```bash
 # Core parser
-dotnet add package Foundatio.LuceneQueryParser
+dotnet add package Foundatio.LuceneQuery
 
 # Entity Framework integration (optional)
-dotnet add package Foundatio.LuceneQueryParser.EntityFramework
+dotnet add package Foundatio.LuceneQuery.EntityFramework
 ```
 
 ## Quick Start
@@ -26,7 +26,7 @@ dotnet add package Foundatio.LuceneQueryParser.EntityFramework
 ### Basic Parsing
 
 ```csharp
-using Foundatio.LuceneQueryParser;
+using Foundatio.LuceneQuery;
 
 var result = LuceneQuery.Parse("title:hello AND status:active");
 
@@ -45,7 +45,7 @@ else
 ### Convert AST Back to Query String
 
 ```csharp
-using Foundatio.LuceneQueryParser;
+using Foundatio.LuceneQuery;
 
 var result = LuceneQuery.Parse("title:test AND (status:active OR status:pending)");
 var queryString = QueryStringBuilder.ToQueryString(result.Document);
@@ -55,8 +55,8 @@ var queryString = QueryStringBuilder.ToQueryString(result.Document);
 ### Field Aliasing
 
 ```csharp
-using Foundatio.LuceneQueryParser;
-using Foundatio.LuceneQueryParser.Visitors;
+using Foundatio.LuceneQuery;
+using Foundatio.LuceneQuery.Visitors;
 
 var result = LuceneQuery.Parse("user:john AND created:[2020-01-01 TO 2020-12-31]");
 
@@ -75,7 +75,7 @@ var resolved = QueryStringBuilder.ToQueryString(result.Document);
 ### Query Validation
 
 ```csharp
-using Foundatio.LuceneQueryParser;
+using Foundatio.LuceneQuery;
 
 var result = LuceneQuery.Parse("*wildcard AND title:test");
 
@@ -95,7 +95,7 @@ if (!validationResult.IsValid)
 ### Entity Framework Integration
 
 ```csharp
-using Foundatio.LuceneQueryParser.EntityFramework;
+using Foundatio.LuceneQuery.EntityFramework;
 
 var parser = new EntityFrameworkQueryParser();
 
@@ -129,8 +129,8 @@ var results = await context.Employees.Where(filter).ToListAsync();
 Extend `QueryNodeVisitor` to create custom transformations:
 
 ```csharp
-using Foundatio.LuceneQueryParser.Ast;
-using Foundatio.LuceneQueryParser.Visitors;
+using Foundatio.LuceneQuery.Ast;
+using Foundatio.LuceneQuery.Visitors;
 
 public class LowercaseTermVisitor : QueryNodeVisitor
 {

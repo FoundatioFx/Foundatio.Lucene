@@ -4,9 +4,9 @@
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Product>Foundatio</Product>
     <Description>Pluggable foundation blocks for building distributed apps.</Description>
-    <PackageProjectUrl>https://github.com/FoundatioFx/Foundatio.LuceneQueryParser</PackageProjectUrl>
-    <PackageReleaseNotes>https://github.com/FoundatioFx/Foundatio.LuceneQueryParser/releases</PackageReleaseNotes>
-    <PackageTags>Queue;Messaging;Message;Bus;ServiceBus;Locking;Lock;Distributed;File;Storage;Blob;Jobs;Metrics;Stats;Azure;Redis;StatsD;Amazon;AWS;S3;broker;Logging;Log</PackageTags>
+    <PackageProjectUrl>https://github.com/FoundatioFx/Foundatio.LuceneQuery</PackageProjectUrl>
+    <PackageReleaseNotes>https://github.com/FoundatioFx/Foundatio.LuceneQuery/releases</PackageReleaseNotes>
+    <PackageTags>Lucene;Query;Parser;AST;Entity Framework;LINQ;Search</PackageTags>
     <MinVerSkip Condition="'$(Configuration)' == 'Debug'">true</MinVerSkip>
     <MinVerTagPrefix>v</MinVerTagPrefix>
 

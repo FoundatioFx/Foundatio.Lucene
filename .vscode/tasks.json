@@ -43,7 +43,7 @@
 			"type": "shell",
 			"command": "dotnet run -c Release",
 			"options": {
-				"cwd": "${workspaceFolder}/benchmarks/Foundatio.LuceneQueryParser.Benchmarks"
+				"cwd": "${workspaceFolder}/benchmarks/Foundatio.LuceneQuery.Benchmarks"
 			},
 			"problemMatcher": [],
 			"presentation": {
