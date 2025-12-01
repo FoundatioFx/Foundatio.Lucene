@@ -28,32 +28,32 @@ public class CustomFieldContext
     /// The field info for the custom field being queried.
     /// </summary>
     public required EntityFieldInfo Field { get; init; }
-    
+
     /// <summary>
     /// The parameter expression for the entity (e.g., "e" in "e => ...").
     /// </summary>
     public required ParameterExpression Parameter { get; init; }
-    
+
     /// <summary>
     /// The term value being searched (for term queries).
     /// </summary>
     public string? Term { get; init; }
-    
+
     /// <summary>
     /// Whether this is a prefix query (e.g., "John*").
     /// </summary>
     public bool IsPrefix { get; init; }
-    
+
     /// <summary>
     /// Whether this is a wildcard query.
     /// </summary>
     public bool IsWildcard { get; init; }
-    
+
     /// <summary>
     /// The range node (for range queries).
     /// </summary>
     public RangeNode? RangeNode { get; init; }
-    
+
     /// <summary>
     /// The visitor context.
     /// </summary>
@@ -103,7 +103,7 @@ public class EntityFrameworkQueryParserConfiguration
     /// Default includes all properties.
     /// </summary>
     public EntityTypePropertyFilter EntityTypePropertyFilter { get; private set; } = static _ => true;
-    
+
     /// <summary>
     /// Whether a custom property filter has been set.
     /// </summary>
@@ -114,7 +114,7 @@ public class EntityFrameworkQueryParserConfiguration
     /// Default includes all navigations.
     /// </summary>
     public EntityTypeNavigationFilter EntityTypeNavigationFilter { get; private set; } = static _ => true;
-    
+
     /// <summary>
     /// Whether a custom navigation filter has been set.
     /// </summary>
@@ -125,7 +125,7 @@ public class EntityFrameworkQueryParserConfiguration
     /// Default includes all skip navigations.
     /// </summary>
     public EntityTypeSkipNavigationFilter EntityTypeSkipNavigationFilter { get; private set; } = static _ => true;
-    
+
     /// <summary>
     /// Whether a custom skip navigation filter has been set.
     /// </summary>
@@ -136,6 +136,12 @@ public class EntityFrameworkQueryParserConfiguration
     /// Return null from the builder to use the default expression.
     /// </summary>
     public CustomFieldExpressionBuilder? CustomFieldExpressionBuilder { get; private set; }
+
+    /// <summary>
+    /// Fields that have full-text search indexes.
+    /// Format: "EntityType.FieldName" (e.g., "Employee.Name") or just "FieldName" for all entities.
+    /// </summary>
+    public HashSet<string> FullTextFields { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Sets the default operator for implicit boolean operations.
@@ -224,7 +230,7 @@ public class EntityFrameworkQueryParserConfiguration
     ///     // Check if this is a custom field with metadata
     ///     if (!ctx.Field.Data.TryGetValue("DataDefinitionId", out var idObj) || idObj is not int definitionId)
     ///         return null; // Use default handling
-    ///     
+    ///
     ///     // Build expression: e.DataValues.Any(dv => dv.DataDefinitionId == X &amp;&amp; dv.NumberValue == Y)
     ///     var dataValuesProperty = Expression.Property(ctx.Parameter, "DataValues");
     ///     // ... build the Any() expression
@@ -236,5 +242,48 @@ public class EntityFrameworkQueryParserConfiguration
     {
         CustomFieldExpressionBuilder = builder;
         return this;
+    }
+
+    /// <summary>
+    /// Adds fields that have full-text search indexes.
+    /// For full-text indexed fields, EF.Functions.Contains() will be used instead of string.Contains().
+    /// </summary>
+    /// <param name="fields">
+    /// Field names to mark as full-text indexed.
+    /// Format: "EntityType.FieldName" (e.g., "Employee.Name") or just "FieldName" for all entities.
+    /// </param>
+    /// <example>
+    /// <code>
+    /// config.AddFullTextFields("Employee.Name", "Employee.Title", "Company.Description");
+    /// // Or for all entities with a Name field:
+    /// config.AddFullTextFields("Name", "Description");
+    /// </code>
+    /// </example>
+    public EntityFrameworkQueryParserConfiguration AddFullTextFields(params string[] fields)
+    {
+        foreach (var field in fields)
+        {
+            FullTextFields.Add(field);
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// Checks if a field is configured as full-text indexed.
+    /// </summary>
+    /// <param name="entityTypeName">The entity type name (e.g., "Employee").</param>
+    /// <param name="fieldName">The field name (e.g., "Name").</param>
+    /// <returns>True if the field is full-text indexed.</returns>
+    public bool IsFullTextField(string entityTypeName, string fieldName)
+    {
+        // Check for exact match: "Employee.Name"
+        if (FullTextFields.Contains($"{entityTypeName}.{fieldName}"))
+            return true;
+
+        // Check for field-only match: "Name" (applies to all entities)
+        if (FullTextFields.Contains(fieldName))
+            return true;
+
+        return false;
     }
 }

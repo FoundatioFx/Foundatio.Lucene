@@ -18,19 +18,19 @@ public class EntityFrameworkQueryParserTests
 
     private void SeedData(SampleContext context)
     {
-        var company1 = new Company 
-        { 
-            Id = 1, 
-            Name = "Acme Corp", 
+        var company1 = new Company
+        {
+            Id = 1,
+            Name = "Acme Corp",
             Location = "New York",
             FoundedYear = 2000,
             IsPublic = true
         };
 
-        var company2 = new Company 
-        { 
-            Id = 2, 
-            Name = "Tech Solutions", 
+        var company2 = new Company
+        {
+            Id = 2,
+            Name = "Tech Solutions",
             Location = "San Francisco",
             FoundedYear = 2015,
             IsPublic = false
@@ -42,26 +42,26 @@ public class EntityFrameworkQueryParserTests
 
         var employees = new[]
         {
-            new Employee 
-            { 
+            new Employee
+            {
                 Id = 1, Name = "John Doe", Email = "john@acme.com", Title = "Software Developer",
                 Salary = 80000, Age = 30, HireDate = new DateTime(2020, 1, 15), IsActive = true,
                 CompanyId = 1, DepartmentId = 1
             },
-            new Employee 
-            { 
+            new Employee
+            {
                 Id = 2, Name = "Jane Smith", Email = "jane@acme.com", Title = "Project Manager",
                 Salary = 95000, Age = 35, HireDate = new DateTime(2019, 6, 1), IsActive = true,
                 CompanyId = 1, DepartmentId = 2
             },
-            new Employee 
-            { 
+            new Employee
+            {
                 Id = 3, Name = "Bob Wilson", Email = "bob@tech.com", Title = "Senior Developer",
                 Salary = 110000, Age = 40, HireDate = new DateTime(2018, 3, 20), IsActive = true,
                 CompanyId = 2, DepartmentId = 3
             },
-            new Employee 
-            { 
+            new Employee
+            {
                 Id = 4, Name = "Alice Brown", Email = "alice@acme.com", Title = "Junior Developer",
                 Salary = 55000, Age = 25, HireDate = new DateTime(2022, 9, 1), IsActive = false,
                 CompanyId = 1, DepartmentId = 1
@@ -355,12 +355,14 @@ public class EntityFrameworkQueryParserTests
     }
 
     [Fact]
-    public void Parse_CaseInsensitive_MatchesIgnoringCase()
+    public void Parse_CaseSensitivity_DeterminedByProvider()
     {
         using var context = CreateContext();
         var parser = new EntityFrameworkQueryParser();
 
-        var filter = parser.BuildFilter<Employee>("name:john");
+        // Case sensitivity is determined by the database provider/collation
+        // In-memory provider is case-sensitive, SQL Server is typically case-insensitive
+        var filter = parser.BuildFilter<Employee>("name:John*");
         var results = context.Employees.Where(filter).ToList();
 
         Assert.Single(results);
@@ -533,10 +535,10 @@ public class EntityFrameworkQueryParserTests
             .Options;
 
         using var context = new SampleContext(options);
-        
+
         var company = new Company { Id = 1, Name = "Test Corp" };
         context.Companies.Add(company);
-        
+
         // Employee hired at 3:30 PM on 2020-01-15
         var employeeWithTime = new Employee
         {
@@ -570,10 +572,10 @@ public class EntityFrameworkQueryParserTests
             .Options;
 
         using var context = new SampleContext(options);
-        
+
         var company = new Company { Id = 1, Name = "Test Corp" };
         context.Companies.Add(company);
-        
+
         // Employee hired at 11:00 PM on 2020-01-15 (late evening)
         var employeeLateEvening = new Employee
         {
@@ -683,7 +685,7 @@ public class EntityFrameworkQueryParserTests
     public void Configuration_PropertyFilter_ExcludesFields()
     {
         using var context = CreateContext();
-        var parser = new EntityFrameworkQueryParser(c => 
+        var parser = new EntityFrameworkQueryParser(c =>
             c.UseEntityTypePropertyFilter(p => p.Name != "Email"));
 
         var entityType = context.Model.FindEntityType(typeof(Employee))!;
@@ -716,12 +718,12 @@ public class EntityFrameworkQueryParserTests
             .Options;
 
         using var context = new SampleContext(options);
-        
+
         // Add contacts with data values
         var contact1 = new Contact { Id = 1, Name = "John" };
         var contact2 = new Contact { Id = 2, Name = "Jane" };
         var contact3 = new Contact { Id = 3, Name = "Bob" };
-        
+
         // Data definition 1 = "age" (integer), Data definition 2 = "city" (string)
         context.Contacts.AddRange(contact1, contact2, contact3);
         context.DataValues.AddRange(
@@ -745,15 +747,15 @@ public class EntityFrameworkQueryParserTests
                 // Build: c.DataValues.Any(dv => dv.DataDefinitionId == X && dv.IntegerValue == Y)
                 // or c.DataValues.Any(dv => dv.DataDefinitionId == X && dv.StringValue == Y)
                 var dataValuesProperty = Expression.Property(ctx.Parameter, "DataValues");
-                
+
                 // Create parameter for DataValue
                 var dvParam = Expression.Parameter(typeof(DataValue), "dv");
-                
+
                 // DataDefinitionId == X
                 var definitionIdExpr = Expression.Equal(
                     Expression.Property(dvParam, "DataDefinitionId"),
                     Expression.Constant(definitionId));
-                
+
                 // Determine the value property based on field type
                 Expression valueExpr;
                 if (ctx.Field.Data.TryGetValue("FieldType", out var typeObj) && typeObj is string fieldType)
@@ -777,17 +779,17 @@ public class EntityFrameworkQueryParserTests
                         Expression.Property(dvParam, "StringValue"),
                         Expression.Constant(ctx.Term));
                 }
-                
+
                 // Combined: DataDefinitionId == X && ValueProperty == Y
                 var combinedExpr = Expression.AndAlso(definitionIdExpr, valueExpr);
                 var predicate = Expression.Lambda<Func<DataValue, bool>>(combinedExpr, dvParam);
-                
+
                 // Build Any() call
                 var anyMethod = typeof(Enumerable)
                     .GetMethods()
                     .First(m => m.Name == "Any" && m.GetParameters().Length == 2)
                     .MakeGenericMethod(typeof(DataValue));
-                
+
                 return Expression.Call(anyMethod, dataValuesProperty, predicate);
             });
         });
@@ -795,22 +797,22 @@ public class EntityFrameworkQueryParserTests
         // Add the custom field to the context
         var entityType = context.Model.FindEntityType(typeof(Contact))!;
         var visitorContext = parser.GetContext(entityType);
-        visitorContext.Fields.Add(new EntityFieldInfo 
-        { 
-            Name = "age", 
+        visitorContext.Fields.Add(new EntityFieldInfo
+        {
+            Name = "age",
             FullName = "age",
-            Data = new Dictionary<string, object> 
-            { 
+            Data = new Dictionary<string, object>
+            {
                 ["DataDefinitionId"] = 1,
                 ["FieldType"] = "Integer"
             }
         });
-        visitorContext.Fields.Add(new EntityFieldInfo 
-        { 
-            Name = "city", 
+        visitorContext.Fields.Add(new EntityFieldInfo
+        {
+            Name = "city",
             FullName = "city",
-            Data = new Dictionary<string, object> 
-            { 
+            Data = new Dictionary<string, object>
+            {
                 ["DataDefinitionId"] = 2,
                 ["FieldType"] = "String"
             }
@@ -834,11 +836,11 @@ public class EntityFrameworkQueryParserTests
             .Options;
 
         using var context = new SampleContext(options);
-        
+
         // Add contacts with data values
         var contact1 = new Contact { Id = 1, Name = "John" };
         var contact2 = new Contact { Id = 2, Name = "Jane" };
-        
+
         context.Contacts.AddRange(contact1, contact2);
         context.DataValues.AddRange(
             new DataValue { Id = 1, ContactId = 1, DataDefinitionId = 2, StringValue = "New York" },
@@ -856,23 +858,23 @@ public class EntityFrameworkQueryParserTests
 
                 var dataValuesProperty = Expression.Property(ctx.Parameter, "DataValues");
                 var dvParam = Expression.Parameter(typeof(DataValue), "dv");
-                
+
                 var definitionIdExpr = Expression.Equal(
                     Expression.Property(dvParam, "DataDefinitionId"),
                     Expression.Constant(definitionId));
-                
+
                 var valueExpr = Expression.Equal(
                     Expression.Property(dvParam, "StringValue"),
                     Expression.Constant(ctx.Term));
-                
+
                 var combinedExpr = Expression.AndAlso(definitionIdExpr, valueExpr);
                 var predicate = Expression.Lambda<Func<DataValue, bool>>(combinedExpr, dvParam);
-                
+
                 var anyMethod = typeof(Enumerable)
                     .GetMethods()
                     .First(m => m.Name == "Any" && m.GetParameters().Length == 2)
                     .MakeGenericMethod(typeof(DataValue));
-                
+
                 return Expression.Call(anyMethod, dataValuesProperty, predicate);
             });
         });
@@ -880,9 +882,9 @@ public class EntityFrameworkQueryParserTests
         // Add the custom field
         var entityType = context.Model.FindEntityType(typeof(Contact))!;
         var visitorContext = parser.GetContext(entityType);
-        visitorContext.Fields.Add(new EntityFieldInfo 
-        { 
-            Name = "city", 
+        visitorContext.Fields.Add(new EntityFieldInfo
+        {
+            Name = "city",
             FullName = "city",
             Data = new Dictionary<string, object> { ["DataDefinitionId"] = 2 }
         });
@@ -901,7 +903,7 @@ public class EntityFrameworkQueryParserTests
     {
         // Arrange
         using var context = CreateContext();
-        
+
         var customBuilderCalled = false;
         var parser = new EntityFrameworkQueryParser(config =>
         {
@@ -963,7 +965,7 @@ public class EntityFrameworkQueryParserTests
     public void GetQueryParser_WithConfiguration_ReturnsConfiguredParser()
     {
         // Arrange
-        using var context = CreateContextWithParser(config => 
+        using var context = CreateContextWithParser(config =>
             config.SetDefaultFields("Name", "Email"));
 
         // Act
@@ -990,7 +992,7 @@ public class EntityFrameworkQueryParserTests
     public void DbSet_Where_WithRegisteredParser_FiltersCorrectly()
     {
         // Arrange
-        using var context = CreateContextWithParser(config => 
+        using var context = CreateContextWithParser(config =>
             config.SetDefaultFields("Name"));
 
         // Act - Use the simplified Where that gets parser from DI
@@ -1037,9 +1039,9 @@ public class EntityFrameworkQueryParserTests
         using var context = CreateContext();
 
         // Act & Assert
-        var exception = Assert.Throws<InvalidOperationException>(() => 
+        var exception = Assert.Throws<InvalidOperationException>(() =>
             context.Employees.Where("Name:John").ToList());
-        
+
         Assert.Contains("EntityFrameworkQueryParser is not registered", exception.Message);
         Assert.Contains("AddLuceneQueryParser", exception.Message);
     }

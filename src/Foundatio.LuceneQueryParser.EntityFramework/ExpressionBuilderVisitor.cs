@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using Foundatio.LuceneQueryParser.Ast;
 using Foundatio.LuceneQueryParser.Visitors;
+using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.LuceneQueryParser.EntityFramework;
 
@@ -23,25 +24,14 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
     private static readonly MethodInfo StringEndsWithMethod = typeof(string).GetMethod(nameof(string.EndsWith), [typeof(string)])!;
     private static readonly MethodInfo StringEqualsMethod = typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(StringComparison)])!;
     private static readonly MethodInfo RegexIsMatchMethod = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string), typeof(string)])!;
+    private static readonly PropertyInfo EfFunctionsProperty = typeof(EF).GetProperty(nameof(EF.Functions))!;
 
     /// <summary>
     /// Builds a predicate expression from a query node.
     /// </summary>
     public Expression<Func<T, bool>> BuildExpression<T>(QueryNode node, IEntityFrameworkQueryVisitorContext context, EntityFrameworkQueryParserConfiguration? configuration = null)
     {
-        _entityType = typeof(T);
-        _parameter = Expression.Parameter(_entityType, "e");
-        _efContext = context;
-        _configuration = configuration;
-        _expressionStack.Clear();
-        _currentField = null;
-
-        // Visit the node tree
-        AcceptAsync(node, context).GetAwaiter().GetResult();
-
-        // Get result from stack
-        var body = _expressionStack.Count > 0 ? _expressionStack.Pop() : Expression.Constant(true);
-
+        var body = BuildExpressionBody(typeof(T), node, context, configuration);
         return Expression.Lambda<Func<T, bool>>(body, _parameter);
     }
 
@@ -50,6 +40,13 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
     /// </summary>
     public LambdaExpression BuildExpression(Type entityType, QueryNode node, IEntityFrameworkQueryVisitorContext context, EntityFrameworkQueryParserConfiguration? configuration = null)
     {
+        var body = BuildExpressionBody(entityType, node, context, configuration);
+        var delegateType = typeof(Func<,>).MakeGenericType(entityType, typeof(bool));
+        return Expression.Lambda(delegateType, body, _parameter);
+    }
+
+    private Expression BuildExpressionBody(Type entityType, QueryNode node, IEntityFrameworkQueryVisitorContext context, EntityFrameworkQueryParserConfiguration? configuration)
+    {
         _entityType = entityType;
         _parameter = Expression.Parameter(_entityType, "e");
         _efContext = context;
@@ -57,14 +54,9 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         _expressionStack.Clear();
         _currentField = null;
 
-        // Visit the node tree
         AcceptAsync(node, context).GetAwaiter().GetResult();
 
-        // Get result from stack
-        var body = _expressionStack.Count > 0 ? _expressionStack.Pop() : Expression.Constant(true);
-
-        var delegateType = typeof(Func<,>).MakeGenericType(entityType, typeof(bool));
-        return Expression.Lambda(delegateType, body, _parameter);
+        return _expressionStack.Count > 0 ? _expressionStack.Pop() : Expression.Constant(true);
     }
 
     /// <inheritdoc />
@@ -112,8 +104,8 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             // use that inner occur instead, but don't apply negation since the inner visit already did
             var effectiveOccur = clause.Occur;
             var isInnerBooleanWithOccur = false;
-            if (clause.Query is BooleanQueryNode innerBoolean && 
-                innerBoolean.Clauses.Count == 1 && 
+            if (clause.Query is BooleanQueryNode innerBoolean &&
+                innerBoolean.Clauses.Count == 1 &&
                 innerBoolean.Clauses[0].Occur != Occur.Should)
             {
                 effectiveOccur = innerBoolean.Clauses[0].Occur;
@@ -121,7 +113,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             }
 
             AcceptAsync(clause.Query, context).GetAwaiter().GetResult();
-            
+
             if (_expressionStack.Count == 0)
                 continue;
 
@@ -175,38 +167,8 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         var field = _currentField;
         var term = node.UnescapedTerm;
 
-        if (string.IsNullOrEmpty(field))
-        {
-            // Search default fields
-            var defaultFields = _efContext.DefaultFields;
-            if (defaultFields != null && defaultFields.Length > 0)
-            {
-                var fieldExpressions = defaultFields
-                    .Select(f => BuildTermExpression(f, term, node.IsPrefix, node.IsWildcard))
-                    .Where(e => e != null)
-                    .ToList();
-
-                if (fieldExpressions.Count > 0)
-                {
-                    var combined = fieldExpressions.Cast<Expression>().Aggregate(Expression.OrElse);
-                    _expressionStack.Push(combined);
-                }
-                else
-                {
-                    _expressionStack.Push(Expression.Constant(false));
-                }
-            }
-            else
-            {
-                _expressionStack.Push(Expression.Constant(false));
-            }
-        }
-        else
-        {
-            var expr = BuildTermExpression(field, term, node.IsPrefix, node.IsWildcard);
-            _expressionStack.Push(expr ?? Expression.Constant(false));
-        }
-
+        var expr = BuildExpressionForFieldOrDefaults(field, f => BuildTermExpression(f, term, node.IsPrefix, node.IsWildcard));
+        _expressionStack.Push(expr);
         return Task.FromResult<QueryNode>(node);
     }
 
@@ -216,38 +178,30 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         var field = _currentField;
         var phrase = node.Phrase;
 
-        if (string.IsNullOrEmpty(field))
-        {
-            var defaultFields = _efContext.DefaultFields;
-            if (defaultFields != null && defaultFields.Length > 0)
-            {
-                var fieldExpressions = defaultFields
-                    .Select(f => BuildPhraseExpression(f, phrase))
-                    .Where(e => e != null)
-                    .ToList();
-
-                if (fieldExpressions.Count > 0)
-                {
-                    var combined = fieldExpressions.Cast<Expression>().Aggregate(Expression.OrElse);
-                    _expressionStack.Push(combined);
-                }
-                else
-                {
-                    _expressionStack.Push(Expression.Constant(false));
-                }
-            }
-            else
-            {
-                _expressionStack.Push(Expression.Constant(false));
-            }
-        }
-        else
-        {
-            var expr = BuildPhraseExpression(field, phrase);
-            _expressionStack.Push(expr ?? Expression.Constant(false));
-        }
-
+        var expr = BuildExpressionForFieldOrDefaults(field, f => BuildPhraseExpression(f, phrase));
+        _expressionStack.Push(expr);
         return Task.FromResult<QueryNode>(node);
+    }
+
+    private Expression BuildExpressionForFieldOrDefaults(string? field, Func<string, Expression?> buildExpression)
+    {
+        if (!string.IsNullOrEmpty(field))
+            return buildExpression(field) ?? Expression.Constant(false);
+
+        var defaultFields = _efContext.DefaultFields;
+        if (defaultFields == null || defaultFields.Length == 0)
+            return Expression.Constant(false);
+
+        var fieldExpressions = defaultFields
+            .Select(buildExpression)
+            .Where(e => e != null)
+            .Cast<Expression>()
+            .ToList();
+
+        if (fieldExpressions.Count == 0)
+            return Expression.Constant(false);
+
+        return fieldExpressions.Aggregate(Expression.OrElse);
     }
 
     /// <inheritdoc />
@@ -360,7 +314,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         // Handle string fields
         if (underlyingType == typeof(string))
         {
-            return BuildStringComparison(memberExpr, term, isPrefix, isWildcard);
+            return BuildStringComparison(memberExpr, term, isPrefix, isWildcard, fieldInfo);
         }
 
         // Handle numeric fields
@@ -424,36 +378,38 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
 
         // Default: try string comparison via ToString
-        return BuildStringComparison(memberExpr, term, isPrefix, isWildcard);
+        return BuildStringComparison(memberExpr, term, isPrefix, isWildcard, fieldInfo);
     }
 
-    private Expression BuildStringComparison(Expression memberExpr, string term, bool isPrefix, bool isWildcard)
+    private Expression BuildStringComparison(Expression memberExpr, string term, bool isPrefix, bool isWildcard, EntityFieldInfo? fieldInfo = null)
     {
-        // Ensure we're comparing non-null values
-        var nullCheck = Expression.NotEqual(memberExpr, Expression.Constant(null, memberExpr.Type));
+        // Check if this field is full-text indexed
+        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(fieldInfo))
+        {
+            return BuildFullTextSearchExpression(memberExpr, term, isPrefix, isWildcard);
+        }
 
-        Expression comparison;
-        
+        // Note: We don't add explicit null checks here because:
+        // 1. SQL's LIKE with NULL returns NULL which evaluates to false in WHERE clauses
+        // 2. This matches EF Core's behavior with direct LINQ Contains/StartsWith/EndsWith calls
+        // 3. Adding null checks generates different SQL than equivalent LINQ expressions
+
         if (isWildcard && !isPrefix)
         {
             // Handle wildcards (* and ?)
             // Convert to LIKE pattern: * -> %, ? -> _
-            comparison = BuildWildcardExpression(memberExpr, term);
+            return BuildWildcardExpression(memberExpr, term);
         }
         else if (isPrefix)
         {
-            // StartsWith comparison - use ToLower for case-insensitive
-            var lowerMember = Expression.Call(memberExpr, typeof(string).GetMethod(nameof(string.ToLowerInvariant), Type.EmptyTypes)!);
-            comparison = Expression.Call(lowerMember, StringStartsWithMethod, Expression.Constant(term.TrimEnd('*').ToLowerInvariant()));
+            // StartsWith comparison - case sensitivity determined by database collation
+            return Expression.Call(memberExpr, StringStartsWithMethod, Expression.Constant(term.TrimEnd('*')));
         }
         else
         {
-            // Default: use Contains for better search experience (case-insensitive)
-            var lowerMember = Expression.Call(memberExpr, typeof(string).GetMethod(nameof(string.ToLowerInvariant), Type.EmptyTypes)!);
-            comparison = Expression.Call(lowerMember, StringContainsMethod, Expression.Constant(term.ToLowerInvariant()));
+            // Default: use Contains for better search experience - case sensitivity determined by database collation
+            return Expression.Call(memberExpr, StringContainsMethod, Expression.Constant(term));
         }
-
-        return Expression.AndAlso(nullCheck, comparison);
     }
 
     private Expression BuildWildcardExpression(Expression memberExpr, string term)
@@ -482,6 +438,105 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         {
             // Contains (for internal wildcards)
             return Expression.Call(memberExpr, StringContainsMethod, Expression.Constant(cleanTerm));
+        }
+    }
+
+    private bool IsFullTextIndexedField(EntityFieldInfo? fieldInfo)
+    {
+        if (fieldInfo == null || _configuration == null)
+            return false;
+
+        // Determine the entity type name from the field info
+        // Priority order:
+        // 1. DeclaringTypeName (set during field discovery for both EF and reflection)
+        // 2. Property.DeclaringType (EF metadata)
+        // 3. Fallback to root entity type
+        string entityTypeName;
+        if (!string.IsNullOrEmpty(fieldInfo.DeclaringTypeName))
+        {
+            entityTypeName = fieldInfo.DeclaringTypeName;
+        }
+        else if (fieldInfo.Property?.DeclaringType != null)
+        {
+            // Use the declaring type from EF metadata
+            entityTypeName = fieldInfo.Property.DeclaringType.ClrType.Name;
+        }
+        else
+        {
+            // Fallback to the root entity type
+            entityTypeName = _entityType.Name;
+        }
+
+        return _configuration.IsFullTextField(entityTypeName, fieldInfo.Name);
+    }
+
+    private Expression BuildFullTextSearchExpression(Expression memberExpr, string term, bool isPrefix, bool isWildcard)
+    {
+        // Build EF.Functions.Contains(property, searchTerm) for full-text search
+        // Get EF.Functions instance
+        var efFunctions = Expression.Property(null, EfFunctionsProperty);
+
+        // Format the search term for SQL Server full-text search
+        var searchTerm = FormatFullTextSearchTerm(term, isPrefix, isWildcard);
+        var searchTermConstant = Expression.Constant(searchTerm, typeof(string));
+
+        // Get the SqlServerDbFunctionsExtensions.Contains method
+        // Method signature: Contains(DbFunctions, object propertyReference, string searchCondition)
+        // Note: The 'object' parameter is used for the method signature, but EF Core's translator
+        // needs to see the actual property expression to translate it correctly
+        var sqlServerExtensionsType = Type.GetType("Microsoft.EntityFrameworkCore.SqlServerDbFunctionsExtensions, Microsoft.EntityFrameworkCore.SqlServer");
+        if (sqlServerExtensionsType == null)
+        {
+            throw new InvalidOperationException(
+                "Full-text search requires Microsoft.EntityFrameworkCore.SqlServer package. " +
+                "Ensure it is installed and the field is properly configured.");
+        }
+
+        var containsMethod = sqlServerExtensionsType.GetMethod(
+            "Contains",
+            [typeof(DbFunctions), typeof(object), typeof(string)]);
+
+        if (containsMethod == null)
+        {
+            throw new InvalidOperationException(
+                "Could not find EF.Functions.Contains method. " +
+                "Ensure Microsoft.EntityFrameworkCore.SqlServer package is installed.");
+        }
+
+        // Pass the member expression directly - EF Core's translator will handle the object conversion
+        return Expression.Call(null, containsMethod, efFunctions, memberExpr, searchTermConstant);
+    }
+
+    private static string FormatFullTextSearchTerm(string term, bool isPrefix, bool isWildcard)
+    {
+        // Format the term for SQL Server full-text CONTAINS syntax
+        // See: https://docs.microsoft.com/en-us/sql/relational-databases/search/query-with-full-text-search
+
+        var cleanTerm = term.Trim('*', '?');
+
+        if (isWildcard && !isPrefix)
+        {
+            // Handle wildcards
+            var startsWithWildcard = term.StartsWith('*') || term.StartsWith('?');
+            var endsWithWildcard = term.EndsWith('*') || term.EndsWith('?');
+
+            if (endsWithWildcard && !startsWithWildcard)
+            {
+                // Prefix search: "term*" -> "\"term*\""
+                return $"\"{cleanTerm}*\"";
+            }
+            // Full-text search doesn't support suffix wildcards well, use the term as-is
+            return $"\"{cleanTerm}\"";
+        }
+        else if (isPrefix)
+        {
+            // Prefix search: "term*" -> "\"term*\""
+            return $"\"{cleanTerm}*\"";
+        }
+        else
+        {
+            // Regular term - quote it for exact word matching
+            return $"\"{cleanTerm}\"";
         }
     }
 
@@ -545,10 +600,15 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             return BuildTermExpression(fieldPath, phrase, isPrefix: false, isWildcard: false);
         }
 
-        // String contains for phrase (case-insensitive)
+        // Check if this field is full-text indexed
+        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(fieldInfo))
+        {
+            return BuildFullTextSearchExpression(memberExpr, phrase, isPrefix: false, isWildcard: false);
+        }
+
+        // String contains for phrase - case sensitivity determined by database collation
         var nullCheck = Expression.NotEqual(memberExpr, Expression.Constant(null, memberExpr.Type));
-        var lowerMember = Expression.Call(memberExpr, typeof(string).GetMethod(nameof(string.ToLowerInvariant), Type.EmptyTypes)!);
-        var contains = Expression.Call(lowerMember, StringContainsMethod, Expression.Constant(phrase.ToLowerInvariant()));
+        var contains = Expression.Call(memberExpr, StringContainsMethod, Expression.Constant(phrase));
         return Expression.AndAlso(nullCheck, contains);
     }
 
@@ -575,10 +635,13 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             return BuildCollectionRangeExpression(fieldPath, node);
         }
 
+        return BuildRangeComparisonExpression(memberExpr, node);
+    }
+
+    private Expression? BuildRangeComparisonExpression(Expression memberExpr, RangeNode node)
+    {
         var fieldType = memberExpr.Type;
         var underlyingType = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
-
-        Expression? result = null;
 
         // Handle short-form operators (>, >=, <, <=)
         if (node.Operator.HasValue)
@@ -591,7 +654,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             var constant = ConvertToConstant(value, fieldType, underlyingType, isRangeMax: isMaxBound);
             if (constant == null) return null;
 
-            result = node.Operator.Value switch
+            return node.Operator.Value switch
             {
                 RangeOperator.GreaterThan => Expression.GreaterThan(memberExpr, constant),
                 RangeOperator.GreaterThanOrEqual => Expression.GreaterThanOrEqual(memberExpr, constant),
@@ -600,45 +663,37 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
                 _ => null
             };
         }
-        else
+
+        // Handle range expression [min TO max]
+        Expression? minExpr = null;
+        Expression? maxExpr = null;
+
+        if (!string.IsNullOrEmpty(node.Min) && node.Min != "*")
         {
-            // Handle range expression [min TO max]
-            Expression? minExpr = null;
-            Expression? maxExpr = null;
-
-            if (!string.IsNullOrEmpty(node.Min) && node.Min != "*")
+            var minConstant = ConvertToConstant(node.Min, fieldType, underlyingType, isRangeMax: false);
+            if (minConstant != null)
             {
-                var minConstant = ConvertToConstant(node.Min, fieldType, underlyingType, isRangeMax: false);
-                if (minConstant != null)
-                {
-                    minExpr = node.MinInclusive
-                        ? Expression.GreaterThanOrEqual(memberExpr, minConstant)
-                        : Expression.GreaterThan(memberExpr, minConstant);
-                }
-            }
-
-            if (!string.IsNullOrEmpty(node.Max) && node.Max != "*")
-            {
-                var maxConstant = ConvertToConstant(node.Max, fieldType, underlyingType, isRangeMax: true);
-                if (maxConstant != null)
-                {
-                    maxExpr = node.MaxInclusive
-                        ? Expression.LessThanOrEqual(memberExpr, maxConstant)
-                        : Expression.LessThan(memberExpr, maxConstant);
-                }
-            }
-
-            if (minExpr != null && maxExpr != null)
-            {
-                result = Expression.AndAlso(minExpr, maxExpr);
-            }
-            else
-            {
-                result = minExpr ?? maxExpr;
+                minExpr = node.MinInclusive
+                    ? Expression.GreaterThanOrEqual(memberExpr, minConstant)
+                    : Expression.GreaterThan(memberExpr, minConstant);
             }
         }
 
-        return result;
+        if (!string.IsNullOrEmpty(node.Max) && node.Max != "*")
+        {
+            var maxConstant = ConvertToConstant(node.Max, fieldType, underlyingType, isRangeMax: true);
+            if (maxConstant != null)
+            {
+                maxExpr = node.MaxInclusive
+                    ? Expression.LessThanOrEqual(memberExpr, maxConstant)
+                    : Expression.LessThan(memberExpr, maxConstant);
+            }
+        }
+
+        if (minExpr != null && maxExpr != null)
+            return Expression.AndAlso(minExpr, maxExpr);
+
+        return minExpr ?? maxExpr;
     }
 
     private Expression? BuildExistsExpression(string fieldPath)
@@ -672,9 +727,57 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
 
     private Expression? BuildCollectionExpression(string fieldPath, string term, bool isPrefix, bool isWildcard)
     {
-        // Split the path to find the collection
+        var traversal = TraverseCollectionPath(fieldPath);
+        if (traversal == null)
+            return null;
+
+        var (collectionExpr, elementType, innerExpr, innerParam) = traversal.Value;
+
+        // Get field info for full-text check
+        EntityFieldInfo? fieldInfo = null;
+        if (_efContext is EntityFrameworkQueryVisitorContext efContext)
+        {
+            fieldInfo = efContext.GetField(fieldPath);
+        }
+
+        // Build the comparison for the inner property
+        Expression? comparison;
+        if (innerExpr.Type == typeof(string))
+        {
+            comparison = BuildCollectionStringComparison(innerExpr, term, isPrefix, isWildcard, fieldInfo);
+        }
+        else
+        {
+            var underlyingType = Nullable.GetUnderlyingType(innerExpr.Type) ?? innerExpr.Type;
+            var constant = ConvertToConstant(term, innerExpr.Type, underlyingType);
+            if (constant == null)
+                return null;
+            comparison = Expression.Equal(innerExpr, constant);
+        }
+
+        return BuildAnyExpression(collectionExpr, elementType, comparison, innerParam);
+    }
+
+    private Expression BuildCollectionStringComparison(Expression innerExpr, string term, bool isPrefix, bool isWildcard, EntityFieldInfo? fieldInfo)
+    {
+        // Check if this field is full-text indexed
+        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(fieldInfo))
+            return BuildFullTextSearchExpression(innerExpr, term, isPrefix, isWildcard);
+
+        // Note: We don't add explicit null checks to match EF Core's LINQ behavior
+        if (isWildcard && !isPrefix)
+            return BuildWildcardExpression(innerExpr, term);
+
+        if (isPrefix)
+            return Expression.Call(innerExpr, StringStartsWithMethod, Expression.Constant(term.TrimEnd('*')));
+
+        return Expression.Call(innerExpr, StringContainsMethod, Expression.Constant(term));
+    }
+
+    private (Expression CollectionExpr, Type ElementType, Expression InnerExpr, ParameterExpression InnerParam)? TraverseCollectionPath(string fieldPath)
+    {
         var parts = fieldPath.Split('.');
-        
+
         Expression current = _parameter;
         Type currentType = _entityType;
         int collectionIndex = -1;
@@ -690,7 +793,6 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             current = Expression.Property(current, propertyInfo);
             currentType = propertyInfo.PropertyType;
 
-            // Check if this is a collection
             if (IsCollectionType(currentType))
             {
                 collectionIndex = i;
@@ -701,12 +803,10 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         if (collectionIndex < 0 || collectionIndex >= parts.Length - 1)
             return null;
 
-        // Get the element type of the collection
         var elementType = GetCollectionElementType(currentType);
         if (elementType == null)
             return null;
 
-        // Build the inner expression for .Any()
         var innerParam = Expression.Parameter(elementType, "inner");
         Expression innerExpr = innerParam;
 
@@ -720,166 +820,31 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             innerExpr = Expression.Property(innerExpr, propertyInfo);
         }
 
-        // Build the comparison for the inner property
-        Expression comparison;
-        if (innerExpr.Type == typeof(string))
-        {
-            var nullCheck = Expression.NotEqual(innerExpr, Expression.Constant(null, typeof(string)));
-            Expression stringComparison;
-            
-            if (isWildcard && !isPrefix)
-            {
-                stringComparison = BuildWildcardExpression(innerExpr, term);
-            }
-            else if (isPrefix)
-            {
-                var lowerInner = Expression.Call(innerExpr, typeof(string).GetMethod(nameof(string.ToLowerInvariant), Type.EmptyTypes)!);
-                stringComparison = Expression.Call(lowerInner, StringStartsWithMethod, Expression.Constant(term.TrimEnd('*').ToLowerInvariant()));
-            }
-            else
-            {
-                var lowerInner = Expression.Call(innerExpr, typeof(string).GetMethod(nameof(string.ToLowerInvariant), Type.EmptyTypes)!);
-                stringComparison = Expression.Call(lowerInner, StringContainsMethod, Expression.Constant(term.ToLowerInvariant()));
-            }
-            comparison = Expression.AndAlso(nullCheck, stringComparison);
-        }
-        else
-        {
-            var underlyingType = Nullable.GetUnderlyingType(innerExpr.Type) ?? innerExpr.Type;
-            var constant = ConvertToConstant(term, innerExpr.Type, underlyingType);
-            if (constant == null)
-                return null;
-            comparison = Expression.Equal(innerExpr, constant);
-        }
+        return (current, elementType, innerExpr, innerParam);
+    }
 
-        // Build the lambda for Any
+    private static Expression BuildAnyExpression(Expression collectionExpr, Type elementType, Expression comparison, ParameterExpression innerParam)
+    {
         var lambda = Expression.Lambda(comparison, innerParam);
-
-        // Call Enumerable.Any<T>(collection, lambda)
         var anyMethod = typeof(Enumerable).GetMethods()
             .First(m => m.Name == nameof(Enumerable.Any) && m.GetParameters().Length == 2)
             .MakeGenericMethod(elementType);
-
-        return Expression.Call(anyMethod, current, lambda);
+        return Expression.Call(anyMethod, collectionExpr, lambda);
     }
 
     private Expression? BuildCollectionRangeExpression(string fieldPath, RangeNode node)
     {
-        // Similar to BuildCollectionExpression but for ranges
-        var parts = fieldPath.Split('.');
-        
-        Expression current = _parameter;
-        Type currentType = _entityType;
-        int collectionIndex = -1;
-
-        for (int i = 0; i < parts.Length; i++)
-        {
-            var part = parts[i];
-            var propertyInfo = currentType.GetProperty(part, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (propertyInfo == null)
-                return null;
-
-            current = Expression.Property(current, propertyInfo);
-            currentType = propertyInfo.PropertyType;
-
-            if (IsCollectionType(currentType))
-            {
-                collectionIndex = i;
-                break;
-            }
-        }
-
-        if (collectionIndex < 0 || collectionIndex >= parts.Length - 1)
+        var traversal = TraverseCollectionPath(fieldPath);
+        if (traversal == null)
             return null;
 
-        var elementType = GetCollectionElementType(currentType);
-        if (elementType == null)
-            return null;
+        var (collectionExpr, elementType, innerExpr, innerParam) = traversal.Value;
 
-        var innerParam = Expression.Parameter(elementType, "inner");
-        Expression innerExpr = innerParam;
-
-        for (int i = collectionIndex + 1; i < parts.Length; i++)
-        {
-            var part = parts[i];
-            var propertyInfo = innerExpr.Type.GetProperty(part, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (propertyInfo == null)
-                return null;
-            innerExpr = Expression.Property(innerExpr, propertyInfo);
-        }
-
-        // Build range comparison
-        var fieldType = innerExpr.Type;
-        var underlyingType = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
-
-        Expression? comparison = null;
-
-        if (node.Operator.HasValue)
-        {
-            var value = node.Min ?? node.Max;
-            if (value == null) return null;
-
-            // For < and <= operators, use end-of-day for date-only values
-            var isMaxBound = node.Operator.Value is RangeOperator.LessThan or RangeOperator.LessThanOrEqual;
-            var constant = ConvertToConstant(value, fieldType, underlyingType, isRangeMax: isMaxBound);
-            if (constant == null) return null;
-
-            comparison = node.Operator.Value switch
-            {
-                RangeOperator.GreaterThan => Expression.GreaterThan(innerExpr, constant),
-                RangeOperator.GreaterThanOrEqual => Expression.GreaterThanOrEqual(innerExpr, constant),
-                RangeOperator.LessThan => Expression.LessThan(innerExpr, constant),
-                RangeOperator.LessThanOrEqual => Expression.LessThanOrEqual(innerExpr, constant),
-                _ => null
-            };
-        }
-        else
-        {
-            Expression? minExpr = null;
-            Expression? maxExpr = null;
-
-            if (!string.IsNullOrEmpty(node.Min) && node.Min != "*")
-            {
-                var minConstant = ConvertToConstant(node.Min, fieldType, underlyingType, isRangeMax: false);
-                if (minConstant != null)
-                {
-                    minExpr = node.MinInclusive
-                        ? Expression.GreaterThanOrEqual(innerExpr, minConstant)
-                        : Expression.GreaterThan(innerExpr, minConstant);
-                }
-            }
-
-            if (!string.IsNullOrEmpty(node.Max) && node.Max != "*")
-            {
-                var maxConstant = ConvertToConstant(node.Max, fieldType, underlyingType, isRangeMax: true);
-                if (maxConstant != null)
-                {
-                    maxExpr = node.MaxInclusive
-                        ? Expression.LessThanOrEqual(innerExpr, maxConstant)
-                        : Expression.LessThan(innerExpr, maxConstant);
-                }
-            }
-
-            if (minExpr != null && maxExpr != null)
-            {
-                comparison = Expression.AndAlso(minExpr, maxExpr);
-            }
-            else
-            {
-                comparison = minExpr ?? maxExpr;
-            }
-        }
-
+        var comparison = BuildRangeComparisonExpression(innerExpr, node);
         if (comparison == null)
             return null;
 
-        var lambda = Expression.Lambda(comparison, innerParam);
-
-        var anyMethod = typeof(Enumerable).GetMethods()
-            .First(m => m.Name == nameof(Enumerable.Any) && m.GetParameters().Length == 2)
-            .MakeGenericMethod(elementType);
-
-        return Expression.Call(anyMethod, current, lambda);
+        return BuildAnyExpression(collectionExpr, elementType, comparison, innerParam);
     }
 
     private (MemberExpression? Expression, EntityFieldInfo? FieldInfo) GetMemberExpression(string fieldPath)
@@ -926,38 +891,11 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return false;
     }
 
-    private static bool IsCollectionType(Type type)
-    {
-        if (type == typeof(string))
-            return false;
+    private static bool IsCollectionType(Type type) => EntityFrameworkQueryParser.IsCollectionType(type);
 
-        return type.IsGenericType && 
-               (type.GetGenericTypeDefinition() == typeof(ICollection<>) ||
-                type.GetGenericTypeDefinition() == typeof(IEnumerable<>) ||
-                type.GetGenericTypeDefinition() == typeof(IList<>) ||
-                type.GetGenericTypeDefinition() == typeof(List<>) ||
-                type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICollection<>)));
-    }
+    private static Type? GetCollectionElementType(Type collectionType) => EntityFrameworkQueryParser.GetCollectionElementType(collectionType);
 
-    private static Type? GetCollectionElementType(Type collectionType)
-    {
-        if (collectionType.IsGenericType)
-        {
-            return collectionType.GetGenericArguments().FirstOrDefault();
-        }
-
-        var enumerableInterface = collectionType.GetInterfaces()
-            .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
-
-        return enumerableInterface?.GetGenericArguments().FirstOrDefault();
-    }
-
-    private ConstantExpression? ConvertToConstant(string value, Type targetType, Type underlyingType)
-    {
-        return ConvertToConstant(value, targetType, underlyingType, isRangeMax: false);
-    }
-
-    private ConstantExpression? ConvertToConstant(string value, Type targetType, Type underlyingType, bool isRangeMax)
+    private ConstantExpression? ConvertToConstant(string value, Type targetType, Type underlyingType, bool isRangeMax = false)
     {
         object? converted;
 
@@ -995,16 +933,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             converted = value;
         }
 
-        if (converted == null)
-            return null;
-
-        // Handle nullable types
-        if (targetType != underlyingType && converted.GetType() == underlyingType)
-        {
-            return Expression.Constant(converted, targetType);
-        }
-
-        return Expression.Constant(converted, targetType);
+        return converted == null ? null : Expression.Constant(converted, targetType);
     }
 
     /// <summary>
@@ -1029,13 +958,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return false;
     }
 
-    private static bool IsNumericType(Type type)
-    {
-        return type == typeof(int) || type == typeof(long) || type == typeof(short) ||
-               type == typeof(byte) || type == typeof(decimal) || type == typeof(double) ||
-               type == typeof(float) || type == typeof(uint) || type == typeof(ulong) ||
-               type == typeof(ushort) || type == typeof(sbyte);
-    }
+    private static bool IsNumericType(Type type) => EntityFrameworkQueryParser.IsNumericType(type);
 
     private static object? ConvertToNumeric(string value, Type targetType)
     {

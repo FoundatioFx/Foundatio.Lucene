@@ -144,7 +144,7 @@ public class LowercaseTermVisitor : QueryNodeVisitor
     {
         // Process this node's field
         node.Field = node.Field?.ToLowerInvariant();
-        
+
         // Visit children
         return await base.VisitAsync(node, context);
     }

@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.LuceneQueryParser.EntityFramework;
@@ -26,7 +25,7 @@ public static class EntityFrameworkExtensions
 
         var context = source.GetDbContext();
         var parser = context.GetQueryParser();
-        
+
         if (parser == null)
             throw new InvalidOperationException(
                 $"EntityFrameworkQueryParser is not registered in the DbContext. " +
@@ -129,7 +128,7 @@ public static class EntityFrameworkExtensions
     {
         return ((IInfrastructure<IServiceProvider>)context).Instance.GetService(typeof(T)) as T;
     }
-    
+
     /// <summary>
     /// Gets the DbContext from a DbSet.
     /// </summary>
@@ -140,12 +139,12 @@ public static class EntityFrameworkExtensions
     private static DbContext GetDbContext<T>(this DbSet<T> dbSet) where T : class
     {
         var infrastructure = dbSet as IInfrastructure<IServiceProvider>;
-        var serviceProvider = infrastructure?.Instance 
+        var serviceProvider = infrastructure?.Instance
             ?? throw new InvalidOperationException("Unable to get service provider from DbSet.");
-        
+
         var contextService = serviceProvider.GetService<ICurrentDbContext>()
             ?? throw new InvalidOperationException("Unable to get ICurrentDbContext from service provider.");
-            
+
         return contextService.Context;
     }
 #pragma warning restore EF1001 // Internal EF Core API usage
@@ -162,7 +161,7 @@ public static class EntityFrameworkExtensions
         var parser = new EntityFrameworkQueryParser(configure);
         return parser.BuildFilter<T>(query);
     }
-    
+
     /// <summary>
     /// Adds the Lucene query parser to the DbContext options.
     /// </summary>
@@ -189,12 +188,12 @@ public static class EntityFrameworkExtensions
         Action<EntityFrameworkQueryParserConfiguration>? configure = null)
     {
         var parser = new EntityFrameworkQueryParser(configure);
-        
+
         var extension = optionsBuilder.Options.FindExtension<LuceneQueryParserOptionsExtension>()
             ?? new LuceneQueryParserOptionsExtension(parser);
-        
+
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
-        
+
         return optionsBuilder;
     }
 }

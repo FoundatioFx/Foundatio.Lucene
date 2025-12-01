@@ -11,6 +11,7 @@ namespace Foundatio.LuceneQueryParser.EntityFramework;
 public class EntityFrameworkQueryParser
 {
     private static readonly ConcurrentDictionary<IEntityType, List<EntityFieldInfo>> _entityFieldCache = new();
+    private static readonly ConcurrentDictionary<Type, List<EntityFieldInfo>> _reflectionFieldCache = new();
     private readonly ExpressionBuilderVisitor _expressionBuilder = new();
 
     /// <summary>
@@ -40,14 +41,8 @@ public class EntityFrameworkQueryParser
         context ??= new EntityFrameworkQueryVisitorContext();
         SetupContextDefaults<T>(context);
 
-        var parseResult = LuceneQuery.Parse(query, Configuration.DefaultOperator);
-        
-        if (!parseResult.IsSuccess && parseResult.Errors.Count > 0)
-        {
-            throw new FormatException($"Failed to parse query: {string.Join(", ", parseResult.Errors.Select(e => e.Message))}");
-        }
-
-        return _expressionBuilder.BuildExpression<T>(parseResult.Document, context, Configuration);
+        var document = ParseQuery(query);
+        return _expressionBuilder.BuildExpression<T>(document, context, Configuration);
     }
 
     /// <summary>
@@ -97,14 +92,16 @@ public class EntityFrameworkQueryParser
         context ??= new EntityFrameworkQueryVisitorContext();
         SetupContextDefaults(entityType, context);
 
-        var parseResult = LuceneQuery.Parse(query, Configuration.DefaultOperator);
-        
-        if (!parseResult.IsSuccess && parseResult.Errors.Count > 0)
-        {
-            throw new FormatException($"Failed to parse query: {string.Join(", ", parseResult.Errors.Select(e => e.Message))}");
-        }
+        var document = ParseQuery(query);
+        return _expressionBuilder.BuildExpression(entityType, document, context, Configuration);
+    }
 
-        return _expressionBuilder.BuildExpression(entityType, parseResult.Document, context, Configuration);
+    private Ast.QueryDocument ParseQuery(string query)
+    {
+        var parseResult = LuceneQuery.Parse(query, Configuration.DefaultOperator);
+        if (!parseResult.IsSuccess && parseResult.Errors.Count > 0)
+            throw new FormatException($"Failed to parse query: {string.Join(", ", parseResult.Errors.Select(e => e.Message))}");
+        return parseResult.Document;
     }
 
     /// <summary>
@@ -120,7 +117,7 @@ public class EntityFrameworkQueryParser
                        !Configuration.HasCustomSkipNavigationFilter;
 
         List<EntityFieldInfo> fields;
-        
+
         if (useCache && _entityFieldCache.TryGetValue(entityType, out var cachedFields))
         {
             fields = cachedFields.ToList();
@@ -129,7 +126,7 @@ public class EntityFrameworkQueryParser
         {
             fields = [];
             AddEntityFields(fields, null, entityType);
-            
+
             if (useCache)
             {
                 _entityFieldCache.TryAdd(entityType, fields);
@@ -176,10 +173,20 @@ public class EntityFrameworkQueryParser
 
     private void SetupContextDefaults(Type entityType, EntityFrameworkQueryVisitorContext context)
     {
-        // Discover fields from reflection if not already set
+        // Discover fields from cache or reflection if not already set
         if (context.Fields.Count == 0)
         {
-            DiscoverFieldsFromReflection(context.Fields, null, entityType);
+            if (_reflectionFieldCache.TryGetValue(entityType, out var cachedFields))
+            {
+                // Use cached fields - make a copy to avoid mutation issues
+                context.Fields.AddRange(cachedFields);
+            }
+            else
+            {
+                DiscoverFieldsFromReflection(context.Fields, null, entityType);
+                // Cache the discovered fields
+                _reflectionFieldCache.TryAdd(entityType, [.. context.Fields]);
+            }
         }
 
         // Apply configuration defaults
@@ -221,6 +228,7 @@ public class EntityFrameworkQueryParser
                 IsDateOnly = underlyingType == typeof(DateOnly),
                 IsBoolean = underlyingType == typeof(bool),
                 IsString = underlyingType == typeof(string),
+                DeclaringTypeName = entityType.ClrType.Name,
                 Parent = parent,
                 Property = property
             });
@@ -319,6 +327,7 @@ public class EntityFrameworkQueryParser
                     IsDateOnly = underlyingType == typeof(DateOnly),
                     IsBoolean = underlyingType == typeof(bool),
                     IsString = underlyingType == typeof(string),
+                    DeclaringTypeName = entityType.Name,
                     Parent = parent
                 });
             }
@@ -372,7 +381,7 @@ public class EntityFrameworkQueryParser
                type == typeof(byte[]);
     }
 
-    private static bool IsNumericType(Type type)
+    internal static bool IsNumericType(Type type)
     {
         return type == typeof(int) || type == typeof(long) || type == typeof(short) ||
                type == typeof(byte) || type == typeof(decimal) || type == typeof(double) ||
@@ -380,7 +389,7 @@ public class EntityFrameworkQueryParser
                type == typeof(ushort) || type == typeof(sbyte);
     }
 
-    private static bool IsCollectionType(Type type)
+    internal static bool IsCollectionType(Type type)
     {
         if (type == typeof(string))
             return false;
@@ -393,7 +402,7 @@ public class EntityFrameworkQueryParser
                 type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICollection<>)));
     }
 
-    private static Type? GetCollectionElementType(Type collectionType)
+    internal static Type? GetCollectionElementType(Type collectionType)
     {
         if (collectionType.IsGenericType)
         {

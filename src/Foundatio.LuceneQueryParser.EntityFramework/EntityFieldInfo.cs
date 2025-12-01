@@ -65,6 +65,18 @@ public class EntityFieldInfo
     public bool IsNavigation { get; set; }
 
     /// <summary>
+    /// Whether the field has a full-text search index.
+    /// When true, queries will use EF.Functions.Contains() for full-text search.
+    /// </summary>
+    public bool IsFullTextIndexed { get; set; }
+
+    /// <summary>
+    /// The name of the CLR type that declares this field (e.g., "Employee" for Employee.Name).
+    /// Used for full-text field configuration matching.
+    /// </summary>
+    public string? DeclaringTypeName { get; set; }
+
+    /// <summary>
     /// The parent field info for nested fields.
     /// </summary>
     public EntityFieldInfo? Parent { get; set; }

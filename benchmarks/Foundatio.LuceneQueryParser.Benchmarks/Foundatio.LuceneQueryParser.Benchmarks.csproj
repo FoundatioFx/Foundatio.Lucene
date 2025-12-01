@@ -11,10 +11,13 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
     <PackageReference Include="Foundatio.Parsers.LuceneQueries" Version="7.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Foundatio.LuceneQueryParser\Foundatio.LuceneQueryParser.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.LuceneQueryParser.EntityFramework\Foundatio.LuceneQueryParser.EntityFramework.csproj" />
   </ItemGroup>
 
 </Project>
