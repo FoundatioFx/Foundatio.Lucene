@@ -7,7 +7,7 @@ hero:
   tagline: Enable powerful user-driven search queries in your .NET applications with Entity Framework and Elasticsearch support
   image:
     src: https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png
-    alt: Foundatio.Lucene
+    alt: Foundatio Lucene
   actions:
     - theme: brand
       text: Get Started

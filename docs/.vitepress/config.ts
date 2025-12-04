@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 import llmstxt from 'vitepress-plugin-llms'
 
 export default defineConfig({
-  title: 'Foundatio.Lucene',
+  title: 'Foundatio Lucene',
   description: 'Dynamic Lucene-style query capabilities for .NET with Entity Framework and Elasticsearch support',
   base: '/',
   ignoreDeadLinks: true,
@@ -12,7 +12,6 @@ export default defineConfig({
   vite: {
     plugins: [
       llmstxt({
-        title: 'Foundatio.Lucene Documentation',
         ignoreFiles: ['node_modules/**', '.vitepress/**']
       })
     ]

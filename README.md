@@ -3,7 +3,7 @@
 [![feedz.io](https://img.shields.io/badge/endpoint.svg?url=https%3A%2F%2Ff.feedz.io%2Ffoundatio%2Ffoundatio%2Fshield%2FFoundatio.Lucene%2Flatest)](https://f.feedz.io/foundatio/foundatio/packages/Foundatio.Lucene/latest/download)
 [![Discord](https://img.shields.io/discord/715744504891703319?logo=discord)](https://discord.gg/6HxgFCx)
 
-# Foundatio.Lucene
+# Foundatio Lucene
 
 A library for adding dynamic Lucene-style query capabilities to your .NET applications. Enable your users to write powerful search queries using familiar Lucene syntax, with support for Entity Framework and Elasticsearch.
 
