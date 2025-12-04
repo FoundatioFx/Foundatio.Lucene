@@ -7,8 +7,8 @@ Field mapping allows you to create user-friendly aliases for your actual field n
 Use `FieldMap` to define aliases:
 
 ```csharp
-using Foundatio.LuceneQuery;
-using Foundatio.LuceneQuery.Visitors;
+using Foundatio.Lucene;
+using Foundatio.Lucene.Visitors;
 
 var fieldMap = new FieldMap
 {

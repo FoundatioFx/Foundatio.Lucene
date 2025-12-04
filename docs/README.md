@@ -1,6 +1,6 @@
-# Foundatio.LuceneQuery Documentation
+# Foundatio.Lucene Documentation
 
-This folder contains the VitePress v2.0 documentation for Foundatio.LuceneQuery.
+This folder contains the VitePress v2.0 documentation for Foundatio.Lucene.
 
 ## Development
 

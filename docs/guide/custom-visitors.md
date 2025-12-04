@@ -7,8 +7,8 @@ This guide covers advanced patterns for creating custom visitors to transform, a
 All visitors extend `QueryNodeVisitor` and override methods for specific node types:
 
 ```csharp
-using Foundatio.LuceneQuery.Ast;
-using Foundatio.LuceneQuery.Visitors;
+using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Visitors;
 
 public class MyVisitor : QueryNodeVisitor
 {

@@ -4,8 +4,8 @@
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Product>Foundatio</Product>
     <Description>Dynamic Lucene-style query support for Entity Framework and Elasticsearch. Enable powerful user-driven search queries in your .NET applications.</Description>
-    <PackageProjectUrl>https://github.com/FoundatioFx/Foundatio.LuceneQuery</PackageProjectUrl>
-    <PackageReleaseNotes>https://github.com/FoundatioFx/Foundatio.LuceneQuery/releases</PackageReleaseNotes>
+    <PackageProjectUrl>https://github.com/FoundatioFx/Foundatio.Lucene</PackageProjectUrl>
+    <PackageReleaseNotes>https://github.com/FoundatioFx/Foundatio.Lucene/releases</PackageReleaseNotes>
     <PackageTags>Lucene;Query;Parser;Search;EntityFramework;LINQ;Elasticsearch;Dynamic;Filtering</PackageTags>
     <MinVerSkip Condition="'$(Configuration)' == 'Debug'">true</MinVerSkip>
     <MinVerTagPrefix>v</MinVerTagPrefix>

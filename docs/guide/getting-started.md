@@ -1,6 +1,6 @@
 # Getting Started
 
-Foundatio.LuceneQuery is a library for parsing Lucene-style query strings and converting them to various output formats. This guide will walk you through the basic setup and your first query.
+Foundatio.Lucene is a library for parsing Lucene-style query strings and converting them to various output formats. This guide will walk you through the basic setup and your first query.
 
 ## Installation
 
@@ -9,15 +9,15 @@ Install the NuGet packages for your use case:
 ::: code-group
 
 ```bash [Core Parser]
-dotnet add package Foundatio.LuceneQuery
+dotnet add package Foundatio.Lucene
 ```
 
 ```bash [Entity Framework]
-dotnet add package Foundatio.LuceneQuery.EntityFramework
+dotnet add package Foundatio.Lucene.EntityFramework
 ```
 
 ```bash [Elasticsearch]
-dotnet add package Foundatio.LuceneQuery.Elasticsearch
+dotnet add package Foundatio.Lucene.Elasticsearch
 ```
 
 :::
@@ -27,7 +27,7 @@ dotnet add package Foundatio.LuceneQuery.Elasticsearch
 The simplest usage is to parse a query string into an AST:
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 var result = LuceneQuery.Parse("title:hello AND status:active");
 
@@ -51,7 +51,7 @@ else
 You can convert the AST back to a query string:
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 var result = LuceneQuery.Parse("title:test AND (status:active OR status:pending)");
 var queryString = QueryStringBuilder.ToQueryString(result.Document);
@@ -63,8 +63,8 @@ var queryString = QueryStringBuilder.ToQueryString(result.Document);
 Map user-friendly field names to your actual data model:
 
 ```csharp
-using Foundatio.LuceneQuery;
-using Foundatio.LuceneQuery.Visitors;
+using Foundatio.Lucene;
+using Foundatio.Lucene.Visitors;
 
 var result = LuceneQuery.Parse("user:john AND created:[2020-01-01 TO 2020-12-31]");
 
@@ -85,7 +85,7 @@ var resolved = QueryStringBuilder.ToQueryString(result.Document);
 Restrict what users can query:
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 var result = LuceneQuery.Parse("*wildcard AND title:test");
 
@@ -109,7 +109,7 @@ if (!validationResult.IsValid)
 Enable dynamic, user-driven queries in your API endpoints:
 
 ```csharp
-using Foundatio.LuceneQuery.EntityFramework;
+using Foundatio.Lucene.EntityFramework;
 
 // In your API controller or service
 [HttpGet("employees")]
@@ -150,7 +150,7 @@ var filter = parser.BuildFilter<Employee>(userQuery, fieldMap);
 Generate Elasticsearch Query DSL from Lucene syntax:
 
 ```csharp
-using Foundatio.LuceneQuery.Elasticsearch;
+using Foundatio.Lucene.Elasticsearch;
 using Elastic.Clients.Elasticsearch;
 
 var parser = new ElasticsearchQueryParser();

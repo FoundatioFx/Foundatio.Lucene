@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 import llmstxt from 'vitepress-plugin-llms'
 
 export default defineConfig({
-  title: 'Foundatio.LuceneQuery',
+  title: 'Foundatio.Lucene',
   description: 'Dynamic Lucene-style query capabilities for .NET with Entity Framework and Elasticsearch support',
   base: '/',
   ignoreDeadLinks: true,
@@ -12,7 +12,7 @@ export default defineConfig({
   vite: {
     plugins: [
       llmstxt({
-        title: 'Foundatio.LuceneQuery Documentation',
+        title: 'Foundatio.Lucene Documentation',
         ignoreFiles: ['node_modules/**', '.vitepress/**']
       })
     ]
@@ -26,17 +26,17 @@ export default defineConfig({
       light: 'https://raw.githubusercontent.com/FoundatioFx/Foundatio/master/media/foundatio.svg',
       dark: 'https://raw.githubusercontent.com/FoundatioFx/Foundatio/master/media/foundatio-dark-bg.svg'
     },
-    siteTitle: 'LuceneQuery',
+    siteTitle: 'Lucene',
     nav: [
-      { text: 'Guide', link: '/guide/what-is-foundatio-lucenequery' },
-      { text: 'GitHub', link: 'https://github.com/FoundatioFx/Foundatio.LuceneQuery' }
+      { text: 'Guide', link: '/guide/what-is-foundatio-lucene' },
+      { text: 'GitHub', link: 'https://github.com/FoundatioFx/Foundatio.Lucene' }
     ],
     sidebar: {
       '/guide/': [
         {
           text: 'Introduction',
           items: [
-            { text: 'What is Foundatio.LuceneQuery?', link: '/guide/what-is-foundatio-lucenequery' },
+            { text: 'What is Foundatio.Lucene?', link: '/guide/what-is-foundatio-lucene' },
             { text: 'Getting Started', link: '/guide/getting-started' }
           ]
         },
@@ -67,7 +67,7 @@ export default defineConfig({
       ]
     },
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/FoundatioFx/Foundatio.LuceneQuery' },
+      { icon: 'github', link: 'https://github.com/FoundatioFx/Foundatio.Lucene' },
       { icon: 'discord', link: 'https://discord.gg/6HxgFCx' }
     ],
     footer: {
@@ -75,7 +75,7 @@ export default defineConfig({
       copyright: 'Copyright © 2025 Foundatio'
     },
     editLink: {
-      pattern: 'https://github.com/FoundatioFx/Foundatio.LuceneQuery/edit/main/docs/:path'
+      pattern: 'https://github.com/FoundatioFx/Foundatio.Lucene/edit/main/docs/:path'
     },
     search: {
       provider: 'local'

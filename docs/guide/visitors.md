@@ -4,7 +4,7 @@ Visitors are the core mechanism for transforming, validating, and analyzing pars
 
 ## Built-in Visitors
 
-Foundatio.LuceneQuery includes several built-in visitors:
+Foundatio.Lucene includes several built-in visitors:
 
 | Visitor | Description |
 |---------|-------------|
@@ -21,8 +21,8 @@ Foundatio.LuceneQuery includes several built-in visitors:
 Map user-friendly field names to actual field names:
 
 ```csharp
-using Foundatio.LuceneQuery;
-using Foundatio.LuceneQuery.Visitors;
+using Foundatio.Lucene;
+using Foundatio.Lucene.Visitors;
 
 var result = LuceneQuery.Parse("user:john AND created:[now-1d TO now]");
 
@@ -89,8 +89,8 @@ var fields = await GetReferencedFieldsVisitor.RunAsync(result.Document);
 Extend `QueryNodeVisitor` to create custom transformations:
 
 ```csharp
-using Foundatio.LuceneQuery.Ast;
-using Foundatio.LuceneQuery.Visitors;
+using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Visitors;
 
 public class LowercaseTermVisitor : QueryNodeVisitor
 {

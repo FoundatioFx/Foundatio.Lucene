@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Elasticsearch Query DSL generator for Lucene Query syntax using Elastic.Clients.Elasticsearch 9.x</Description>
+    <PackageTags>lucene query parser elasticsearch query dsl filter</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Foundatio.Lucene\Foundatio.Lucene.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.2.2" />
+  </ItemGroup>
+</Project>

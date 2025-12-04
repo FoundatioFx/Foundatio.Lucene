@@ -1,17 +1,17 @@
 # Elasticsearch Integration
 
-Foundatio.LuceneQuery.Elasticsearch converts Lucene query strings to Elasticsearch Query DSL using the official Elastic.Clients.Elasticsearch 9.x client.
+Foundatio.Lucene.Elasticsearch converts Lucene query strings to Elasticsearch Query DSL using the official Elastic.Clients.Elasticsearch 9.x client.
 
 ## Installation
 
 ```bash
-dotnet add package Foundatio.LuceneQuery.Elasticsearch
+dotnet add package Foundatio.Lucene.Elasticsearch
 ```
 
 ## Basic Usage
 
 ```csharp
-using Foundatio.LuceneQuery.Elasticsearch;
+using Foundatio.Lucene.Elasticsearch;
 using Elastic.Clients.Elasticsearch;
 
 var parser = new ElasticsearchQueryParser();

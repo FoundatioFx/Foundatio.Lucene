@@ -1,6 +1,6 @@
 # Date Math
 
-Foundatio.LuceneQuery supports Elasticsearch-style date math expressions for working with dates dynamically.
+Foundatio.Lucene supports Elasticsearch-style date math expressions for working with dates dynamically.
 
 ## Basic Syntax
 
@@ -89,7 +89,7 @@ With rounding:
 ### In Queries
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 // Parse a query with date math
 var result = LuceneQuery.Parse("created:[now-7d TO now]");
@@ -124,7 +124,7 @@ var query = parser.BuildQuery("created:[now-7d TO now]");
 Evaluate date math with custom options:
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 var result = LuceneQuery.Parse("date:[now-1d TO now]");
 

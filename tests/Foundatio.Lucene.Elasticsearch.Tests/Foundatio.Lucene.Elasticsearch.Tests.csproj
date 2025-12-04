@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.2.2" />
+    <PackageReference Include="Testcontainers.Elasticsearch" Version="4.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Foundatio.Lucene.Elasticsearch\Foundatio.Lucene.Elasticsearch.csproj" />
+  </ItemGroup>
+
+</Project>

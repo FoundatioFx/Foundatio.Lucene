@@ -7,7 +7,7 @@ Query validation allows you to restrict what users can query, preventing expensi
 Use `QueryValidationOptions` and `QueryValidator`:
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 var result = LuceneQuery.Parse("*wildcard AND title:test");
 

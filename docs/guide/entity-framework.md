@@ -1,17 +1,17 @@
 # Entity Framework Integration
 
-Foundatio.LuceneQuery.EntityFramework converts Lucene query strings to LINQ expressions for use with Entity Framework Core.
+Foundatio.Lucene.EntityFramework converts Lucene query strings to LINQ expressions for use with Entity Framework Core.
 
 ## Installation
 
 ```bash
-dotnet add package Foundatio.LuceneQuery.EntityFramework
+dotnet add package Foundatio.Lucene.EntityFramework
 ```
 
 ## Basic Usage
 
 ```csharp
-using Foundatio.LuceneQuery.EntityFramework;
+using Foundatio.Lucene.EntityFramework;
 using Microsoft.EntityFrameworkCore;
 
 var parser = new EntityFrameworkQueryParser();

@@ -1,0 +1,20 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Foundatio.Lucene/Foundatio.Lucene.csproj" />
+    <Project Path="src/Foundatio.Lucene.EntityFramework/Foundatio.Lucene.EntityFramework.csproj" />
+    <Project Path="src/Foundatio.Lucene.Elasticsearch/Foundatio.Lucene.Elasticsearch.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Foundatio.Lucene.Tests/Foundatio.Lucene.Tests.csproj" />
+    <Project Path="tests/Foundatio.Lucene.EntityFramework.Tests/Foundatio.Lucene.EntityFramework.Tests.csproj" />
+    <Project Path="tests/Foundatio.Lucene.Elasticsearch.Tests/Foundatio.Lucene.Elasticsearch.Tests.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Foundatio.Lucene.Benchmarks/Foundatio.Lucene.Benchmarks.csproj" />
+  </Folder>
+</Solution>

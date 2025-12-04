@@ -1,15 +1,15 @@
-[![Build status](https://github.com/FoundatioFx/Foundatio.LuceneQuery/actions/workflows/build.yml/badge.svg)](https://github.com/FoundatioFx/Foundatio.LuceneQuery/actions)
-[![NuGet Version](https://img.shields.io/nuget/v/Foundatio.LuceneQuery.svg?style=flat)](https://www.nuget.org/packages/Foundatio.LuceneQuery/)
-[![feedz.io](https://img.shields.io/badge/endpoint.svg?url=https%3A%2F%2Ff.feedz.io%2Ffoundatio%2Ffoundatio%2Fshield%2FFoundatio.LuceneQuery%2Flatest)](https://f.feedz.io/foundatio/foundatio/packages/Foundatio.LuceneQuery/latest/download)
+[![Build status](https://github.com/FoundatioFx/Foundatio.Lucene/actions/workflows/build.yml/badge.svg)](https://github.com/FoundatioFx/Foundatio.Lucene/actions)
+[![NuGet Version](https://img.shields.io/nuget/v/Foundatio.Lucene.svg?style=flat)](https://www.nuget.org/packages/Foundatio.Lucene/)
+[![feedz.io](https://img.shields.io/badge/endpoint.svg?url=https%3A%2F%2Ff.feedz.io%2Ffoundatio%2Ffoundatio%2Fshield%2FFoundatio.Lucene%2Flatest)](https://f.feedz.io/foundatio/foundatio/packages/Foundatio.Lucene/latest/download)
 [![Discord](https://img.shields.io/discord/715744504891703319?logo=discord)](https://discord.gg/6HxgFCx)
 
-# Foundatio.LuceneQuery
+# Foundatio.Lucene
 
 A library for adding dynamic Lucene-style query capabilities to your .NET applications. Enable your users to write powerful search queries using familiar Lucene syntax, with support for Entity Framework and Elasticsearch.
 
 This project is a modern replacement for [Foundatio.Parsers](https://github.com/FoundatioFx/Foundatio.Parsers).
 
-## ✨ Why Choose Foundatio LuceneQuery?
+## ✨ Why Choose Foundatio Lucene?
 
 - 🔍 **Full Lucene Syntax** - Terms, phrases, fields, ranges, boolean operators, wildcards, regex
 - ⚡ **Entity Framework Integration** - Convert Lucene queries directly to LINQ expressions
@@ -23,8 +23,8 @@ This project is a modern replacement for [Foundatio.Parsers](https://github.com/
 ## 🚀 Quick Example
 
 ```csharp
-using Foundatio.LuceneQuery;
-using Foundatio.LuceneQuery.EntityFramework;
+using Foundatio.Lucene;
+using Foundatio.Lucene.EntityFramework;
 
 // Parse a Lucene query
 var result = LuceneQuery.Parse("title:hello AND status:active");
@@ -40,16 +40,16 @@ var employees = await context.Employees.Where(filter).ToListAsync();
 
 ## 📚 Learn More
 
-👉 **[Complete Documentation](https://lucenequery.foundatio.dev/)**
+👉 **[Complete Documentation](https://lucene.foundatio.dev/)**
 
 Key topics:
 
-- [Getting Started](https://lucenequery.foundatio.dev/guide/getting-started.html) - Installation and basic usage
-- [Query Syntax](https://lucenequery.foundatio.dev/guide/query-syntax.html) - Full syntax reference
-- [Entity Framework](https://lucenequery.foundatio.dev/guide/entity-framework.html) - EF Core integration
-- [Elasticsearch](https://lucenequery.foundatio.dev/guide/elasticsearch.html) - Elasticsearch Query DSL generation
-- [Visitors](https://lucenequery.foundatio.dev/guide/visitors.html) - AST transformation patterns
-- [Validation](https://lucenequery.foundatio.dev/guide/validation.html) - Query validation options
+- [Getting Started](https://lucene.foundatio.dev/guide/getting-started.html) - Installation and basic usage
+- [Query Syntax](https://lucene.foundatio.dev/guide/query-syntax.html) - Full syntax reference
+- [Entity Framework](https://lucene.foundatio.dev/guide/entity-framework.html) - EF Core integration
+- [Elasticsearch](https://lucene.foundatio.dev/guide/elasticsearch.html) - Elasticsearch Query DSL generation
+- [Visitors](https://lucene.foundatio.dev/guide/visitors.html) - AST transformation patterns
+- [Validation](https://lucene.foundatio.dev/guide/validation.html) - Query validation options
 
 ## 📦 CI Packages (Feedz)
 
@@ -57,7 +57,7 @@ Want the latest CI build before it hits NuGet? Add the Feedz source (read-only p
 
 ```bash
 dotnet nuget add source https://f.feedz.io/foundatio/foundatio/nuget -n foundatio-feedz
-dotnet add package Foundatio.LuceneQuery --prerelease
+dotnet add package Foundatio.Lucene --prerelease
 ```
 
 Or add to your `NuGet.config`:
@@ -79,7 +79,7 @@ CI builds are published with pre-release version tags (e.g. `1.0.0-alpha.12345+s
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. See our [documentation](https://lucenequery.foundatio.dev/) for development guidelines.
+Contributions are welcome! Please feel free to submit a Pull Request. See our [documentation](https://lucene.foundatio.dev/) for development guidelines.
 
 ## 🔗 Related Projects
 

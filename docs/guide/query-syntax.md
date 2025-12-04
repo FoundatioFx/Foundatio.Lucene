@@ -1,6 +1,6 @@
 # Query Syntax
 
-Foundatio.LuceneQuery supports the full Lucene query syntax. This page documents all supported syntax elements.
+Foundatio.Lucene supports the full Lucene query syntax. This page documents all supported syntax elements.
 
 ## Terms
 

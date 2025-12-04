@@ -1,4 +1,4 @@
-# AI Agent Instructions for Foundatio.LuceneQuery
+# AI Agent Instructions for Foundatio.Lucene
 
 ## Architecture Overview
 
@@ -13,8 +13,8 @@ Query String → LuceneLexer (tokens) → LuceneParser (AST) → Visitors (trans
 
 ### Key Components
 - **`LuceneQuery.Parse()`** - Main entry point; returns `LuceneParseResult` with `Document` (AST) and `Errors`
-- **`src/Foundatio.LuceneQuery/Ast/`** - AST node types (`TermNode`, `PhraseNode`, `FieldQueryNode`, `RangeNode`, `BooleanQueryNode`, `GroupNode`, etc.)
-- **`src/Foundatio.LuceneQuery/Visitors/`** - Visitor pattern for AST transformation
+- **`src/Foundatio.Lucene/Ast/`** - AST node types (`TermNode`, `PhraseNode`, `FieldQueryNode`, `RangeNode`, `BooleanQueryNode`, `GroupNode`, etc.)
+- **`src/Foundatio.Lucene/Visitors/`** - Visitor pattern for AST transformation
 - **`QueryStringBuilder`** - Converts AST back to query string (round-trip capability)
 
 ### Visitor Pattern (Critical for Extensions)
@@ -44,13 +44,13 @@ public class MyVisitor : QueryNodeVisitor
 ```bash
 dotnet build                    # Build all projects
 dotnet test                     # Run all tests
-dotnet run -c Release --project benchmarks/Foundatio.LuceneQuery.Benchmarks  # Run benchmarks
+dotnet run -c Release --project benchmarks/Foundatio.Lucene.Benchmarks  # Run benchmarks
 ```
 
 ### Project Structure
-- `src/Foundatio.LuceneQuery/` - Core parser library (net8.0, net10.0)
-- `src/Foundatio.LuceneQuery.EntityFramework/` - EF Core integration for LINQ expression generation
-- `src/Foundatio.LuceneQuery.Elasticsearch/` - Elasticsearch integration for Query DSL generation (uses Elastic.Clients.Elasticsearch 9.x)
+- `src/Foundatio.Lucene/` - Core parser library (net8.0, net10.0)
+- `src/Foundatio.Lucene.EntityFramework/` - EF Core integration for LINQ expression generation
+- `src/Foundatio.Lucene.Elasticsearch/` - Elasticsearch integration for Query DSL generation (uses Elastic.Clients.Elasticsearch 9.x)
 - `tests/` - xUnit test projects
 
 ## Patterns & Conventions

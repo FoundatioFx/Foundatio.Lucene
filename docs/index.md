@@ -7,14 +7,14 @@ hero:
   tagline: Enable powerful user-driven search queries in your .NET applications with Entity Framework and Elasticsearch support
   image:
     src: https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png
-    alt: Foundatio.LuceneQuery
+    alt: Foundatio.Lucene
   actions:
     - theme: brand
       text: Get Started
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/FoundatioFx/Foundatio.LuceneQuery
+      link: https://github.com/FoundatioFx/Foundatio.Lucene
 
 features:
   - icon: 🔍
@@ -46,7 +46,7 @@ features:
 ## Quick Example
 
 ```csharp
-using Foundatio.LuceneQuery;
+using Foundatio.Lucene;
 
 // Parse a user query
 var result = LuceneQuery.Parse("title:hello AND status:active");
@@ -60,7 +60,7 @@ if (result.IsSuccess)
 ### Entity Framework
 
 ```csharp
-using Foundatio.LuceneQuery.EntityFramework;
+using Foundatio.Lucene.EntityFramework;
 
 var parser = new EntityFrameworkQueryParser();
 var filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
@@ -70,7 +70,7 @@ var results = await context.Employees.Where(filter).ToListAsync();
 ### Elasticsearch
 
 ```csharp
-using Foundatio.LuceneQuery.Elasticsearch;
+using Foundatio.Lucene.Elasticsearch;
 
 var parser = new ElasticsearchQueryParser(config =>
 {

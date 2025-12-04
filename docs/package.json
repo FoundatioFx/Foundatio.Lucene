@@ -1,8 +1,8 @@
 {
-  "name": "foundatio-lucenequery-docs",
+  "name": "foundatio-lucene-docs",
   "version": "1.0.0",
   "type": "module",
-  "description": "Foundatio.LuceneQuery Documentation",
+  "description": "Foundatio.Lucene Documentation",
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",

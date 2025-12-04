@@ -1,6 +1,6 @@
 # Configuration
 
-This guide covers configuration options for the various components of Foundatio.LuceneQuery.
+This guide covers configuration options for the various components of Foundatio.Lucene.
 
 ## Core Parser
 
