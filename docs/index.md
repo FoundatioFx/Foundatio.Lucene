@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Foundatio.LuceneQuery
+  name: LuceneQuery
   text: Dynamic Lucene Query Parser
   tagline: Enable powerful user-driven search queries in your .NET applications with Entity Framework and Elasticsearch support
   image:
