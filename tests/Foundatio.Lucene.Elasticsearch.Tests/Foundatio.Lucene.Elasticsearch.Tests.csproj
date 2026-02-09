@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.2.3" />
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.3.0" />
     <PackageReference Include="Testcontainers.Elasticsearch" Version="4.10.0" />
   </ItemGroup>
 

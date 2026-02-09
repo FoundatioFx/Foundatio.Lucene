@@ -7,6 +7,6 @@
     <ProjectReference Include="..\Foundatio.Lucene\Foundatio.Lucene.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.2.3" />
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.3.0" />
   </ItemGroup>
 </Project>
