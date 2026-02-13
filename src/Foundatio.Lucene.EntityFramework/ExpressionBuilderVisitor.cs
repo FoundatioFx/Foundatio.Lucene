@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Foundatio.Lucene.Ast;
-using Foundatio.Lucene.Visitors;
 using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.Lucene.EntityFramework;
@@ -11,7 +10,7 @@ namespace Foundatio.Lucene.EntityFramework;
 /// Visitor that converts Lucene AST nodes into LINQ Expression trees.
 /// This visitor is stateless - all state is stored in the context.
 /// </summary>
-public class ExpressionBuilderVisitor : QueryVisitor
+public class ExpressionBuilderVisitor : QueryVisitor<IEntityFrameworkQueryVisitorContext>
 {
     /// <summary>
     /// Singleton instance of the visitor.
@@ -58,29 +57,22 @@ public class ExpressionBuilderVisitor : QueryVisitor
         return context.ExpressionStack.Count > 0 ? context.ExpressionStack.Pop() : Expression.Constant(true);
     }
 
-    private static IEntityFrameworkQueryVisitorContext GetContext(IQueryVisitorContext context)
-    {
-        return context as IEntityFrameworkQueryVisitorContext
-            ?? throw new InvalidOperationException("ExpressionBuilderVisitor requires an IEntityFrameworkQueryVisitorContext");
-    }
-
     /// <inheritdoc />
-    protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
+    protected override QueryNode Visit(QueryDocument node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
         if (node.Query != null)
         {
             Accept(node.Query, context);
         }
         else
         {
-            ctx.ExpressionStack.Push(Expression.Constant(true));
+            context.ExpressionStack.Push(Expression.Constant(true));
         }
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(GroupNode node, IEntityFrameworkQueryVisitorContext context)
     {
         if (node.Query != null)
         {
@@ -90,12 +82,11 @@ public class ExpressionBuilderVisitor : QueryVisitor
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(BooleanQueryNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
         if (node.Clauses.Count == 0)
         {
-            ctx.ExpressionStack.Push(Expression.Constant(true));
+            context.ExpressionStack.Push(Expression.Constant(true));
             return node;
         }
 
@@ -121,10 +112,10 @@ public class ExpressionBuilderVisitor : QueryVisitor
 
             Accept(clause.Query, context);
 
-            if (ctx.ExpressionStack.Count == 0)
+            if (context.ExpressionStack.Count == 0)
                 continue;
 
-            var clauseExpr = ctx.ExpressionStack.Pop();
+            var clauseExpr = context.ExpressionStack.Pop();
 
             // Handle MUST_NOT (negate the expression) - but only if not already handled by inner BooleanQueryNode
             if (clause.Occur == Occur.MustNot && !isInnerBooleanWithOccur)
@@ -149,47 +140,44 @@ public class ExpressionBuilderVisitor : QueryVisitor
             }
         }
 
-        ctx.ExpressionStack.Push(result ?? Expression.Constant(true));
+        context.ExpressionStack.Push(result ?? Expression.Constant(true));
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
-        var previousField = ctx.CurrentField;
-        ctx.CurrentField = node.Field;
+        var previousField = context.CurrentField;
+        context.CurrentField = node.Field;
 
         if (node.Query != null)
         {
             Accept(node.Query, context);
         }
 
-        ctx.CurrentField = previousField;
+        context.CurrentField = previousField;
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(TermNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
-        var field = ctx.CurrentField;
+        var field = context.CurrentField;
         var term = node.UnescapedTerm;
 
-        var expr = BuildExpressionForFieldOrDefaults(ctx, field, f => BuildTermExpression(ctx, f, term, node.IsPrefix, node.IsWildcard));
-        ctx.ExpressionStack.Push(expr);
+        var expr = BuildExpressionForFieldOrDefaults(context, field, f => BuildTermExpression(context, f, term, node.IsPrefix, node.IsWildcard));
+        context.ExpressionStack.Push(expr);
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(PhraseNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
-        var field = ctx.CurrentField;
+        var field = context.CurrentField;
         var phrase = node.Phrase;
 
-        var expr = BuildExpressionForFieldOrDefaults(ctx, field, f => BuildPhraseExpression(ctx, f, phrase));
-        ctx.ExpressionStack.Push(expr);
+        var expr = BuildExpressionForFieldOrDefaults(context, field, f => BuildPhraseExpression(context, f, phrase));
+        context.ExpressionStack.Push(expr);
         return node;
     }
 
@@ -215,88 +203,82 @@ public class ExpressionBuilderVisitor : QueryVisitor
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
-        var field = ctx.CurrentField ?? node.Field;
+        var field = context.CurrentField ?? node.Field;
 
         if (string.IsNullOrEmpty(field))
         {
-            ctx.ExpressionStack.Push(Expression.Constant(false));
+            context.ExpressionStack.Push(Expression.Constant(false));
             return node;
         }
 
-        var expr = BuildRangeExpression(ctx, field, node);
-        ctx.ExpressionStack.Push(expr ?? Expression.Constant(false));
+        var expr = BuildRangeExpression(context, field, node);
+        context.ExpressionStack.Push(expr ?? Expression.Constant(false));
 
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(NotNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(NotNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
         if (node.Query != null)
         {
             Accept(node.Query, context);
-            if (ctx.ExpressionStack.Count > 0)
+            if (context.ExpressionStack.Count > 0)
             {
-                var inner = ctx.ExpressionStack.Pop();
-                ctx.ExpressionStack.Push(Expression.Not(inner));
+                var inner = context.ExpressionStack.Pop();
+                context.ExpressionStack.Push(Expression.Not(inner));
             }
         }
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(ExistsNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
         var field = node.Field;
-        var expr = BuildExistsExpression(ctx, field);
-        ctx.ExpressionStack.Push(expr ?? Expression.Constant(false));
+        var expr = BuildExistsExpression(context, field);
+        context.ExpressionStack.Push(expr ?? Expression.Constant(false));
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MissingNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
         var field = node.Field;
-        var expr = BuildExistsExpression(ctx, field);
+        var expr = BuildExistsExpression(context, field);
         if (expr != null)
         {
-            ctx.ExpressionStack.Push(Expression.Not(expr));
+            context.ExpressionStack.Push(Expression.Not(expr));
         }
         else
         {
-            ctx.ExpressionStack.Push(Expression.Constant(false));
+            context.ExpressionStack.Push(Expression.Constant(false));
         }
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MatchAllNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
-        ctx.ExpressionStack.Push(Expression.Constant(true));
+        context.ExpressionStack.Push(Expression.Constant(true));
         return node;
     }
 
     /// <inheritdoc />
-    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RegexNode node, IEntityFrameworkQueryVisitorContext context)
     {
-        var ctx = GetContext(context);
-        var field = ctx.CurrentField;
+        var field = context.CurrentField;
 
         if (string.IsNullOrEmpty(field))
         {
-            ctx.ExpressionStack.Push(Expression.Constant(false));
+            context.ExpressionStack.Push(Expression.Constant(false));
             return node;
         }
 
-        var expr = BuildRegexExpression(ctx, field, node.Pattern);
-        ctx.ExpressionStack.Push(expr ?? Expression.Constant(false));
+        var expr = BuildRegexExpression(context, field, node.Pattern);
+        context.ExpressionStack.Push(expr ?? Expression.Constant(false));
 
         return node;
     }

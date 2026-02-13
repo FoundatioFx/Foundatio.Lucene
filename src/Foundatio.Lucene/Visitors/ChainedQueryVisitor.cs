@@ -3,14 +3,16 @@ using Foundatio.Lucene.Visitors;
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Abstract base class for query visitors that can modify query nodes.
+/// Generic abstract base class for query visitors with a typed context.
 /// </summary>
-public abstract class QueryVisitor : IQueryVisitor
+/// <typeparam name="TContext">The type of visitor context.</typeparam>
+public abstract class QueryVisitor<TContext> : IQueryVisitor<TContext>
+    where TContext : IQueryVisitorContext
 {
     /// <summary>
     /// Entry point for accepting a node. Dispatches to the appropriate typed Visit method.
     /// </summary>
-    public virtual QueryNode Accept(QueryNode node, IQueryVisitorContext context)
+    public virtual QueryNode Accept(QueryNode node, TContext context)
     {
         return node switch
         {
@@ -34,7 +36,7 @@ public abstract class QueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits a QueryDocument node.
     /// </summary>
-    protected virtual QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(QueryDocument node, TContext context)
     {
         if (node.Query is not null)
             node.Query = Accept(node.Query, context);
@@ -44,7 +46,7 @@ public abstract class QueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits a GroupNode.
     /// </summary>
-    protected virtual QueryNode Visit(GroupNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(GroupNode node, TContext context)
     {
         if (node.Query is not null)
             node.Query = Accept(node.Query, context);
@@ -54,7 +56,7 @@ public abstract class QueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits a BooleanQueryNode.
     /// </summary>
-    protected virtual QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(BooleanQueryNode node, TContext context)
     {
         foreach (var clause in node.Clauses)
         {
@@ -67,7 +69,7 @@ public abstract class QueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits a FieldQueryNode.
     /// </summary>
-    protected virtual QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(FieldQueryNode node, TContext context)
     {
         if (node.Query is not null)
             node.Query = Accept(node.Query, context);
@@ -77,27 +79,27 @@ public abstract class QueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits a TermNode.
     /// </summary>
-    protected virtual QueryNode Visit(TermNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(TermNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a PhraseNode.
     /// </summary>
-    protected virtual QueryNode Visit(PhraseNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(PhraseNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a RegexNode.
     /// </summary>
-    protected virtual QueryNode Visit(RegexNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(RegexNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a RangeNode.
     /// </summary>
-    protected virtual QueryNode Visit(RangeNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(RangeNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a NotNode.
     /// </summary>
-    protected virtual QueryNode Visit(NotNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(NotNode node, TContext context)
     {
         if (node.Query is not null)
             node.Query = Accept(node.Query, context);
@@ -107,29 +109,36 @@ public abstract class QueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits an ExistsNode.
     /// </summary>
-    protected virtual QueryNode Visit(ExistsNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(ExistsNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a MissingNode.
     /// </summary>
-    protected virtual QueryNode Visit(MissingNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(MissingNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a MatchAllNode.
     /// </summary>
-    protected virtual QueryNode Visit(MatchAllNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(MatchAllNode node, TContext context) => node;
 
     /// <summary>
     /// Visits a MultiTermNode.
     /// </summary>
-    protected virtual QueryNode Visit(MultiTermNode node, IQueryVisitorContext context) => node;
+    protected virtual QueryNode Visit(MultiTermNode node, TContext context) => node;
 }
 
 /// <summary>
-/// A visitor that chains multiple visitors together, running them in sequence.
+/// Non-generic abstract base class for query visitors that work with any context.
+/// </summary>
+public abstract class QueryVisitor : QueryVisitor<IQueryVisitorContext>, IQueryVisitor;
+
+/// <summary>
+/// A generic visitor that chains multiple visitors together, running them in sequence.
 /// Each visitor is run with a priority (lower numbers run first).
 /// </summary>
-public class ChainedQueryVisitor : IQueryVisitor
+/// <typeparam name="TContext">The type of visitor context.</typeparam>
+public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
+    where TContext : IQueryVisitorContext
 {
     private readonly List<VisitorWithPriority> _visitors = [];
     private VisitorWithPriority[]? _sortedVisitors;
@@ -140,7 +149,7 @@ public class ChainedQueryVisitor : IQueryVisitor
     /// </summary>
     /// <param name="visitor">The visitor to add.</param>
     /// <param name="priority">The priority (lower runs first). Default is 0.</param>
-    public ChainedQueryVisitor AddVisitor(IQueryVisitor visitor, int priority = 0)
+    public ChainedQueryVisitor<TContext> AddVisitor(IQueryVisitor<TContext> visitor, int priority = 0)
     {
         _visitors.Add(new VisitorWithPriority(visitor, priority));
         _isDirty = true;
@@ -151,7 +160,7 @@ public class ChainedQueryVisitor : IQueryVisitor
     /// Removes a visitor of the specified type.
     /// </summary>
     /// <typeparam name="T">The type of visitor to remove.</typeparam>
-    public ChainedQueryVisitor RemoveVisitor<T>() where T : IQueryVisitor
+    public ChainedQueryVisitor<TContext> RemoveVisitor<T>() where T : IQueryVisitor<TContext>
     {
         var visitor = _visitors.Find(v => v.Visitor is T);
         if (visitor is not null)
@@ -168,7 +177,7 @@ public class ChainedQueryVisitor : IQueryVisitor
     /// <typeparam name="T">The type of visitor to replace.</typeparam>
     /// <param name="visitor">The new visitor.</param>
     /// <param name="newPriority">Optional new priority. If not specified, keeps the original priority.</param>
-    public ChainedQueryVisitor ReplaceVisitor<T>(IQueryVisitor visitor, int? newPriority = null) where T : IQueryVisitor
+    public ChainedQueryVisitor<TContext> ReplaceVisitor<T>(IQueryVisitor<TContext> visitor, int? newPriority = null) where T : IQueryVisitor<TContext>
     {
         var existing = _visitors.Find(v => v.Visitor is T);
         if (existing is not null)
@@ -190,7 +199,7 @@ public class ChainedQueryVisitor : IQueryVisitor
     /// </summary>
     /// <typeparam name="T">The type of visitor to run before.</typeparam>
     /// <param name="visitor">The visitor to add.</param>
-    public ChainedQueryVisitor AddVisitorBefore<T>(IQueryVisitor visitor) where T : IQueryVisitor
+    public ChainedQueryVisitor<TContext> AddVisitorBefore<T>(IQueryVisitor<TContext> visitor) where T : IQueryVisitor<TContext>
     {
         var reference = _visitors.Find(v => v.Visitor is T);
         int priority = reference?.Priority - 1 ?? 0;
@@ -202,7 +211,7 @@ public class ChainedQueryVisitor : IQueryVisitor
     /// </summary>
     /// <typeparam name="T">The type of visitor to run after.</typeparam>
     /// <param name="visitor">The visitor to add.</param>
-    public ChainedQueryVisitor AddVisitorAfter<T>(IQueryVisitor visitor) where T : IQueryVisitor
+    public ChainedQueryVisitor<TContext> AddVisitorAfter<T>(IQueryVisitor<TContext> visitor) where T : IQueryVisitor<TContext>
     {
         var reference = _visitors.Find(v => v.Visitor is T);
         int priority = reference?.Priority + 1 ?? 0;
@@ -221,7 +230,7 @@ public class ChainedQueryVisitor : IQueryVisitor
     /// <summary>
     /// Visits a node by running all chained visitors in priority order.
     /// </summary>
-    public QueryNode Accept(QueryNode node, IQueryVisitorContext context)
+    public QueryNode Accept(QueryNode node, TContext context)
     {
         EnsureSorted();
 
@@ -233,8 +242,13 @@ public class ChainedQueryVisitor : IQueryVisitor
         return node;
     }
 
-    private record VisitorWithPriority(IQueryVisitor Visitor, int Priority);
+    private record VisitorWithPriority(IQueryVisitor<TContext> Visitor, int Priority);
 }
+
+/// <summary>
+/// Non-generic chained query visitor that works with any context.
+/// </summary>
+public class ChainedQueryVisitor : ChainedQueryVisitor<IQueryVisitorContext>, IQueryVisitor;
 
 /// <summary>
 /// Extension methods for <see cref="IQueryVisitor"/>.
@@ -253,7 +267,8 @@ public static class QueryVisitorExtensions
     /// <summary>
     /// Runs the visitor on a QueryDocument with the provided context.
     /// </summary>
-    public static QueryDocument Run(this IQueryVisitor visitor, QueryDocument document, IQueryVisitorContext context)
+    public static QueryDocument Run<TContext>(this IQueryVisitor<TContext> visitor, QueryDocument document, TContext context)
+        where TContext : IQueryVisitorContext
     {
         return (QueryDocument)visitor.Accept(document, context);
     }
