@@ -4,44 +4,44 @@ namespace Foundatio.Lucene.Visitors;
 
 /// <summary>
 /// A visitor that expands @include:name references by replacing them
-/// with their resolved query content.
+/// with their resolved query content from a pre-resolved dictionary.
 /// </summary>
-public class IncludeVisitor : QueryNodeVisitor
+public class IncludeVisitor : QueryVisitor
 {
     /// <summary>
     /// Maximum depth for nested includes to prevent infinite recursion.
     /// </summary>
     public const int MaxIncludeDepth = 50;
 
-    private readonly IncludeResolver? _globalResolver;
+    private readonly IReadOnlyDictionary<string, string>? _includes;
 
     /// <summary>
-    /// Creates a new IncludeVisitor with no global resolver.
-    /// A resolver can be set on the context instead.
+    /// Creates a new IncludeVisitor with no includes.
+    /// Includes can be set on the context instead.
     /// </summary>
     public IncludeVisitor()
     {
     }
 
     /// <summary>
-    /// Creates a new IncludeVisitor with the specified global resolver.
+    /// Creates a new IncludeVisitor with the specified pre-resolved includes.
     /// </summary>
-    /// <param name="resolver">The resolver used to look up include definitions.</param>
-    public IncludeVisitor(IncludeResolver? resolver)
+    /// <param name="includes">Dictionary mapping include names to their query content.</param>
+    public IncludeVisitor(IReadOnlyDictionary<string, string>? includes)
     {
-        _globalResolver = resolver;
+        _includes = includes;
     }
 
     /// <summary>
     /// Visits a FieldQueryNode and expands @include references.
     /// </summary>
-    public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // Check if this is an @include field
         if (!IsIncludeField(node))
         {
             // Not an include, visit children normally
-            return await base.VisitAsync(node, context).ConfigureAwait(false);
+            return base.Visit(node, context);
         }
 
         // Get the include name from the query
@@ -75,22 +75,11 @@ public class IncludeVisitor : QueryNodeVisitor
             return node;
         }
 
-        // Resolve the include
-        var resolver = context.GetIncludeResolver() ?? _globalResolver;
-        if (resolver is null)
+        // Resolve the include from context or constructor-provided includes
+        var includes = context.GetIncludes() ?? _includes;
+        if (includes is null || !includes.TryGetValue(includeName, out var includeContent))
         {
             context.GetValidationResult().UnresolvedIncludes.Add(includeName);
-            return node;
-        }
-
-        string? includeContent;
-        try
-        {
-            includeContent = await resolver(includeName).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            context.AddValidationError($"Error in include resolver callback when expanding @include:{includeName}: {ex.Message}");
             return node;
         }
 
@@ -115,12 +104,10 @@ public class IncludeVisitor : QueryNodeVisitor
         try
         {
             // Recursively expand any nested includes
-            var expandedNode = await AcceptAsync(parseResult.Document.Query, context).ConfigureAwait(false);
+            var expandedNode = Accept(parseResult.Document.Query, context);
 
-            // Handle prefix/suffix/boost from the original node
-            var resultNode = WrapExpandedNode(expandedNode, node);
-
-            return resultNode;
+            // Wrap in a group to preserve precedence
+            return new GroupNode { Query = expandedNode };
         }
         finally
         {
@@ -145,45 +132,20 @@ public class IncludeVisitor : QueryNodeVisitor
         return null;
     }
 
-    private static QueryNode WrapExpandedNode(QueryNode expandedNode, FieldQueryNode originalNode)
-    {
-        // Wrap in a group to preserve precedence
-        var groupNode = new GroupNode { Query = expandedNode };
-        return groupNode;
-    }
-
-    #region Static RunAsync Methods
+    #region Static Run Methods
 
     /// <summary>
-    /// Expands includes in a query document asynchronously using the specified resolver.
-    /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="resolver">The include resolver to use.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document with includes expanded.</returns>
-    public static Task<QueryDocument> ExpandIncludesAsync(QueryDocument document, IncludeResolver resolver, IQueryVisitorContext? context = null)
-    {
-        context ??= new QueryVisitorContext();
-        context.SetIncludeResolver(resolver);
-        return new IncludeVisitor().RunAsync(document, context);
-    }
-
-    /// <summary>
-    /// Expands includes in a query document asynchronously using a dictionary of includes.
+    /// Expands includes in a query document using the specified includes dictionary.
     /// </summary>
     /// <param name="document">The query document to process.</param>
     /// <param name="includes">Dictionary mapping include names to their query content.</param>
     /// <param name="context">Optional context. If null, a new context is created.</param>
     /// <returns>The processed query document with includes expanded.</returns>
-    public static Task<QueryDocument> ExpandIncludesAsync(QueryDocument document, IDictionary<string, string> includes, IQueryVisitorContext? context = null)
+    public static QueryDocument ExpandIncludes(QueryDocument document, IReadOnlyDictionary<string, string> includes, IQueryVisitorContext? context = null)
     {
-        IncludeResolver resolver = name =>
-        {
-            includes.TryGetValue(name, out var value);
-            return Task.FromResult(value);
-        };
-
-        return ExpandIncludesAsync(document, resolver, context);
+        context ??= new QueryVisitorContext();
+        context.SetIncludes(includes);
+        return new IncludeVisitor().Run(document, context);
     }
 
     #endregion
@@ -195,37 +157,25 @@ public class IncludeVisitor : QueryNodeVisitor
 public static class IncludeExtensions
 {
     /// <summary>
-    /// Expands includes in a query document asynchronously using the specified resolver.
-    /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="resolver">The include resolver to use.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document with includes expanded.</returns>
-    public static Task<QueryDocument> ExpandIncludesAsync(this QueryDocument document, IncludeResolver resolver, IQueryVisitorContext? context = null)
-    {
-        return IncludeVisitor.ExpandIncludesAsync(document, resolver, context);
-    }
-
-    /// <summary>
-    /// Expands includes in a query document asynchronously using a dictionary of includes.
+    /// Expands includes in a query document using the specified includes dictionary.
     /// </summary>
     /// <param name="document">The query document to process.</param>
     /// <param name="includes">Dictionary mapping include names to their query content.</param>
     /// <param name="context">Optional context. If null, a new context is created.</param>
     /// <returns>The processed query document with includes expanded.</returns>
-    public static Task<QueryDocument> ExpandIncludesAsync(this QueryDocument document, IDictionary<string, string> includes, IQueryVisitorContext? context = null)
+    public static QueryDocument ExpandIncludes(this QueryDocument document, IReadOnlyDictionary<string, string> includes, IQueryVisitorContext? context = null)
     {
-        return IncludeVisitor.ExpandIncludesAsync(document, includes, context);
+        return IncludeVisitor.ExpandIncludes(document, includes, context);
     }
 
     /// <summary>
-    /// Expands includes in a query document asynchronously using the resolver from the context.
+    /// Expands includes in a query document using the includes from the context.
     /// </summary>
     /// <param name="document">The query document to process.</param>
-    /// <param name="context">The context containing the include resolver.</param>
+    /// <param name="context">The context containing the includes.</param>
     /// <returns>The processed query document with includes expanded.</returns>
-    public static Task<QueryDocument> ExpandIncludesAsync(this QueryDocument document, IQueryVisitorContext context)
+    public static QueryDocument ExpandIncludes(this QueryDocument document, IQueryVisitorContext context)
     {
-        return new IncludeVisitor().RunAsync(document, context);
+        return new IncludeVisitor().Run(document, context);
     }
 }

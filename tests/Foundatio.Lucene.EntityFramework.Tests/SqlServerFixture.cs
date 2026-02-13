@@ -112,7 +112,7 @@ public class SqlServerFixture : IAsyncLifetime
 
     private async Task SeedDataAsync()
     {
-        await using var db = CreateSampleContext();
+        using var db = CreateSampleContext();
 
         await db.Database.EnsureDeletedAsync();
         await db.Database.EnsureCreatedAsync();
@@ -240,7 +240,7 @@ public static class SqlWaiter
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            await using var command = connection.CreateCommand();
+            using var command = connection.CreateCommand();
             command.CommandText = $"SELECT OBJECTPROPERTYEX(OBJECT_ID('{tableName}'), 'TableFullTextPopulateStatus')";
 
             var result = await command.ExecuteScalarAsync(cancellationToken);

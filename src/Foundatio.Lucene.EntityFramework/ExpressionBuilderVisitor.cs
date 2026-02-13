@@ -9,15 +9,14 @@ namespace Foundatio.Lucene.EntityFramework;
 
 /// <summary>
 /// Visitor that converts Lucene AST nodes into LINQ Expression trees.
+/// This visitor is stateless - all state is stored in the context.
 /// </summary>
-public class ExpressionBuilderVisitor : QueryNodeVisitor
+public class ExpressionBuilderVisitor : QueryVisitor
 {
-    private ParameterExpression _parameter = null!;
-    private Type _entityType = null!;
-    private string? _currentField;
-    private readonly Stack<Expression> _expressionStack = new();
-    private IEntityFrameworkQueryVisitorContext _efContext = null!;
-    private EntityFrameworkQueryParserConfiguration? _configuration;
+    /// <summary>
+    /// Singleton instance of the visitor.
+    /// </summary>
+    public static ExpressionBuilderVisitor Instance { get; } = new();
 
     private static readonly MethodInfo StringContainsMethod = typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!;
     private static readonly MethodInfo StringStartsWithMethod = typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string)])!;
@@ -32,7 +31,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
     public Expression<Func<T, bool>> BuildExpression<T>(QueryNode node, IEntityFrameworkQueryVisitorContext context, EntityFrameworkQueryParserConfiguration? configuration = null)
     {
         var body = BuildExpressionBody(typeof(T), node, context, configuration);
-        return Expression.Lambda<Func<T, bool>>(body, _parameter);
+        return Expression.Lambda<Func<T, bool>>(body, context.Parameter!);
     }
 
     /// <summary>
@@ -42,54 +41,62 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
     {
         var body = BuildExpressionBody(entityType, node, context, configuration);
         var delegateType = typeof(Func<,>).MakeGenericType(entityType, typeof(bool));
-        return Expression.Lambda(delegateType, body, _parameter);
+        return Expression.Lambda(delegateType, body, context.Parameter!);
     }
 
     private Expression BuildExpressionBody(Type entityType, QueryNode node, IEntityFrameworkQueryVisitorContext context, EntityFrameworkQueryParserConfiguration? configuration)
     {
-        _entityType = entityType;
-        _parameter = Expression.Parameter(_entityType, "e");
-        _efContext = context;
-        _configuration = configuration;
-        _expressionStack.Clear();
-        _currentField = null;
+        // Initialize context state for this build operation
+        context.ClrEntityType = entityType;
+        context.Parameter = Expression.Parameter(entityType, "e");
+        context.Configuration = configuration;
+        context.ExpressionStack.Clear();
+        context.CurrentField = null;
 
-        AcceptAsync(node, context).GetAwaiter().GetResult();
+        Accept(node, context);
 
-        return _expressionStack.Count > 0 ? _expressionStack.Pop() : Expression.Constant(true);
+        return context.ExpressionStack.Count > 0 ? context.ExpressionStack.Pop() : Expression.Constant(true);
+    }
+
+    private static IEntityFrameworkQueryVisitorContext GetContext(IQueryVisitorContext context)
+    {
+        return context as IEntityFrameworkQueryVisitorContext
+            ?? throw new InvalidOperationException("ExpressionBuilderVisitor requires an IEntityFrameworkQueryVisitorContext");
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+    protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Query != null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
         }
         else
         {
-            _expressionStack.Push(Expression.Constant(true));
+            ctx.ExpressionStack.Push(Expression.Constant(true));
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(GroupNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context)
     {
         if (node.Query != null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(BooleanQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Clauses.Count == 0)
         {
-            _expressionStack.Push(Expression.Constant(true));
-            return Task.FromResult<QueryNode>(node);
+            ctx.ExpressionStack.Push(Expression.Constant(true));
+            return node;
         }
 
         Expression? result = null;
@@ -112,12 +119,12 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
                 isInnerBooleanWithOccur = true;
             }
 
-            AcceptAsync(clause.Query, context).GetAwaiter().GetResult();
+            Accept(clause.Query, context);
 
-            if (_expressionStack.Count == 0)
+            if (ctx.ExpressionStack.Count == 0)
                 continue;
 
-            var clauseExpr = _expressionStack.Pop();
+            var clauseExpr = ctx.ExpressionStack.Pop();
 
             // Handle MUST_NOT (negate the expression) - but only if not already handled by inner BooleanQueryNode
             if (clause.Occur == Occur.MustNot && !isInnerBooleanWithOccur)
@@ -142,53 +149,56 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
             }
         }
 
-        _expressionStack.Push(result ?? Expression.Constant(true));
-        return Task.FromResult<QueryNode>(node);
+        ctx.ExpressionStack.Push(result ?? Expression.Constant(true));
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
-        var previousField = _currentField;
-        _currentField = node.Field;
+        var ctx = GetContext(context);
+        var previousField = ctx.CurrentField;
+        ctx.CurrentField = node.Field;
 
         if (node.Query != null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
         }
 
-        _currentField = previousField;
-        return Task.FromResult<QueryNode>(node);
+        ctx.CurrentField = previousField;
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
     {
-        var field = _currentField;
+        var ctx = GetContext(context);
+        var field = ctx.CurrentField;
         var term = node.UnescapedTerm;
 
-        var expr = BuildExpressionForFieldOrDefaults(field, f => BuildTermExpression(f, term, node.IsPrefix, node.IsWildcard));
-        _expressionStack.Push(expr);
-        return Task.FromResult<QueryNode>(node);
+        var expr = BuildExpressionForFieldOrDefaults(ctx, field, f => BuildTermExpression(ctx, f, term, node.IsPrefix, node.IsWildcard));
+        ctx.ExpressionStack.Push(expr);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(PhraseNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context)
     {
-        var field = _currentField;
+        var ctx = GetContext(context);
+        var field = ctx.CurrentField;
         var phrase = node.Phrase;
 
-        var expr = BuildExpressionForFieldOrDefaults(field, f => BuildPhraseExpression(f, phrase));
-        _expressionStack.Push(expr);
-        return Task.FromResult<QueryNode>(node);
+        var expr = BuildExpressionForFieldOrDefaults(ctx, field, f => BuildPhraseExpression(ctx, f, phrase));
+        ctx.ExpressionStack.Push(expr);
+        return node;
     }
 
-    private Expression BuildExpressionForFieldOrDefaults(string? field, Func<string, Expression?> buildExpression)
+    private static Expression BuildExpressionForFieldOrDefaults(IEntityFrameworkQueryVisitorContext ctx, string? field, Func<string, Expression?> buildExpression)
     {
         if (!string.IsNullOrEmpty(field))
             return buildExpression(field) ?? Expression.Constant(false);
 
-        var defaultFields = _efContext.DefaultFields;
+        var defaultFields = ctx.DefaultFields;
         if (defaultFields == null || defaultFields.Length == 0)
             return Expression.Constant(false);
 
@@ -205,100 +215,106 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
-        var field = _currentField ?? node.Field;
+        var ctx = GetContext(context);
+        var field = ctx.CurrentField ?? node.Field;
 
         if (string.IsNullOrEmpty(field))
         {
-            _expressionStack.Push(Expression.Constant(false));
-            return Task.FromResult<QueryNode>(node);
+            ctx.ExpressionStack.Push(Expression.Constant(false));
+            return node;
         }
 
-        var expr = BuildRangeExpression(field, node);
-        _expressionStack.Push(expr ?? Expression.Constant(false));
+        var expr = BuildRangeExpression(ctx, field, node);
+        ctx.ExpressionStack.Push(expr ?? Expression.Constant(false));
 
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(NotNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(NotNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Query != null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
-            if (_expressionStack.Count > 0)
+            Accept(node.Query, context);
+            if (ctx.ExpressionStack.Count > 0)
             {
-                var inner = _expressionStack.Pop();
-                _expressionStack.Push(Expression.Not(inner));
+                var inner = ctx.ExpressionStack.Pop();
+                ctx.ExpressionStack.Push(Expression.Not(inner));
             }
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(ExistsNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         var field = node.Field;
-        var expr = BuildExistsExpression(field);
-        _expressionStack.Push(expr ?? Expression.Constant(false));
-        return Task.FromResult<QueryNode>(node);
+        var expr = BuildExistsExpression(ctx, field);
+        ctx.ExpressionStack.Push(expr ?? Expression.Constant(false));
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(MissingNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         var field = node.Field;
-        var expr = BuildExistsExpression(field);
+        var expr = BuildExistsExpression(ctx, field);
         if (expr != null)
         {
-            _expressionStack.Push(Expression.Not(expr));
+            ctx.ExpressionStack.Push(Expression.Not(expr));
         }
         else
         {
-            _expressionStack.Push(Expression.Constant(false));
+            ctx.ExpressionStack.Push(Expression.Constant(false));
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(MatchAllNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context)
     {
-        _expressionStack.Push(Expression.Constant(true));
-        return Task.FromResult<QueryNode>(node);
+        var ctx = GetContext(context);
+        ctx.ExpressionStack.Push(Expression.Constant(true));
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(RegexNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
     {
-        var field = _currentField;
+        var ctx = GetContext(context);
+        var field = ctx.CurrentField;
 
         if (string.IsNullOrEmpty(field))
         {
-            _expressionStack.Push(Expression.Constant(false));
-            return Task.FromResult<QueryNode>(node);
+            ctx.ExpressionStack.Push(Expression.Constant(false));
+            return node;
         }
 
-        var expr = BuildRegexExpression(field, node.Pattern);
-        _expressionStack.Push(expr ?? Expression.Constant(false));
+        var expr = BuildRegexExpression(ctx, field, node.Pattern);
+        ctx.ExpressionStack.Push(expr ?? Expression.Constant(false));
 
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
-    private Expression? BuildTermExpression(string fieldPath, string term, bool isPrefix, bool isWildcard)
+    private Expression? BuildTermExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, string term, bool isPrefix, bool isWildcard)
     {
         // Check for custom field expression builder first
-        var customExpr = TryBuildCustomFieldExpression(fieldPath, term, isPrefix, isWildcard, rangeNode: null);
+        var customExpr = TryBuildCustomFieldExpression(ctx, fieldPath, term, isPrefix, isWildcard, rangeNode: null);
         if (customExpr != null)
             return customExpr;
 
         // Check for collection navigation first (e.g., Employees.Name)
-        if (HasCollectionInPath(fieldPath))
+        if (HasCollectionInPath(ctx, fieldPath))
         {
-            return BuildCollectionExpression(fieldPath, term, isPrefix, isWildcard);
+            return BuildCollectionExpression(ctx, fieldPath, term, isPrefix, isWildcard);
         }
 
-        var (memberExpr, fieldInfo) = GetMemberExpression(fieldPath);
+        var (memberExpr, fieldInfo) = GetMemberExpression(ctx, fieldPath);
         if (memberExpr == null)
             return null;
 
@@ -308,13 +324,13 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         // Handle collection field (e.g., Companies where field is marked as collection)
         if (fieldInfo?.IsCollection == true)
         {
-            return BuildCollectionExpression(fieldPath, term, isPrefix, isWildcard);
+            return BuildCollectionExpression(ctx, fieldPath, term, isPrefix, isWildcard);
         }
 
         // Handle string fields
         if (underlyingType == typeof(string))
         {
-            return BuildStringComparison(memberExpr, term, isPrefix, isWildcard, fieldInfo);
+            return BuildStringComparison(ctx, memberExpr, term, isPrefix, isWildcard, fieldInfo);
         }
 
         // Handle numeric fields
@@ -340,7 +356,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         // Handle DateTime fields
         if (underlyingType == typeof(DateTime))
         {
-            var dateValue = _efContext.DateTimeParser?.Invoke(term);
+            var dateValue = ctx.DateTimeParser?.Invoke(term);
             if (dateValue == null) return null;
             var constant = Expression.Constant(dateValue, fieldType);
             return Expression.Equal(memberExpr, constant);
@@ -349,7 +365,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         // Handle DateOnly fields
         if (underlyingType == typeof(DateOnly))
         {
-            var dateValue = _efContext.DateOnlyParser?.Invoke(term);
+            var dateValue = ctx.DateOnlyParser?.Invoke(term);
             if (dateValue == null) return null;
             var constant = Expression.Constant(dateValue, fieldType);
             return Expression.Equal(memberExpr, constant);
@@ -378,13 +394,13 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
 
         // Default: try string comparison via ToString
-        return BuildStringComparison(memberExpr, term, isPrefix, isWildcard, fieldInfo);
+        return BuildStringComparison(ctx, memberExpr, term, isPrefix, isWildcard, fieldInfo);
     }
 
-    private Expression BuildStringComparison(Expression memberExpr, string term, bool isPrefix, bool isWildcard, EntityFieldInfo? fieldInfo = null)
+    private Expression BuildStringComparison(IEntityFrameworkQueryVisitorContext ctx, Expression memberExpr, string term, bool isPrefix, bool isWildcard, EntityFieldInfo? fieldInfo = null)
     {
         // Check if this field is full-text indexed
-        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(fieldInfo))
+        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(ctx, fieldInfo))
         {
             return BuildFullTextSearchExpression(memberExpr, term, isPrefix, isWildcard);
         }
@@ -412,7 +428,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
     }
 
-    private Expression BuildWildcardExpression(Expression memberExpr, string term)
+    private static Expression BuildWildcardExpression(Expression memberExpr, string term)
     {
         // Simple wildcard handling - convert to Contains/StartsWith/EndsWith
         var startsWithWildcard = term.StartsWith('*') || term.StartsWith('?');
@@ -441,9 +457,9 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
     }
 
-    private bool IsFullTextIndexedField(EntityFieldInfo? fieldInfo)
+    private bool IsFullTextIndexedField(IEntityFrameworkQueryVisitorContext ctx, EntityFieldInfo? fieldInfo)
     {
-        if (fieldInfo == null || _configuration == null)
+        if (fieldInfo == null || ctx.Configuration == null)
             return false;
 
         // Determine the entity type name from the field info
@@ -464,13 +480,13 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         else
         {
             // Fallback to the root entity type
-            entityTypeName = _entityType.Name;
+            entityTypeName = ctx.ClrEntityType!.Name;
         }
 
-        return _configuration.IsFullTextField(entityTypeName, fieldInfo.Name);
+        return ctx.Configuration.IsFullTextField(entityTypeName, fieldInfo.Name);
     }
 
-    private Expression BuildFullTextSearchExpression(Expression memberExpr, string term, bool isPrefix, bool isWildcard)
+    private static Expression BuildFullTextSearchExpression(Expression memberExpr, string term, bool isPrefix, bool isWildcard)
     {
         // Build EF.Functions.Contains(property, searchTerm) for full-text search
         // Get EF.Functions instance
@@ -540,12 +556,12 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
     }
 
-    private Expression? TryBuildCustomFieldExpression(string fieldPath, string? value, bool isPrefix, bool isWildcard, RangeNode? rangeNode)
+    private static Expression? TryBuildCustomFieldExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, string? value, bool isPrefix, bool isWildcard, RangeNode? rangeNode)
     {
-        if (_configuration?.CustomFieldExpressionBuilder == null)
+        if (ctx.Configuration?.CustomFieldExpressionBuilder == null)
             return null;
 
-        var fieldInfo = _efContext.GetField(fieldPath);
+        var fieldInfo = ctx.GetField(fieldPath);
         if (fieldInfo == null)
             return null;
 
@@ -553,41 +569,41 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         if (fieldInfo.Data.Count == 0)
             return null;
 
-        var context = new CustomFieldContext
+        var customContext = new CustomFieldContext
         {
             Field = fieldInfo,
-            Parameter = _parameter,
+            Parameter = ctx.Parameter!,
             Term = value,
             IsPrefix = isPrefix,
             IsWildcard = isWildcard,
             RangeNode = rangeNode,
-            Context = _efContext
+            Context = ctx
         };
 
-        return _configuration.CustomFieldExpressionBuilder(context);
+        return ctx.Configuration.CustomFieldExpressionBuilder(customContext);
     }
 
-    private Expression? BuildPhraseExpression(string fieldPath, string phrase)
+    private Expression? BuildPhraseExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, string phrase)
     {
         // Check for custom field expression builder first
-        var customExpr = TryBuildCustomFieldExpression(fieldPath, phrase, isPrefix: false, isWildcard: false, rangeNode: null);
+        var customExpr = TryBuildCustomFieldExpression(ctx, fieldPath, phrase, isPrefix: false, isWildcard: false, rangeNode: null);
         if (customExpr != null)
             return customExpr;
 
         // Check for collection navigation first
-        if (HasCollectionInPath(fieldPath))
+        if (HasCollectionInPath(ctx, fieldPath))
         {
-            return BuildCollectionExpression(fieldPath, phrase, isPrefix: false, isWildcard: false);
+            return BuildCollectionExpression(ctx, fieldPath, phrase, isPrefix: false, isWildcard: false);
         }
 
-        var (memberExpr, fieldInfo) = GetMemberExpression(fieldPath);
+        var (memberExpr, fieldInfo) = GetMemberExpression(ctx, fieldPath);
         if (memberExpr == null)
             return null;
 
         // Handle collection field
         if (fieldInfo?.IsCollection == true)
         {
-            return BuildCollectionExpression(fieldPath, phrase, isPrefix: false, isWildcard: false);
+            return BuildCollectionExpression(ctx, fieldPath, phrase, isPrefix: false, isWildcard: false);
         }
 
         var fieldType = memberExpr.Type;
@@ -597,11 +613,11 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         if (underlyingType != typeof(string))
         {
             // Use the same logic as term expression for non-string types
-            return BuildTermExpression(fieldPath, phrase, isPrefix: false, isWildcard: false);
+            return BuildTermExpression(ctx, fieldPath, phrase, isPrefix: false, isWildcard: false);
         }
 
         // Check if this field is full-text indexed
-        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(fieldInfo))
+        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(ctx, fieldInfo))
         {
             return BuildFullTextSearchExpression(memberExpr, phrase, isPrefix: false, isWildcard: false);
         }
@@ -612,33 +628,33 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return Expression.AndAlso(nullCheck, contains);
     }
 
-    private Expression? BuildRangeExpression(string fieldPath, RangeNode node)
+    private Expression? BuildRangeExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, RangeNode node)
     {
         // Check for custom field expression builder first
-        var customExpr = TryBuildCustomFieldExpression(fieldPath, value: null, isPrefix: false, isWildcard: false, rangeNode: node);
+        var customExpr = TryBuildCustomFieldExpression(ctx, fieldPath, value: null, isPrefix: false, isWildcard: false, rangeNode: node);
         if (customExpr != null)
             return customExpr;
 
         // Check for collection navigation first
-        if (HasCollectionInPath(fieldPath))
+        if (HasCollectionInPath(ctx, fieldPath))
         {
-            return BuildCollectionRangeExpression(fieldPath, node);
+            return BuildCollectionRangeExpression(ctx, fieldPath, node);
         }
 
-        var (memberExpr, fieldInfo) = GetMemberExpression(fieldPath);
+        var (memberExpr, fieldInfo) = GetMemberExpression(ctx, fieldPath);
         if (memberExpr == null)
             return null;
 
         // Handle collection field
         if (fieldInfo?.IsCollection == true)
         {
-            return BuildCollectionRangeExpression(fieldPath, node);
+            return BuildCollectionRangeExpression(ctx, fieldPath, node);
         }
 
-        return BuildRangeComparisonExpression(memberExpr, node);
+        return BuildRangeComparisonExpression(ctx, memberExpr, node);
     }
 
-    private Expression? BuildRangeComparisonExpression(Expression memberExpr, RangeNode node)
+    private static Expression? BuildRangeComparisonExpression(IEntityFrameworkQueryVisitorContext ctx, Expression memberExpr, RangeNode node)
     {
         var fieldType = memberExpr.Type;
         var underlyingType = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
@@ -651,7 +667,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
 
             // For < and <= operators, use end-of-day for date-only values
             var isMaxBound = node.Operator.Value is RangeOperator.LessThan or RangeOperator.LessThanOrEqual;
-            var constant = ConvertToConstant(value, fieldType, underlyingType, isRangeMax: isMaxBound);
+            var constant = ConvertToConstant(ctx, value, fieldType, underlyingType, isRangeMax: isMaxBound);
             if (constant == null) return null;
 
             return node.Operator.Value switch
@@ -670,7 +686,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
 
         if (!string.IsNullOrEmpty(node.Min) && node.Min != "*")
         {
-            var minConstant = ConvertToConstant(node.Min, fieldType, underlyingType, isRangeMax: false);
+            var minConstant = ConvertToConstant(ctx, node.Min, fieldType, underlyingType, isRangeMax: false);
             if (minConstant != null)
             {
                 minExpr = node.MinInclusive
@@ -681,7 +697,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
 
         if (!string.IsNullOrEmpty(node.Max) && node.Max != "*")
         {
-            var maxConstant = ConvertToConstant(node.Max, fieldType, underlyingType, isRangeMax: true);
+            var maxConstant = ConvertToConstant(ctx, node.Max, fieldType, underlyingType, isRangeMax: true);
             if (maxConstant != null)
             {
                 maxExpr = node.MaxInclusive
@@ -696,9 +712,9 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return minExpr ?? maxExpr;
     }
 
-    private Expression? BuildExistsExpression(string fieldPath)
+    private Expression? BuildExistsExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath)
     {
-        var (memberExpr, _) = GetMemberExpression(fieldPath);
+        var (memberExpr, _) = GetMemberExpression(ctx, fieldPath);
         if (memberExpr == null)
             return null;
 
@@ -712,9 +728,9 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return Expression.Constant(true);
     }
 
-    private Expression? BuildRegexExpression(string fieldPath, string pattern)
+    private Expression? BuildRegexExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, string pattern)
     {
-        var (memberExpr, _) = GetMemberExpression(fieldPath);
+        var (memberExpr, _) = GetMemberExpression(ctx, fieldPath);
         if (memberExpr == null || memberExpr.Type != typeof(string))
             return null;
 
@@ -725,31 +741,27 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return Expression.AndAlso(nullCheck, isMatch);
     }
 
-    private Expression? BuildCollectionExpression(string fieldPath, string term, bool isPrefix, bool isWildcard)
+    private Expression? BuildCollectionExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, string term, bool isPrefix, bool isWildcard)
     {
-        var traversal = TraverseCollectionPath(fieldPath);
+        var traversal = TraverseCollectionPath(ctx, fieldPath);
         if (traversal == null)
             return null;
 
         var (collectionExpr, elementType, innerExpr, innerParam) = traversal.Value;
 
         // Get field info for full-text check
-        EntityFieldInfo? fieldInfo = null;
-        if (_efContext is EntityFrameworkQueryVisitorContext efContext)
-        {
-            fieldInfo = efContext.GetField(fieldPath);
-        }
+        var fieldInfo = ctx.GetField(fieldPath);
 
         // Build the comparison for the inner property
         Expression? comparison;
         if (innerExpr.Type == typeof(string))
         {
-            comparison = BuildCollectionStringComparison(innerExpr, term, isPrefix, isWildcard, fieldInfo);
+            comparison = BuildCollectionStringComparison(ctx, innerExpr, term, isPrefix, isWildcard, fieldInfo);
         }
         else
         {
             var underlyingType = Nullable.GetUnderlyingType(innerExpr.Type) ?? innerExpr.Type;
-            var constant = ConvertToConstant(term, innerExpr.Type, underlyingType);
+            var constant = ConvertToConstant(ctx, term, innerExpr.Type, underlyingType);
             if (constant == null)
                 return null;
             comparison = Expression.Equal(innerExpr, constant);
@@ -758,10 +770,10 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return BuildAnyExpression(collectionExpr, elementType, comparison, innerParam);
     }
 
-    private Expression BuildCollectionStringComparison(Expression innerExpr, string term, bool isPrefix, bool isWildcard, EntityFieldInfo? fieldInfo)
+    private Expression BuildCollectionStringComparison(IEntityFrameworkQueryVisitorContext ctx, Expression innerExpr, string term, bool isPrefix, bool isWildcard, EntityFieldInfo? fieldInfo)
     {
         // Check if this field is full-text indexed
-        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(fieldInfo))
+        if (fieldInfo?.IsFullTextIndexed == true || IsFullTextIndexedField(ctx, fieldInfo))
             return BuildFullTextSearchExpression(innerExpr, term, isPrefix, isWildcard);
 
         // Note: We don't add explicit null checks to match EF Core's LINQ behavior
@@ -774,12 +786,12 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return Expression.Call(innerExpr, StringContainsMethod, Expression.Constant(term));
     }
 
-    private (Expression CollectionExpr, Type ElementType, Expression InnerExpr, ParameterExpression InnerParam)? TraverseCollectionPath(string fieldPath)
+    private static (Expression CollectionExpr, Type ElementType, Expression InnerExpr, ParameterExpression InnerParam)? TraverseCollectionPath(IEntityFrameworkQueryVisitorContext ctx, string fieldPath)
     {
         var parts = fieldPath.Split('.');
 
-        Expression current = _parameter;
-        Type currentType = _entityType;
+        Expression current = ctx.Parameter!;
+        Type currentType = ctx.ClrEntityType!;
         int collectionIndex = -1;
 
         // Find the collection in the path
@@ -832,32 +844,28 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return Expression.Call(anyMethod, collectionExpr, lambda);
     }
 
-    private Expression? BuildCollectionRangeExpression(string fieldPath, RangeNode node)
+    private Expression? BuildCollectionRangeExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath, RangeNode node)
     {
-        var traversal = TraverseCollectionPath(fieldPath);
+        var traversal = TraverseCollectionPath(ctx, fieldPath);
         if (traversal == null)
             return null;
 
         var (collectionExpr, elementType, innerExpr, innerParam) = traversal.Value;
 
-        var comparison = BuildRangeComparisonExpression(innerExpr, node);
+        var comparison = BuildRangeComparisonExpression(ctx, innerExpr, node);
         if (comparison == null)
             return null;
 
         return BuildAnyExpression(collectionExpr, elementType, comparison, innerParam);
     }
 
-    private (MemberExpression? Expression, EntityFieldInfo? FieldInfo) GetMemberExpression(string fieldPath)
+    private static (MemberExpression? Expression, EntityFieldInfo? FieldInfo) GetMemberExpression(IEntityFrameworkQueryVisitorContext ctx, string fieldPath)
     {
         // First check if we have field info for this path
-        EntityFieldInfo? fieldInfo = null;
-        if (_efContext is EntityFrameworkQueryVisitorContext efContext)
-        {
-            fieldInfo = efContext.GetField(fieldPath);
-        }
+        var fieldInfo = ctx.GetField(fieldPath);
 
         var parts = fieldPath.Split('.');
-        Expression current = _parameter;
+        Expression current = ctx.Parameter!;
 
         foreach (var part in parts)
         {
@@ -871,10 +879,10 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         return (current as MemberExpression, fieldInfo);
     }
 
-    private bool HasCollectionInPath(string fieldPath)
+    private static bool HasCollectionInPath(IEntityFrameworkQueryVisitorContext ctx, string fieldPath)
     {
         var parts = fieldPath.Split('.');
-        Type currentType = _entityType;
+        Type currentType = ctx.ClrEntityType!;
 
         foreach (var part in parts)
         {
@@ -895,7 +903,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
 
     private static Type? GetCollectionElementType(Type collectionType) => EntityFrameworkQueryParser.GetCollectionElementType(collectionType);
 
-    private ConstantExpression? ConvertToConstant(string value, Type targetType, Type underlyingType, bool isRangeMax = false)
+    private static ConstantExpression? ConvertToConstant(IEntityFrameworkQueryVisitorContext ctx, string value, Type targetType, Type underlyingType, bool isRangeMax = false)
     {
         object? converted;
 
@@ -905,7 +913,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
         else if (underlyingType == typeof(DateTime))
         {
-            converted = _efContext.DateTimeParser?.Invoke(value);
+            converted = ctx.DateTimeParser?.Invoke(value);
             // For range max bounds with date-only values, use end of day (23:59:59)
             if (isRangeMax && converted is DateTime dt && !HasTimeComponent(value))
             {
@@ -914,7 +922,7 @@ public class ExpressionBuilderVisitor : QueryNodeVisitor
         }
         else if (underlyingType == typeof(DateOnly))
         {
-            converted = _efContext.DateOnlyParser?.Invoke(value);
+            converted = ctx.DateOnlyParser?.Invoke(value);
         }
         else if (underlyingType == typeof(bool))
         {

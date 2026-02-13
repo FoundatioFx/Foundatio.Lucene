@@ -9,7 +9,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseSimpleTerm()
     {
-        var query = await _parser.BuildQueryAsync("test");
+        var query = _parser.BuildQuery("test");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MultiMatch);
@@ -19,7 +19,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFieldQuery()
     {
-        var query = await _parser.BuildQueryAsync("title:hello");
+        var query = _parser.BuildQuery("title:hello");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Match);
@@ -30,7 +30,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseBooleanAndQuery()
     {
-        var query = await _parser.BuildQueryAsync("foo AND bar");
+        var query = _parser.BuildQuery("foo AND bar");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -42,7 +42,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseBooleanOrQuery()
     {
-        var query = await _parser.BuildQueryAsync("foo OR bar");
+        var query = _parser.BuildQuery("foo OR bar");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -54,7 +54,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseNotQuery()
     {
-        var query = await _parser.BuildQueryAsync("NOT foo");
+        var query = _parser.BuildQuery("NOT foo");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -66,7 +66,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParsePhraseQuery()
     {
-        var query = await _parser.BuildQueryAsync("\"hello world\"");
+        var query = _parser.BuildQuery("\"hello world\"");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MultiMatch);
@@ -77,7 +77,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFieldPhraseQuery()
     {
-        var query = await _parser.BuildQueryAsync("title:\"hello world\"");
+        var query = _parser.BuildQuery("title:\"hello world\"");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MatchPhrase);
@@ -88,7 +88,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParsePrefixQuery()
     {
-        var query = await _parser.BuildQueryAsync("test*");
+        var query = _parser.BuildQuery("test*");
 
         Assert.NotNull(query);
         Assert.NotNull(query.QueryString);
@@ -98,7 +98,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFieldPrefixQuery()
     {
-        var query = await _parser.BuildQueryAsync("title:test*");
+        var query = _parser.BuildQuery("title:test*");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Prefix);
@@ -109,7 +109,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseWildcardQuery()
     {
-        var query = await _parser.BuildQueryAsync("te?t");
+        var query = _parser.BuildQuery("te?t");
 
         Assert.NotNull(query);
         Assert.NotNull(query.QueryString);
@@ -119,7 +119,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFieldWildcardQuery()
     {
-        var query = await _parser.BuildQueryAsync("title:te*st");
+        var query = _parser.BuildQuery("title:te*st");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Wildcard);
@@ -130,7 +130,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFuzzyQuery()
     {
-        var query = await _parser.BuildQueryAsync("test~");
+        var query = _parser.BuildQuery("test~");
 
         Assert.NotNull(query);
         Assert.NotNull(query.QueryString);
@@ -140,7 +140,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFuzzyQueryWithDistance()
     {
-        var query = await _parser.BuildQueryAsync("test~2");
+        var query = _parser.BuildQuery("test~2");
 
         Assert.NotNull(query);
         Assert.NotNull(query.QueryString);
@@ -150,7 +150,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseExistsQuery()
     {
-        var query = await _parser.BuildQueryAsync("_exists_:title");
+        var query = _parser.BuildQuery("_exists_:title");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Exists);
@@ -160,7 +160,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseMissingQuery()
     {
-        var query = await _parser.BuildQueryAsync("_missing_:title");
+        var query = _parser.BuildQuery("_missing_:title");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -175,7 +175,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseRangeQuery()
     {
-        var query = await _parser.BuildQueryAsync("price:[100 TO 500]");
+        var query = _parser.BuildQuery("price:[100 TO 500]");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Range);
@@ -184,7 +184,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseOpenRangeQuery()
     {
-        var query = await _parser.BuildQueryAsync("price:[100 TO *]");
+        var query = _parser.BuildQuery("price:[100 TO *]");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Range);
@@ -193,7 +193,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseExclusiveRangeQuery()
     {
-        var query = await _parser.BuildQueryAsync("price:{100 TO 500}");
+        var query = _parser.BuildQuery("price:{100 TO 500}");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Range);
@@ -202,7 +202,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseGroupedQuery()
     {
-        var query = await _parser.BuildQueryAsync("(foo OR bar) AND baz");
+        var query = _parser.BuildQuery("(foo OR bar) AND baz");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -214,7 +214,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseNestedBooleanQuery()
     {
-        var query = await _parser.BuildQueryAsync("a AND b OR c");
+        var query = _parser.BuildQuery("a AND b OR c");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -224,7 +224,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseRequiredTerm()
     {
-        var query = await _parser.BuildQueryAsync("+required");
+        var query = _parser.BuildQuery("+required");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -236,7 +236,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseProhibitedTerm()
     {
-        var query = await _parser.BuildQueryAsync("-prohibited");
+        var query = _parser.BuildQuery("-prohibited");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -248,7 +248,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseRegexQuery()
     {
-        var query = await _parser.BuildQueryAsync("/test.*/");
+        var query = _parser.BuildQuery("/test.*/");
 
         Assert.NotNull(query);
         Assert.NotNull(query.QueryString);
@@ -258,7 +258,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFieldRegexQuery()
     {
-        var query = await _parser.BuildQueryAsync("title:/test.*/");
+        var query = _parser.BuildQuery("title:/test.*/");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Regexp);
@@ -269,7 +269,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseMatchAllQuery()
     {
-        var query = await _parser.BuildQueryAsync("*:*");
+        var query = _parser.BuildQuery("*:*");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MatchAll);
@@ -278,7 +278,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseBoostedTerm()
     {
-        var query = await _parser.BuildQueryAsync("test^2");
+        var query = _parser.BuildQuery("test^2");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MultiMatch);
@@ -289,7 +289,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseBoostedFieldQuery()
     {
-        var query = await _parser.BuildQueryAsync("title:test^3.5");
+        var query = _parser.BuildQuery("title:test^3.5");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Match);
@@ -301,7 +301,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseComplexQuery()
     {
-        var query = await _parser.BuildQueryAsync("(title:hello AND content:world) OR author:john");
+        var query = _parser.BuildQuery("(title:hello AND content:world) OR author:john");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -313,7 +313,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseProximityPhrase()
     {
-        var query = await _parser.BuildQueryAsync("\"hello world\"~5");
+        var query = _parser.BuildQuery("\"hello world\"~5");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MultiMatch);
@@ -324,7 +324,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseEmptyQuery()
     {
-        var query = await _parser.BuildQueryAsync("");
+        var query = _parser.BuildQuery("");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MatchAll);
@@ -333,7 +333,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseWhitespaceOnlyQuery()
     {
-        var query = await _parser.BuildQueryAsync("   ");
+        var query = _parser.BuildQuery("   ");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MatchAll);
@@ -342,7 +342,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseMultipleTerms()
     {
-        var query = await _parser.BuildQueryAsync("foo bar baz");
+        var query = _parser.BuildQuery("foo bar baz");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -354,7 +354,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseFieldWithNestedPath()
     {
-        var query = await _parser.BuildQueryAsync("user.name:john");
+        var query = _parser.BuildQuery("user.name:john");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Match);
@@ -372,7 +372,7 @@ public class ElasticsearchQueryParserTests
             c.UseScoring = true;
         });
 
-        var query = await parser.BuildQueryAsync("user:john");
+        var query = parser.BuildQuery("user:john");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Match);
@@ -382,7 +382,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task CanParseTermQuery()
     {
-        var query = await _parser.BuildQueryAsync("status:active");
+        var query = _parser.BuildQuery("status:active");
 
         Assert.NotNull(query);
         Assert.NotNull(query.Match);
@@ -398,7 +398,7 @@ public class ElasticsearchQueryParserTests
             c.DefaultOperator = QueryOperator.And;
             c.UseScoring = true;
         });
-        var query = await parser.BuildQueryAsync("foo bar");
+        var query = parser.BuildQuery("foo bar");
 
         Assert.NotNull(query);
         var boolQuery = query.Bool;
@@ -410,7 +410,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task BuildQueryAsync_ReturnsQuery_WhenValidInput()
     {
-        var result = await _parser.BuildQueryAsync("test");
+        var result = _parser.BuildQuery("test");
 
         Assert.NotNull(result);
     }
@@ -418,7 +418,7 @@ public class ElasticsearchQueryParserTests
     [Fact]
     public async Task BuildQuery_ReturnsMatchAll_WhenNoNodes()
     {
-        var query = await _parser.BuildQueryAsync("*:*");
+        var query = _parser.BuildQuery("*:*");
 
         Assert.NotNull(query);
         Assert.NotNull(query.MatchAll);

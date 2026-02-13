@@ -16,7 +16,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithSimpleTerm()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("elasticsearch");
+        var query = _fixture.Parser.BuildQuery("elasticsearch");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -29,7 +29,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithFieldQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("author:\"John Smith\"");
+        var query = _fixture.Parser.BuildQuery("author:\"John Smith\"");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -42,7 +42,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithBooleanAnd()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("author:\"John Smith\" AND category:technology");
+        var query = _fixture.Parser.BuildQuery("author:\"John Smith\" AND category:technology");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -55,7 +55,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithBooleanOr()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("category:database OR category:draft");
+        var query = _fixture.Parser.BuildQuery("category:database OR category:draft");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -67,7 +67,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithNotQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("category:technology AND NOT author:\"John Smith\"");
+        var query = _fixture.Parser.BuildQuery("category:technology AND NOT author:\"John Smith\"");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -80,7 +80,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithPhraseQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("content:\"search and analytics\"");
+        var query = _fixture.Parser.BuildQuery("content:\"search and analytics\"");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -92,7 +92,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithPrefixQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("title:elast*");
+        var query = _fixture.Parser.BuildQuery("title:elast*");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -105,7 +105,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithWildcardQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("title:*learning*");
+        var query = _fixture.Parser.BuildQuery("title:*learning*");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -118,7 +118,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithNumericRangeQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("price:[40 TO 60]");
+        var query = _fixture.Parser.BuildQuery("price:[40 TO 60]");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -131,7 +131,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithOpenEndedRangeQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("price:[50 TO *]");
+        var query = _fixture.Parser.BuildQuery("price:[50 TO *]");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -144,7 +144,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithYearQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("year:2023");
+        var query = _fixture.Parser.BuildQuery("year:2023");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -157,7 +157,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithYearRangeQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("year:[2023 TO 2024]");
+        var query = _fixture.Parser.BuildQuery("year:[2023 TO 2024]");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -169,7 +169,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithExistsQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("_exists_:publishedDate");
+        var query = _fixture.Parser.BuildQuery("_exists_:publishedDate");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -182,7 +182,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithMissingQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("_missing_:publishedDate");
+        var query = _fixture.Parser.BuildQuery("_missing_:publishedDate");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -195,7 +195,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithBooleanField()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("isPublished:false");
+        var query = _fixture.Parser.BuildQuery("isPublished:false");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -208,7 +208,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithMatchAll()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("*:*");
+        var query = _fixture.Parser.BuildQuery("*:*");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -220,7 +220,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithRequiredTerm()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("+category:technology +year:2023");
+        var query = _fixture.Parser.BuildQuery("+category:technology +year:2023");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -232,7 +232,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithProhibitedTerm()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("category:technology -author:\"John Smith\"");
+        var query = _fixture.Parser.BuildQuery("category:technology -author:\"John Smith\"");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -245,7 +245,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithGroupedQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("(category:technology OR category:database) AND year:2023");
+        var query = _fixture.Parser.BuildQuery("(category:technology OR category:database) AND year:2023");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -257,7 +257,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithFuzzyQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("title:elastcsearch~");
+        var query = _fixture.Parser.BuildQuery("title:elastcsearch~");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -270,7 +270,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchMultipleTermsDefaultOr()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("lucene machine");
+        var query = _fixture.Parser.BuildQuery("lucene machine");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -289,7 +289,7 @@ public class ElasticsearchIntegrationTests
             c.FieldMap = fieldMap;
         });
 
-        var query = await parser.BuildQueryAsync("name:\"John Smith\"");
+        var query = parser.BuildQuery("name:\"John Smith\"");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -302,7 +302,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task EmptyQueryReturnsAllDocuments()
     {
-        var query = await _fixture.Parser.BuildQueryAsync("");
+        var query = _fixture.Parser.BuildQuery("");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)
             .Query(query), TestContext.Current.CancellationToken);
@@ -314,7 +314,7 @@ public class ElasticsearchIntegrationTests
     [Fact]
     public async Task CanSearchWithComplexNestedQuery()
     {
-        var query = await _fixture.Parser.BuildQueryAsync(
+        var query = _fixture.Parser.BuildQuery(
             "(author:\"John Smith\" OR author:\"Jane Doe\") AND category:technology AND year:[2022 TO 2023]");
         var response = await _fixture.Client.SearchAsync<TestDocument>(s => s
             .Indices(ElasticsearchFixture.TestIndexName)

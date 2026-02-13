@@ -86,13 +86,13 @@ var fields = await GetReferencedFieldsVisitor.RunAsync(result.Document);
 
 ## Creating Custom Visitors
 
-Extend `QueryNodeVisitor` to create custom transformations:
+Extend `QueryVisitor` to create custom transformations:
 
 ```csharp
 using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Visitors;
 
-public class LowercaseTermVisitor : QueryNodeVisitor
+public class LowercaseTermVisitor : QueryVisitor
 {
     public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
     {
@@ -125,7 +125,7 @@ var output = QueryStringBuilder.ToQueryString(result.Document);
 Use `IQueryVisitorContext` to pass state between visitors or across the traversal:
 
 ```csharp
-public class FieldCollectorVisitor : QueryNodeVisitor
+public class FieldCollectorVisitor : QueryVisitor
 {
     public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
     {
@@ -170,7 +170,7 @@ Visitors with lower priority numbers run first.
 Override these methods to handle specific node types:
 
 ```csharp
-public class MyVisitor : QueryNodeVisitor
+public class MyVisitor : QueryVisitor
 {
     // Called for the root document
     public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context);
@@ -218,7 +218,7 @@ public class MyVisitor : QueryNodeVisitor
 Return a different node to replace the current one:
 
 ```csharp
-public class ExpandStatusVisitor : QueryNodeVisitor
+public class ExpandStatusVisitor : QueryVisitor
 {
     public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
     {
@@ -250,7 +250,7 @@ public class ExpandStatusVisitor : QueryNodeVisitor
 Return `null` to remove a node (parent must handle this):
 
 ```csharp
-public class RemoveFieldVisitor : QueryNodeVisitor
+public class RemoveFieldVisitor : QueryVisitor
 {
     private readonly HashSet<string> _fieldsToRemove;
 

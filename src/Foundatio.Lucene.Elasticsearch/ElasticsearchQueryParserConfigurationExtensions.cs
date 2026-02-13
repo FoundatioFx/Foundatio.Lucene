@@ -90,11 +90,11 @@ public static class ElasticsearchQueryParserConfigurationExtensions
     }
 
     /// <summary>
-    /// Sets the include resolver.
+    /// Sets the pre-resolved includes dictionary.
     /// </summary>
-    public static ElasticsearchQueryParserConfiguration UseIncludes(this ElasticsearchQueryParserConfiguration config, IncludeResolver resolver)
+    public static ElasticsearchQueryParserConfiguration UseIncludes(this ElasticsearchQueryParserConfiguration config, IReadOnlyDictionary<string, string> includes)
     {
-        config.IncludeResolver = resolver;
+        config.Includes = includes;
         return config;
     }
 
@@ -110,7 +110,7 @@ public static class ElasticsearchQueryParserConfigurationExtensions
     /// <summary>
     /// Adds a custom visitor to the visitor chain.
     /// </summary>
-    public static ElasticsearchQueryParserConfiguration AddVisitor(this ElasticsearchQueryParserConfiguration config, QueryNodeVisitor visitor)
+    public static ElasticsearchQueryParserConfiguration AddVisitor(this ElasticsearchQueryParserConfiguration config, QueryVisitor visitor)
     {
         config.Visitors.Add(visitor);
         return config;

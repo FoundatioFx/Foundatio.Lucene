@@ -12,7 +12,7 @@ public class EntityFrameworkQueryParser
 {
     private static readonly ConcurrentDictionary<IEntityType, List<EntityFieldInfo>> _entityFieldCache = new();
     private static readonly ConcurrentDictionary<Type, List<EntityFieldInfo>> _reflectionFieldCache = new();
-    private readonly ExpressionBuilderVisitor _expressionBuilder = new();
+    private readonly ConcurrentDictionary<Type, EntityFrameworkQueryOptions> _entityTypeOptions = new();
 
     /// <summary>
     /// Creates a new EntityFrameworkQueryParser with optional configuration.
@@ -30,6 +30,97 @@ public class EntityFrameworkQueryParser
     public EntityFrameworkQueryParserConfiguration Configuration { get; }
 
     /// <summary>
+    /// Registers options for a specific entity type.
+    /// These options are used as the base configuration when building filters for this entity type.
+    /// </summary>
+    /// <typeparam name="TEntity">The entity type.</typeparam>
+    /// <param name="options">The options to register.</param>
+    /// <returns>This parser instance for chaining.</returns>
+    public EntityFrameworkQueryParser SetOptions<TEntity>(EntityFrameworkQueryOptions options) where TEntity : class
+    {
+        return SetOptions(typeof(TEntity), options);
+    }
+
+    /// <summary>
+    /// Registers options for a specific entity type.
+    /// These options are used as the base configuration when building filters for this entity type.
+    /// </summary>
+    /// <param name="entityType">The entity type.</param>
+    /// <param name="options">The options to register.</param>
+    /// <returns>This parser instance for chaining.</returns>
+    public EntityFrameworkQueryParser SetOptions(Type entityType, EntityFrameworkQueryOptions options)
+    {
+        _entityTypeOptions[entityType] = options;
+        return this;
+    }
+
+    /// <summary>
+    /// Registers options for a specific entity type using a configuration action.
+    /// </summary>
+    /// <typeparam name="TEntity">The entity type.</typeparam>
+    /// <param name="configure">Action to configure the options.</param>
+    /// <returns>This parser instance for chaining.</returns>
+    public EntityFrameworkQueryParser SetOptions<TEntity>(Action<EntityFrameworkQueryOptionsBuilder> configure) where TEntity : class
+    {
+        var builder = new EntityFrameworkQueryOptionsBuilder();
+        configure(builder);
+        return SetOptions<TEntity>(builder.Build());
+    }
+
+    /// <summary>
+    /// Gets the registered options for a specific entity type, or null if not registered.
+    /// </summary>
+    /// <typeparam name="TEntity">The entity type.</typeparam>
+    /// <returns>The registered options, or null.</returns>
+    public EntityFrameworkQueryOptions? GetOptions<TEntity>() where TEntity : class
+    {
+        return GetOptions(typeof(TEntity));
+    }
+
+    /// <summary>
+    /// Gets the registered options for a specific entity type, or null if not registered.
+    /// </summary>
+    /// <param name="entityType">The entity type.</param>
+    /// <returns>The registered options, or null.</returns>
+    public EntityFrameworkQueryOptions? GetOptions(Type entityType)
+    {
+        return _entityTypeOptions.TryGetValue(entityType, out var options) ? options : null;
+    }
+
+    /// <summary>
+    /// Removes registered options for a specific entity type.
+    /// </summary>
+    /// <typeparam name="TEntity">The entity type.</typeparam>
+    /// <returns>True if options were removed.</returns>
+    public bool RemoveOptions<TEntity>() where TEntity : class
+    {
+        return RemoveOptions(typeof(TEntity));
+    }
+
+    /// <summary>
+    /// Removes registered options for a specific entity type.
+    /// </summary>
+    /// <param name="entityType">The entity type.</param>
+    /// <returns>True if options were removed.</returns>
+    public bool RemoveOptions(Type entityType)
+    {
+        return _entityTypeOptions.TryRemove(entityType, out _);
+    }
+
+    /// <summary>
+    /// Clears all registered entity type options.
+    /// </summary>
+    public void ClearOptions()
+    {
+        _entityTypeOptions.Clear();
+    }
+
+    /// <summary>
+    /// Gets all entity types that have registered options.
+    /// </summary>
+    public IEnumerable<Type> RegisteredEntityTypes => _entityTypeOptions.Keys;
+
+    /// <summary>
     /// Parses a Lucene query string and returns a filter expression.
     /// </summary>
     /// <typeparam name="T">The entity type to filter.</typeparam>
@@ -38,15 +129,74 @@ public class EntityFrameworkQueryParser
     /// <returns>An expression that can be used with EF's Where method.</returns>
     public Expression<Func<T, bool>> BuildFilter<T>(string query, EntityFrameworkQueryVisitorContext? context = null) where T : class
     {
+        return BuildFilter<T>(query, context, null);
+    }
+
+    /// <summary>
+    /// Parses a Lucene query string and returns a filter expression with per-request options.
+    /// </summary>
+    /// <typeparam name="T">The entity type to filter.</typeparam>
+    /// <param name="query">The Lucene query string.</param>
+    /// <param name="context">Optional query visitor context.</param>
+    /// <param name="options">Optional per-request options to merge with global configuration.</param>
+    /// <returns>An expression that can be used with EF's Where method.</returns>
+    public Expression<Func<T, bool>> BuildFilter<T>(string query, EntityFrameworkQueryVisitorContext? context, EntityFrameworkQueryOptions? options) where T : class
+    {
         context ??= new EntityFrameworkQueryVisitorContext();
-        SetupContextDefaults<T>(context);
+        SetupContextDefaults<T>(context, options);
 
         var document = ParseQuery(query);
-        return _expressionBuilder.BuildExpression<T>(document, context, Configuration);
+
+        return ExpressionBuilderVisitor.Instance.BuildExpression<T>(document, context, Configuration);
     }
 
     /// <summary>
     /// Tries to parse a Lucene query string and returns a filter expression.
+    /// Returns a result object instead of throwing exceptions.
+    /// </summary>
+    /// <typeparam name="T">The entity type to filter.</typeparam>
+    /// <param name="query">The Lucene query string.</param>
+    /// <param name="context">Optional query visitor context.</param>
+    /// <returns>A QueryResult containing the expression or error information.</returns>
+    public QueryResult<Expression<Func<T, bool>>> TryBuildFilter<T>(string query, EntityFrameworkQueryVisitorContext? context = null) where T : class
+    {
+        return TryBuildFilter<T>(query, context, null);
+    }
+
+    /// <summary>
+    /// Tries to parse a Lucene query string and returns a filter expression with per-request options.
+    /// Returns a result object instead of throwing exceptions.
+    /// </summary>
+    /// <typeparam name="T">The entity type to filter.</typeparam>
+    /// <param name="query">The Lucene query string.</param>
+    /// <param name="context">Optional query visitor context.</param>
+    /// <param name="options">Optional per-request options to merge with global configuration.</param>
+    /// <returns>A QueryResult containing the expression or error information.</returns>
+    public QueryResult<Expression<Func<T, bool>>> TryBuildFilter<T>(string query, EntityFrameworkQueryVisitorContext? context, EntityFrameworkQueryOptions? options) where T : class
+    {
+        try
+        {
+            var expression = BuildFilter<T>(query, context, options);
+            return QueryResult<Expression<Func<T, bool>>>.Success(expression);
+        }
+        catch (QueryException ex)
+        {
+            return QueryResult<Expression<Func<T, bool>>>.Failure(ex);
+        }
+        catch (FormatException ex)
+        {
+            return QueryResult<Expression<Func<T, bool>>>.Failure(
+                new QueryParseException(ex.Message, QueryErrorCode.ParseError, ex));
+        }
+        catch (Exception ex)
+        {
+            return QueryResult<Expression<Func<T, bool>>>.Failure(
+                new QueryBuildException($"Failed to build filter: {ex.Message}", ex));
+        }
+    }
+
+    /// <summary>
+    /// Tries to parse a Lucene query string and returns a filter expression (legacy out parameter version).
     /// </summary>
     /// <typeparam name="T">The entity type to filter.</typeparam>
     /// <param name="query">The Lucene query string.</param>
@@ -55,16 +205,23 @@ public class EntityFrameworkQueryParser
     /// <returns>True if parsing succeeded; false otherwise.</returns>
     public bool TryBuildFilter<T>(string query, out Expression<Func<T, bool>>? expression, EntityFrameworkQueryVisitorContext? context = null) where T : class
     {
-        try
-        {
-            expression = BuildFilter<T>(query, context);
-            return true;
-        }
-        catch
-        {
-            expression = null;
-            return false;
-        }
+        return TryBuildFilter<T>(query, out expression, context, null);
+    }
+
+    /// <summary>
+    /// Tries to parse a Lucene query string and returns a filter expression with per-request options (legacy out parameter version).
+    /// </summary>
+    /// <typeparam name="T">The entity type to filter.</typeparam>
+    /// <param name="query">The Lucene query string.</param>
+    /// <param name="expression">The resulting filter expression if successful.</param>
+    /// <param name="context">Optional query visitor context.</param>
+    /// <param name="options">Optional per-request options to merge with global configuration.</param>
+    /// <returns>True if parsing succeeded; false otherwise.</returns>
+    public bool TryBuildFilter<T>(string query, out Expression<Func<T, bool>>? expression, EntityFrameworkQueryVisitorContext? context, EntityFrameworkQueryOptions? options) where T : class
+    {
+        var result = TryBuildFilter<T>(query, context, options);
+        expression = result.GetValueOrDefault();
+        return result.IsSuccess;
     }
 
     /// <summary>
@@ -89,11 +246,57 @@ public class EntityFrameworkQueryParser
     /// <returns>A lambda expression that can be used with EF's Where method.</returns>
     public LambdaExpression BuildFilter(Type entityType, string query, EntityFrameworkQueryVisitorContext? context = null)
     {
+        return BuildFilter(entityType, query, context, null);
+    }
+
+    /// <summary>
+    /// Parses a Lucene query string and returns a dynamically typed filter expression with per-request options.
+    /// </summary>
+    /// <param name="entityType">The entity type to filter.</param>
+    /// <param name="query">The Lucene query string.</param>
+    /// <param name="context">Optional query visitor context.</param>
+    /// <param name="options">Optional per-request options to merge with global configuration.</param>
+    /// <returns>A lambda expression that can be used with EF's Where method.</returns>
+    public LambdaExpression BuildFilter(Type entityType, string query, EntityFrameworkQueryVisitorContext? context, EntityFrameworkQueryOptions? options)
+    {
         context ??= new EntityFrameworkQueryVisitorContext();
-        SetupContextDefaults(entityType, context);
+        SetupContextDefaults(entityType, context, options);
 
         var document = ParseQuery(query);
-        return _expressionBuilder.BuildExpression(entityType, document, context, Configuration);
+
+        return ExpressionBuilderVisitor.Instance.BuildExpression(entityType, document, context, Configuration);
+    }
+
+    /// <summary>
+    /// Tries to parse a Lucene query string and returns a dynamically typed filter expression.
+    /// Returns a result object instead of throwing exceptions.
+    /// </summary>
+    /// <param name="entityType">The entity type to filter.</param>
+    /// <param name="query">The Lucene query string.</param>
+    /// <param name="context">Optional query visitor context.</param>
+    /// <param name="options">Optional per-request options to merge with global configuration.</param>
+    /// <returns>A QueryResult containing the expression or error information.</returns>
+    public QueryResult<LambdaExpression> TryBuildFilter(Type entityType, string query, EntityFrameworkQueryVisitorContext? context = null, EntityFrameworkQueryOptions? options = null)
+    {
+        try
+        {
+            var expression = BuildFilter(entityType, query, context, options);
+            return QueryResult<LambdaExpression>.Success(expression);
+        }
+        catch (QueryException ex)
+        {
+            return QueryResult<LambdaExpression>.Failure(ex);
+        }
+        catch (FormatException ex)
+        {
+            return QueryResult<LambdaExpression>.Failure(
+                new QueryParseException(ex.Message, QueryErrorCode.ParseError, ex));
+        }
+        catch (Exception ex)
+        {
+            return QueryResult<LambdaExpression>.Failure(
+                new QueryBuildException($"Failed to build filter: {ex.Message}", ex));
+        }
     }
 
     private Ast.QueryDocument ParseQuery(string query)
@@ -153,26 +356,47 @@ public class EntityFrameworkQueryParser
     /// </summary>
     /// <param name="query">The Lucene query string.</param>
     /// <param name="context">Optional query visitor context.</param>
+    /// <param name="options">Optional per-request options for validation.</param>
     /// <returns>The validation result.</returns>
-    public QueryValidationResult Validate(string query, EntityFrameworkQueryVisitorContext? context = null)
+    public QueryValidationResult Validate(string query, EntityFrameworkQueryVisitorContext? context = null, EntityFrameworkQueryOptions? options = null)
     {
-        var parseResult = LuceneQuery.Parse(query, Configuration.DefaultOperator);
+        context ??= new EntityFrameworkQueryVisitorContext();
 
-        foreach (var error in parseResult.Errors)
+        // Apply validation options from per-request options
+        if (options?.ValidationOptions is not null)
         {
-            context?.AddValidationError(error.Message);
+            context.SetValidationOptions(options.ValidationOptions);
         }
 
-        return context?.GetValidationResult() ?? new QueryValidationResult();
+        var parseResult = LuceneQuery.Parse(query, Configuration.DefaultOperator);
+
+        // Add parse errors as validation errors
+        foreach (var error in parseResult.Errors)
+        {
+            context.AddValidationError(error.Message, error.Position);
+        }
+
+        // Validate the document if it exists
+        if (parseResult.Document is not null)
+        {
+            var visitor = new Visitors.ValidationVisitor();
+            visitor.Accept(parseResult.Document, context);
+            visitor.ApplyRestrictions(context);
+        }
+
+        return context.GetValidationResult();
     }
 
-    private void SetupContextDefaults<T>(EntityFrameworkQueryVisitorContext context)
+    private void SetupContextDefaults<T>(EntityFrameworkQueryVisitorContext context, EntityFrameworkQueryOptions? options)
     {
-        SetupContextDefaults(typeof(T), context);
+        SetupContextDefaults(typeof(T), context, options);
     }
 
-    private void SetupContextDefaults(Type entityType, EntityFrameworkQueryVisitorContext context)
+    private void SetupContextDefaults(Type entityType, EntityFrameworkQueryVisitorContext context, EntityFrameworkQueryOptions? options)
     {
+        // Get registered options for this entity type (if any)
+        var registeredOptions = GetOptions(entityType);
+
         // Discover fields from cache or reflection if not already set
         if (context.Fields.Count == 0)
         {
@@ -189,10 +413,56 @@ public class EntityFrameworkQueryParser
             }
         }
 
-        // Apply configuration defaults
-        context.DefaultFields ??= Configuration.DefaultFields;
+        // Add registered additional fields first
+        if (registeredOptions?.AdditionalFields is not null)
+        {
+            context.Fields.AddRange(registeredOptions.AdditionalFields);
+        }
+
+        // Add per-request additional fields (can override registered)
+        if (options?.AdditionalFields is not null)
+        {
+            context.Fields.AddRange(options.AdditionalFields);
+        }
+
+        // Attach registered field data first
+        ApplyFieldData(context, registeredOptions?.FieldData);
+
+        // Attach per-request field data (can override registered)
+        ApplyFieldData(context, options?.FieldData);
+
+        // Apply defaults: per-request > registered > configuration
+        context.DefaultFields ??= options?.DefaultFields ?? registeredOptions?.DefaultFields ?? Configuration.DefaultFields;
         context.DateTimeParser ??= Configuration.DateTimeParser;
         context.DateOnlyParser ??= Configuration.DateOnlyParser;
+
+        // Apply validation options: per-request > registered
+        var validationOptions = options?.ValidationOptions ?? registeredOptions?.ValidationOptions;
+        if (validationOptions is not null)
+        {
+            context.SetValidationOptions(validationOptions);
+        }
+    }
+
+    private static void ApplyFieldData(EntityFrameworkQueryVisitorContext context, IReadOnlyDictionary<string, object?>? fieldData)
+    {
+        if (fieldData is null)
+            return;
+
+        foreach (var kvp in fieldData)
+        {
+            var field = context.Fields.FirstOrDefault(f => f.Name.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase));
+            if (field is not null && kvp.Value is not null)
+            {
+                foreach (var dataEntry in (IDictionary<string, object?>)kvp.Value)
+                {
+                    if (dataEntry.Value is not null)
+                    {
+                        field.Data[dataEntry.Key] = dataEntry.Value;
+                    }
+                }
+            }
+        }
     }
 
     private void AddEntityFields(List<EntityFieldInfo> fields, EntityFieldInfo? parent, IEntityType entityType, Stack<IEntityType>? entityTypeStack = null, string? prefix = null, int depth = 0)

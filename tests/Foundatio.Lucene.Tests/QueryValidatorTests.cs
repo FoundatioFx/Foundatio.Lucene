@@ -7,7 +7,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidateQueryAsync_ValidQuery_ReturnsIsValid()
     {
-        var result = await QueryValidator.ValidateQueryAsync("title:hello");
+        var result = QueryValidator.ValidateQuery("title:hello");
 
         Assert.True(result.IsValid);
         Assert.Empty(result.ValidationErrors);
@@ -16,7 +16,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidateQueryAsync_InvalidSyntax_ReturnsErrors()
     {
-        var result = await QueryValidator.ValidateQueryAsync("title:");
+        var result = QueryValidator.ValidateQuery("title:");
 
         Assert.False(result.IsValid);
         Assert.NotEmpty(result.ValidationErrors);
@@ -29,7 +29,7 @@ public class QueryValidatorTests
         options.AllowedFields.Add("title");
         options.AllowedFields.Add("author");
 
-        var result = await QueryValidator.ValidateQueryAsync("title:hello AND author:john", options);
+        var result = QueryValidator.ValidateQuery("title:hello AND author:john", options);
 
         Assert.True(result.IsValid);
     }
@@ -40,7 +40,7 @@ public class QueryValidatorTests
         var options = new QueryValidationOptions();
         options.AllowedFields.Add("title");
 
-        var result = await QueryValidator.ValidateQueryAsync("title:hello AND status:active", options);
+        var result = QueryValidator.ValidateQuery("title:hello AND status:active", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("status", result.Message);
@@ -53,7 +53,7 @@ public class QueryValidatorTests
         var options = new QueryValidationOptions();
         options.RestrictedFields.Add("password");
 
-        var result = await QueryValidator.ValidateQueryAsync("password:secret", options);
+        var result = QueryValidator.ValidateQuery("password:secret", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("password", result.Message);
@@ -68,7 +68,7 @@ public class QueryValidatorTests
             AllowLeadingWildcards = false
         };
 
-        var result = await QueryValidator.ValidateQueryAsync("title:*hello", options);
+        var result = QueryValidator.ValidateQuery("title:*hello", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("wildcard", result.Message);
@@ -82,7 +82,7 @@ public class QueryValidatorTests
             AllowLeadingWildcards = true
         };
 
-        var result = await QueryValidator.ValidateQueryAsync("title:*hello", options);
+        var result = QueryValidator.ValidateQuery("title:*hello", options);
 
         Assert.True(result.IsValid);
     }
@@ -95,7 +95,7 @@ public class QueryValidatorTests
             AllowLeadingWildcards = false
         };
 
-        var result = await QueryValidator.ValidateQueryAsync("title:?ello", options);
+        var result = QueryValidator.ValidateQuery("title:?ello", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("wildcard", result.Message);
@@ -110,7 +110,7 @@ public class QueryValidatorTests
         };
 
         // Three levels of nesting: (outer (middle (inner)))
-        var result = await QueryValidator.ValidateQueryAsync("(title:a OR (author:b AND (status:c)))", options);
+        var result = QueryValidator.ValidateQuery("(title:a OR (author:b AND (status:c)))", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("depth", result.Message);
@@ -125,7 +125,7 @@ public class QueryValidatorTests
         };
 
         // Two levels of nesting
-        var result = await QueryValidator.ValidateQueryAsync("(title:a OR (author:b))", options);
+        var result = QueryValidator.ValidateQuery("(title:a OR (author:b))", options);
 
         Assert.True(result.IsValid);
     }
@@ -136,7 +136,7 @@ public class QueryValidatorTests
         var options = new QueryValidationOptions();
         options.RestrictedOperations.Add("regex");
 
-        var result = await QueryValidator.ValidateQueryAsync("title:/pattern/", options);
+        var result = QueryValidator.ValidateQuery("title:/pattern/", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("regex", result.Message);
@@ -150,7 +150,7 @@ public class QueryValidatorTests
         options.AllowedOperations.Add("term");
         options.AllowedOperations.Add("field");
 
-        var result = await QueryValidator.ValidateQueryAsync("title:hello", options);
+        var result = QueryValidator.ValidateQuery("title:hello", options);
 
         Assert.True(result.IsValid);
     }
@@ -162,7 +162,7 @@ public class QueryValidatorTests
         options.AllowedOperations.Add("term");
         options.AllowedOperations.Add("field");
 
-        var result = await QueryValidator.ValidateQueryAsync("title:/pattern/", options);
+        var result = QueryValidator.ValidateQuery("title:/pattern/", options);
 
         Assert.False(result.IsValid);
         Assert.Contains("regex", result.Message);
@@ -170,13 +170,13 @@ public class QueryValidatorTests
     }
 
     [Fact]
-    public async Task ValidateQueryAndThrowAsync_InvalidQuery_ThrowsException()
+    public void ValidateQueryAndThrow_InvalidQuery_ThrowsException()
     {
         var options = new QueryValidationOptions();
         options.AllowedFields.Add("title");
 
-        var ex = await Assert.ThrowsAsync<QueryValidationException>(async () =>
-            await QueryValidator.ValidateQueryAndThrowAsync("status:active", options));
+        var ex = Assert.Throws<QueryValidationException>(() =>
+            QueryValidator.ValidateQueryAndThrow("status:active", options));
 
         Assert.False(ex.Result.IsValid);
         Assert.Contains("status", ex.Message);
@@ -185,7 +185,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidateQueryAsync_CollectsReferencedFields()
     {
-        var result = await QueryValidator.ValidateQueryAsync("title:hello author:john status:active");
+        var result = QueryValidator.ValidateQuery("title:hello author:john status:active");
 
         Assert.True(result.IsValid);
         Assert.Contains("title", result.ReferencedFields);
@@ -196,7 +196,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidateQueryAsync_ExistsNode_AddsFieldToReferencedFields()
     {
-        var result = await QueryValidator.ValidateQueryAsync("_exists_:email");
+        var result = QueryValidator.ValidateQuery("_exists_:email");
 
         Assert.True(result.IsValid);
         Assert.Contains("email", result.ReferencedFields);
@@ -206,7 +206,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidateQueryAsync_MissingNode_AddsFieldToReferencedFields()
     {
-        var result = await QueryValidator.ValidateQueryAsync("_missing_:email");
+        var result = QueryValidator.ValidateQuery("_missing_:email");
 
         Assert.True(result.IsValid);
         Assert.Contains("email", result.ReferencedFields);
@@ -216,7 +216,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidateQueryAsync_TracksOperations()
     {
-        var result = await QueryValidator.ValidateQueryAsync("title:hello title:[a TO z] title:/pattern/ NOT status:active");
+        var result = QueryValidator.ValidateQuery("title:hello title:[a TO z] title:/pattern/ NOT status:active");
 
         Assert.True(result.IsValid);
         Assert.Contains("term", result.Operations.Keys);
@@ -231,7 +231,7 @@ public class QueryValidatorTests
     {
         var document = LuceneQuery.Parse("title:hello").Document;
 
-        var result = await document.ValidateAsync();
+        var result = document.Validate();
 
         Assert.True(result.IsValid);
     }
@@ -241,21 +241,21 @@ public class QueryValidatorTests
     {
         var document = LuceneQuery.Parse("title:hello status:active").Document;
 
-        var result = await document.ValidateAsync(["title"]);
+        var result = document.Validate(["title"]);
 
         Assert.False(result.IsValid);
         Assert.Contains("status", result.Message);
     }
 
     [Fact]
-    public Task Document_ValidateAndThrowAsync_ThrowsOnInvalid()
+    public void Document_ValidateAndThrow_ThrowsOnInvalid()
     {
         var document = LuceneQuery.Parse("title:hello").Document;
         var options = new QueryValidationOptions();
         options.AllowedFields.Add("author");
 
-        return Assert.ThrowsAsync<QueryValidationException>(() =>
-            document.ValidateAndThrowAsync(options));
+        Assert.Throws<QueryValidationException>(() =>
+            document.ValidateAndThrow(options));
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public class QueryValidatorTests
     {
         var parseResult = LuceneQuery.Parse("title:hello");
 
-        var result = await parseResult.ValidateAsync();
+        var result = parseResult.Validate();
 
         Assert.True(result.IsValid);
     }
@@ -273,7 +273,7 @@ public class QueryValidatorTests
     {
         var document = LuceneQuery.Parse("title:hello author:john").Document;
 
-        var result = await ValidationVisitor.RunAsync(document, ["title", "author"]);
+        var result = ValidationVisitor.Run(document, ["title", "author"]);
 
         Assert.True(result.IsValid);
     }
@@ -281,7 +281,7 @@ public class QueryValidatorTests
     [Fact]
     public async Task ValidationResult_ImplicitBoolConversion_Works()
     {
-        var validResult = await QueryValidator.ValidateQueryAsync("title:hello");
+        var validResult = QueryValidator.ValidateQuery("title:hello");
 
         // Test implicit bool conversion
         Assert.True(validResult);
@@ -296,7 +296,7 @@ public class QueryValidatorTests
         };
         options.RestrictedFields.Add("password");
 
-        var result = await QueryValidator.ValidateQueryAsync("password:secret *wildcard", options);
+        var result = QueryValidator.ValidateQuery("password:secret *wildcard", options);
 
         Assert.False(result.IsValid);
         // Should have at least one error

@@ -27,7 +27,7 @@ public class FieldResolverQueryVisitorTests
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap, context);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("actualField:value", query);
@@ -45,7 +45,7 @@ public class FieldResolverQueryVisitorTests
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap, context);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("actualField:value", query);
@@ -63,7 +63,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("field1:value1 AND field2:value2");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("resolved1:value1 AND resolved2:value2", query);
@@ -76,14 +76,14 @@ public class FieldResolverQueryVisitorTests
         {
             { "known", "resolved" }
         };
+        fieldMap.ReportUnmappedFields = true; // Enable tracking of unresolved fields
 
         var result = LuceneQuery.Parse("known:value1 unknown:value2");
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        // Use ToFieldResolver instead of ToHierarchicalFieldResolver to track unresolved fields
-        context.SetFieldResolver(fieldMap.ToFieldResolver());
-        await new FieldResolverQueryVisitor().RunAsync(result.Document, context);
+        context.SetFieldMap(fieldMap);
+        new FieldResolverQueryVisitor().Run(result.Document, context);
 
         var validationResult = context.GetValidationResult();
         Assert.Contains("unknown", validationResult.UnresolvedFields);
@@ -101,7 +101,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("other:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         // Hierarchical resolver returns original field if no match
@@ -123,7 +123,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("data.subfield:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("resolved.subfield:value", query);
@@ -140,7 +140,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("root.level1.level2.level3:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("mappedRoot.level1.level2.level3:value", query);
@@ -157,7 +157,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("data.nested.field:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("resolved.path.field:value", query);
@@ -175,28 +175,27 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("data.subfield:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("exactMatch:value", query);
     }
 
     [Fact]
-    public async Task HierarchicalResolverWithPrefix()
+    public void HierarchicalResolverWithPrefix()
     {
         var fieldMap = new FieldMap
         {
             { "field", "mappedField" }
         };
-
-        var resolver = fieldMap.ToHierarchicalFieldResolver("prefix.");
+        fieldMap.ResultPrefix = "prefix.";
 
         var result = LuceneQuery.Parse("field:value");
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        context.SetFieldResolver(resolver);
-        await new FieldResolverQueryVisitor().RunAsync(result.Document, context);
+        context.SetFieldMap(fieldMap);
+        new FieldResolverQueryVisitor().Run(result.Document, context);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("prefix.mappedField:value", query);
@@ -217,7 +216,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("_exists_:alias");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("_exists_:actualField", query);
@@ -234,7 +233,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("_missing_:alias");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("_missing_:actualField", query);
@@ -251,7 +250,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("alias:*");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("actualField:*", query);
@@ -272,7 +271,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("date:[2020-01-01 TO 2020-12-31]");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("timestamp:[2020-01-01 TO 2020-12-31]", query);
@@ -289,7 +288,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("age:>18");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("person.age:>18", query);
@@ -310,7 +309,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("title:\"hello world\"");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("document.title:\"hello world\"", query);
@@ -328,7 +327,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("name:John AND age:25");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("person.name:John AND person.age:25", query);
@@ -346,7 +345,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("(field1:value1 OR field2:value2)");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("(resolved1:value1 OR resolved2:value2)", query);
@@ -357,56 +356,65 @@ public class FieldResolverQueryVisitorTests
     #region Custom Resolvers
 
     [Fact]
-    public async Task CanUseSynchronousResolver()
+    public void CanUseFieldMapDictionary()
     {
-        var result = LuceneQuery.Parse("alias:value");
-        Assert.True(result.IsSuccess);
-
-        await FieldResolverQueryVisitor.RunAsync(result.Document, field =>
-            field == "alias" ? "resolvedField" : null);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("resolvedField:value", query);
-    }
-
-    [Fact]
-    public async Task CanUseAsyncResolver()
-    {
-        QueryFieldResolver resolver = (field, ctx) =>
+        var fieldMap = new FieldMap
         {
-            if (field == "alias")
-                return Task.FromResult<string?>("resolvedField");
-            return Task.FromResult<string?>(null);
+            { "alias", "resolvedField" }
         };
 
         var result = LuceneQuery.Parse("alias:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, resolver);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("resolvedField:value", query);
     }
 
     [Fact]
-    public async Task ContextResolverTakesPrecedenceOverGlobalResolver()
+    public void CanUseRawDictionary()
     {
-        QueryFieldResolver globalResolver = (field, ctx) =>
-            Task.FromResult<string?>("global." + field);
+        var map = new Dictionary<string, string>
+        {
+            { "alias", "resolvedField" }
+        };
 
-        QueryFieldResolver contextResolver = (field, ctx) =>
-            field == "special" ? Task.FromResult<string?>("context.special") : Task.FromResult<string?>(null);
+        var result = LuceneQuery.Parse("alias:value");
+        Assert.True(result.IsSuccess);
+
+        FieldResolverQueryVisitor.Run(result.Document, map);
+
+        var query = ToQueryString(result.Document);
+        Assert.Equal("resolvedField:value", query);
+    }
+
+    [Fact]
+    public void ContextFieldMapTakesPrecedenceOverConstructorFieldMap()
+    {
+        var globalFieldMap = new FieldMap
+        {
+            { "special", "global.special" },
+            { "other", "global.other" }
+        };
+
+        var contextFieldMap = new FieldMap
+        {
+            { "special", "context.special" }
+        };
 
         var result = LuceneQuery.Parse("special:value other:value");
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        context.SetFieldResolver(contextResolver);
-        var visitor = new FieldResolverQueryVisitor(globalResolver);
-        await visitor.RunAsync(result.Document, context);
+        context.SetFieldMap(contextFieldMap);
+        var visitor = new FieldResolverQueryVisitor(globalFieldMap);
+        visitor.Run(result.Document, context);
 
         var query = ToQueryString(result.Document);
-        Assert.Equal("context.special:value global.other:value", query);
+        // Context field map takes precedence for 'special', but 'other' is not in context map
+        // so it falls through unchanged since context map doesn't have it
+        Assert.Equal("context.special:value other:value", query);
     }
 
     #endregion
@@ -425,7 +433,7 @@ public class FieldResolverQueryVisitorTests
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        await FieldResolverQueryVisitor.RunAsync(result.Document!, fieldMap, context);
+        FieldResolverQueryVisitor.Run(result.Document!, fieldMap, context);
 
         // Find the FieldQueryNode
         var fieldNode = FindFirstFieldQueryNode(result.Document!.Query!);
@@ -448,7 +456,7 @@ public class FieldResolverQueryVisitorTests
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        await FieldResolverQueryVisitor.RunAsync(result.Document!, fieldMap, context);
+        FieldResolverQueryVisitor.Run(result.Document!, fieldMap, context);
 
         // Find the FieldQueryNode
         var fieldNode = FindFirstFieldQueryNode(result.Document!.Query!);
@@ -464,33 +472,33 @@ public class FieldResolverQueryVisitorTests
     #region Error Handling
 
     [Fact]
-    public async Task ResolverExceptionAddsValidationError()
+    public void UnmappedFieldsReportedWhenConfigured()
     {
-        QueryFieldResolver badResolver = (field, ctx) =>
-            throw new InvalidOperationException("Test error");
+        var fieldMap = new FieldMap
+        {
+            { "known", "resolved" }
+        };
+        fieldMap.ReportUnmappedFields = true;
 
-        var result = LuceneQuery.Parse("field:value");
+        var result = LuceneQuery.Parse("unknown:value");
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
-        context.SetFieldResolver(badResolver);
-        await new FieldResolverQueryVisitor().RunAsync(result.Document, context);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
 
         var validationResult = context.GetValidationResult();
-        Assert.False(validationResult.IsValid);
-        Assert.Single(validationResult.ValidationErrors);
-        Assert.Contains("Test error", validationResult.ValidationErrors.First().Message);
+        Assert.Contains("unknown", validationResult.UnresolvedFields);
     }
 
     [Fact]
-    public async Task NoResolverDoesNothing()
+    public void NoFieldMapDoesNothing()
     {
         var result = LuceneQuery.Parse("field:value");
         Assert.True(result.IsSuccess);
 
         var context = new QueryVisitorContext();
         // No resolver set
-        await new FieldResolverQueryVisitor().RunAsync(result.Document, context);
+        new FieldResolverQueryVisitor().Run(result.Document, context);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("field:value", query);
@@ -514,7 +522,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("(user:john OR user:jane) AND created:[2020-01-01 TO 2020-12-31] AND status:active");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("(account.user:john OR account.user:jane) AND metadata.timestamp:[2020-01-01 TO 2020-12-31] AND workflow.status:active", query);
@@ -531,7 +539,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("NOT field:value");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("NOT resolved:value", query);
@@ -549,7 +557,7 @@ public class FieldResolverQueryVisitorTests
         var result = LuceneQuery.Parse("title:search~1^2");
         Assert.True(result.IsSuccess);
 
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("document.title:search~1^2", query);
@@ -574,11 +582,11 @@ public class FieldResolverQueryVisitorTests
         var context = new QueryVisitorContext();
 
         // First run include visitor
-        context.SetIncludeResolver(name => Task.FromResult(includes.GetValueOrDefault(name)));
-        await new IncludeVisitor().RunAsync(result.Document, context);
+        context.SetIncludes(includes);
+        new IncludeVisitor().Run(result.Document, context);
 
         // Then run field resolver
-        await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap, context);
+        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
 
         var query = ToQueryString(result.Document);
         Assert.Equal("(resolved:value)", query);

@@ -1,3 +1,4 @@
+using Elastic.Clients.Elasticsearch.QueryDsl;
 using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Elasticsearch;
@@ -50,6 +51,18 @@ public interface IElasticsearchQueryVisitorContext : IQueryVisitorContext
     /// Function to resolve location strings to coordinates.
     /// </summary>
     Func<string, Task<string?>>? GeoLocationResolver { get; set; }
+
+    /// <summary>
+    /// Stack used during query building to accumulate Query objects.
+    /// This is internal state for the stateless visitor pattern.
+    /// </summary>
+    Stack<Query> QueryStack { get; }
+
+    /// <summary>
+    /// Current field being processed during query building.
+    /// This is internal state for the stateless visitor pattern.
+    /// </summary>
+    string? CurrentField { get; set; }
 }
 
 /// <summary>
@@ -77,4 +90,10 @@ public class ElasticsearchQueryVisitorContext : QueryVisitorContext, IElasticsea
 
     /// <inheritdoc />
     public Func<string, Task<string?>>? GeoLocationResolver { get; set; }
+
+    /// <inheritdoc />
+    public Stack<Query> QueryStack { get; } = new();
+
+    /// <inheritdoc />
+    public string? CurrentField { get; set; }
 }

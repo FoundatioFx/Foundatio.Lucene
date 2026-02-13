@@ -3,63 +3,63 @@ using Foundatio.Lucene.Visitors;
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Interface for a chainable query visitor that can modify query nodes asynchronously.
+/// Abstract base class for query visitors that can modify query nodes.
 /// </summary>
-public abstract class QueryNodeVisitor : IQueryNodeVisitor
+public abstract class QueryVisitor : IQueryVisitor
 {
     /// <summary>
     /// Entry point for accepting a node. Dispatches to the appropriate typed Visit method.
     /// </summary>
-    public virtual Task<QueryNode> AcceptAsync(QueryNode node, IQueryVisitorContext context)
+    public virtual QueryNode Accept(QueryNode node, IQueryVisitorContext context)
     {
         return node switch
         {
-            QueryDocument doc => VisitAsync(doc, context),
-            GroupNode group => VisitAsync(group, context),
-            BooleanQueryNode boolQuery => VisitAsync(boolQuery, context),
-            FieldQueryNode fieldQuery => VisitAsync(fieldQuery, context),
-            TermNode term => VisitAsync(term, context),
-            PhraseNode phrase => VisitAsync(phrase, context),
-            RegexNode regex => VisitAsync(regex, context),
-            RangeNode range => VisitAsync(range, context),
-            NotNode not => VisitAsync(not, context),
-            ExistsNode exists => VisitAsync(exists, context),
-            MissingNode missing => VisitAsync(missing, context),
-            MatchAllNode matchAll => VisitAsync(matchAll, context),
-            MultiTermNode multiTerm => VisitAsync(multiTerm, context),
-            _ => Task.FromResult(node)
+            QueryDocument doc => Visit(doc, context),
+            GroupNode group => Visit(group, context),
+            BooleanQueryNode boolQuery => Visit(boolQuery, context),
+            FieldQueryNode fieldQuery => Visit(fieldQuery, context),
+            TermNode term => Visit(term, context),
+            PhraseNode phrase => Visit(phrase, context),
+            RegexNode regex => Visit(regex, context),
+            RangeNode range => Visit(range, context),
+            NotNode not => Visit(not, context),
+            ExistsNode exists => Visit(exists, context),
+            MissingNode missing => Visit(missing, context),
+            MatchAllNode matchAll => Visit(matchAll, context),
+            MultiTermNode multiTerm => Visit(multiTerm, context),
+            _ => node
         };
     }
 
     /// <summary>
     /// Visits a QueryDocument node.
     /// </summary>
-    public virtual async Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
     {
         if (node.Query is not null)
-            node.Query = await AcceptAsync(node.Query, context).ConfigureAwait(false);
+            node.Query = Accept(node.Query, context);
         return node;
     }
 
     /// <summary>
     /// Visits a GroupNode.
     /// </summary>
-    public virtual async Task<QueryNode> VisitAsync(GroupNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(GroupNode node, IQueryVisitorContext context)
     {
         if (node.Query is not null)
-            node.Query = await AcceptAsync(node.Query, context).ConfigureAwait(false);
+            node.Query = Accept(node.Query, context);
         return node;
     }
 
     /// <summary>
     /// Visits a BooleanQueryNode.
     /// </summary>
-    public virtual async Task<QueryNode> VisitAsync(BooleanQueryNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context)
     {
         foreach (var clause in node.Clauses)
         {
             if (clause.Query is not null)
-                clause.Query = await AcceptAsync(clause.Query, context).ConfigureAwait(false);
+                clause.Query = Accept(clause.Query, context);
         }
         return node;
     }
@@ -67,69 +67,69 @@ public abstract class QueryNodeVisitor : IQueryNodeVisitor
     /// <summary>
     /// Visits a FieldQueryNode.
     /// </summary>
-    public virtual async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         if (node.Query is not null)
-            node.Query = await AcceptAsync(node.Query, context).ConfigureAwait(false);
+            node.Query = Accept(node.Query, context);
         return node;
     }
 
     /// <summary>
     /// Visits a TermNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(TermNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a PhraseNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(PhraseNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(PhraseNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a RegexNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(RegexNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(RegexNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a RangeNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(RangeNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a NotNode.
     /// </summary>
-    public virtual async Task<QueryNode> VisitAsync(NotNode node, IQueryVisitorContext context)
+    protected virtual QueryNode Visit(NotNode node, IQueryVisitorContext context)
     {
         if (node.Query is not null)
-            node.Query = await AcceptAsync(node.Query, context).ConfigureAwait(false);
+            node.Query = Accept(node.Query, context);
         return node;
     }
 
     /// <summary>
     /// Visits an ExistsNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(ExistsNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(ExistsNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a MissingNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(MissingNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(MissingNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a MatchAllNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(MatchAllNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(MatchAllNode node, IQueryVisitorContext context) => node;
 
     /// <summary>
     /// Visits a MultiTermNode.
     /// </summary>
-    public virtual Task<QueryNode> VisitAsync(MultiTermNode node, IQueryVisitorContext context) => Task.FromResult<QueryNode>(node);
+    protected virtual QueryNode Visit(MultiTermNode node, IQueryVisitorContext context) => node;
 }
 
 /// <summary>
 /// A visitor that chains multiple visitors together, running them in sequence.
 /// Each visitor is run with a priority (lower numbers run first).
 /// </summary>
-public class ChainedQueryVisitor : IQueryNodeVisitor
+public class ChainedQueryVisitor : IQueryVisitor
 {
     private readonly List<VisitorWithPriority> _visitors = [];
     private VisitorWithPriority[]? _sortedVisitors;
@@ -140,7 +140,7 @@ public class ChainedQueryVisitor : IQueryNodeVisitor
     /// </summary>
     /// <param name="visitor">The visitor to add.</param>
     /// <param name="priority">The priority (lower runs first). Default is 0.</param>
-    public ChainedQueryVisitor AddVisitor(IQueryNodeVisitor visitor, int priority = 0)
+    public ChainedQueryVisitor AddVisitor(IQueryVisitor visitor, int priority = 0)
     {
         _visitors.Add(new VisitorWithPriority(visitor, priority));
         _isDirty = true;
@@ -151,7 +151,7 @@ public class ChainedQueryVisitor : IQueryNodeVisitor
     /// Removes a visitor of the specified type.
     /// </summary>
     /// <typeparam name="T">The type of visitor to remove.</typeparam>
-    public ChainedQueryVisitor RemoveVisitor<T>() where T : IQueryNodeVisitor
+    public ChainedQueryVisitor RemoveVisitor<T>() where T : IQueryVisitor
     {
         var visitor = _visitors.Find(v => v.Visitor is T);
         if (visitor is not null)
@@ -168,7 +168,7 @@ public class ChainedQueryVisitor : IQueryNodeVisitor
     /// <typeparam name="T">The type of visitor to replace.</typeparam>
     /// <param name="visitor">The new visitor.</param>
     /// <param name="newPriority">Optional new priority. If not specified, keeps the original priority.</param>
-    public ChainedQueryVisitor ReplaceVisitor<T>(IQueryNodeVisitor visitor, int? newPriority = null) where T : IQueryNodeVisitor
+    public ChainedQueryVisitor ReplaceVisitor<T>(IQueryVisitor visitor, int? newPriority = null) where T : IQueryVisitor
     {
         var existing = _visitors.Find(v => v.Visitor is T);
         if (existing is not null)
@@ -190,7 +190,7 @@ public class ChainedQueryVisitor : IQueryNodeVisitor
     /// </summary>
     /// <typeparam name="T">The type of visitor to run before.</typeparam>
     /// <param name="visitor">The visitor to add.</param>
-    public ChainedQueryVisitor AddVisitorBefore<T>(IQueryNodeVisitor visitor) where T : IQueryNodeVisitor
+    public ChainedQueryVisitor AddVisitorBefore<T>(IQueryVisitor visitor) where T : IQueryVisitor
     {
         var reference = _visitors.Find(v => v.Visitor is T);
         int priority = reference?.Priority - 1 ?? 0;
@@ -202,7 +202,7 @@ public class ChainedQueryVisitor : IQueryNodeVisitor
     /// </summary>
     /// <typeparam name="T">The type of visitor to run after.</typeparam>
     /// <param name="visitor">The visitor to add.</param>
-    public ChainedQueryVisitor AddVisitorAfter<T>(IQueryNodeVisitor visitor) where T : IQueryNodeVisitor
+    public ChainedQueryVisitor AddVisitorAfter<T>(IQueryVisitor visitor) where T : IQueryVisitor
     {
         var reference = _visitors.Find(v => v.Visitor is T);
         int priority = reference?.Priority + 1 ?? 0;
@@ -219,42 +219,42 @@ public class ChainedQueryVisitor : IQueryNodeVisitor
     }
 
     /// <summary>
-    /// Visits a node asynchronously by running all chained visitors in priority order.
+    /// Visits a node by running all chained visitors in priority order.
     /// </summary>
-    public async Task<QueryNode> AcceptAsync(QueryNode node, IQueryVisitorContext context)
+    public QueryNode Accept(QueryNode node, IQueryVisitorContext context)
     {
         EnsureSorted();
 
         foreach (var visitorEntry in _sortedVisitors!)
         {
-            node = await visitorEntry.Visitor.AcceptAsync(node, context).ConfigureAwait(false);
+            node = visitorEntry.Visitor.Accept(node, context);
         }
 
         return node;
     }
 
-    private record VisitorWithPriority(IQueryNodeVisitor Visitor, int Priority);
+    private record VisitorWithPriority(IQueryVisitor Visitor, int Priority);
 }
 
 /// <summary>
-/// Extension methods for <see cref="IQueryNodeVisitor"/>.
+/// Extension methods for <see cref="IQueryVisitor"/>.
 /// </summary>
-public static class QueryNodeVisitorExtensions
+public static class QueryVisitorExtensions
 {
     /// <summary>
-    /// Runs the visitor on a QueryDocument asynchronously with a new context.
+    /// Runs the visitor on a QueryDocument with a new context.
     /// </summary>
-    public static async Task<QueryDocument> RunAsync(this IQueryNodeVisitor visitor, QueryDocument document)
+    public static QueryDocument Run(this IQueryVisitor visitor, QueryDocument document)
     {
         var context = new QueryVisitorContext();
-        return (QueryDocument)await visitor.AcceptAsync(document, context).ConfigureAwait(false);
+        return (QueryDocument)visitor.Accept(document, context);
     }
 
     /// <summary>
-    /// Runs the visitor on a QueryDocument asynchronously with the provided context.
+    /// Runs the visitor on a QueryDocument with the provided context.
     /// </summary>
-    public static async Task<QueryDocument> RunAsync(this IQueryNodeVisitor visitor, QueryDocument document, IQueryVisitorContext context)
+    public static QueryDocument Run(this IQueryVisitor visitor, QueryDocument document, IQueryVisitorContext context)
     {
-        return (QueryDocument)await visitor.AcceptAsync(document, context).ConfigureAwait(false);
+        return (QueryDocument)visitor.Accept(document, context);
     }
 }

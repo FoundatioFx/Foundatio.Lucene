@@ -127,7 +127,7 @@ var filter = parser.BuildFilter<Employee>(QueryStringBuilder.ToQueryString(resul
 For complex validation rules, create a custom visitor:
 
 ```csharp
-public class CustomValidationVisitor : QueryNodeVisitor
+public class CustomValidationVisitor : QueryVisitor
 {
     private readonly List<string> _errors = new();
 
@@ -267,7 +267,7 @@ return BadRequest(new ValidationResult
 Track query complexity for rate limiting:
 
 ```csharp
-public class QueryComplexityVisitor : QueryNodeVisitor
+public class QueryComplexityVisitor : QueryVisitor
 {
     public int Complexity { get; private set; } = 0;
 

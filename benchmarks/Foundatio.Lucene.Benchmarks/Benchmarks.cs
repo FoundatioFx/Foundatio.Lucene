@@ -22,7 +22,7 @@ public class Benchmarks
     private QueryDocument _fieldDoc = null!;
     private QueryDocument _complexDoc = null!;
     private QueryStringBuilder _builder = null!;
-    private QueryNodeVisitor _visitor = null!;
+    private QueryVisitor _visitor = null!;
 
     // Foundatio.Parsers objects for comparison
     private OldParser.LuceneQueryParser _oldParser = null!;
@@ -121,13 +121,13 @@ public class Benchmarks
     #region Visitor Traversal
 
     [Benchmark]
-    public async Task<QueryNode> Visit_Complex()
+    public QueryNode Visit_Complex()
     {
         var context = new Foundatio.Lucene.Visitors.QueryVisitorContext();
-        return await _visitor.AcceptAsync(_complexDoc, context);
+        return _visitor.Accept(_complexDoc, context);
     }
 
     #endregion
 
-    private class NoOpVisitor : QueryNodeVisitor { }
+    private class NoOpVisitor : QueryVisitor { }
 }

@@ -6,37 +6,31 @@ using Foundatio.Lucene.Visitors;
 namespace Foundatio.Lucene.Elasticsearch;
 
 /// <summary>
-/// Visitor that converts Lucene AST nodes into Elasticsearch Query DSL objects.
+/// Stateless visitor that converts Lucene AST nodes into Elasticsearch Query DSL objects.
+/// All build state is stored in the context, making this visitor safe to use as a singleton.
 /// </summary>
-public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
+public class ElasticsearchQueryBuilderVisitor : QueryVisitor
 {
-    private readonly Stack<Query> _queryStack = new();
-    private IElasticsearchQueryVisitorContext _context = null!;
-    private string? _currentField;
+    /// <summary>
+    /// Singleton instance for reuse. Since the visitor is stateless, a single instance can be shared.
+    /// </summary>
+    public static ElasticsearchQueryBuilderVisitor Instance { get; } = new();
 
     /// <summary>
     /// Builds an Elasticsearch Query from a parsed Lucene query node.
     /// </summary>
     public Query BuildQuery(QueryNode node, IElasticsearchQueryVisitorContext? context = null)
     {
-        return BuildQueryAsync(node, context).GetAwaiter().GetResult();
-    }
+        context ??= new ElasticsearchQueryVisitorContext();
+        context.QueryStack.Clear();
+        context.CurrentField = null;
 
-    /// <summary>
-    /// Builds an Elasticsearch Query from a parsed Lucene query node asynchronously.
-    /// </summary>
-    public async Task<Query> BuildQueryAsync(QueryNode node, IElasticsearchQueryVisitorContext? context = null)
-    {
-        _context = context ?? new ElasticsearchQueryVisitorContext();
-        _queryStack.Clear();
-        _currentField = null;
+        Accept(node, context);
 
-        await AcceptAsync(node, _context).ConfigureAwait(false);
-
-        var query = _queryStack.Count > 0 ? _queryStack.Pop() : new MatchAllQuery();
+        var query = context.QueryStack.Count > 0 ? context.QueryStack.Pop() : new MatchAllQuery();
 
         // Wrap in bool filter if not using scoring
-        if (!_context.UseScoring)
+        if (!context.UseScoring)
         {
             query = new BoolQuery { Filter = [query] };
         }
@@ -45,44 +39,47 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+    protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Query is not null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
         }
         else
         {
-            _queryStack.Push(new MatchAllQuery());
+            ctx.QueryStack.Push(new MatchAllQuery());
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(GroupNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Query is not null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
 
             // Apply boost if specified
-            if (node.Boost.HasValue && _queryStack.Count > 0)
+            if (node.Boost.HasValue && ctx.QueryStack.Count > 0)
             {
-                var query = _queryStack.Pop();
+                var query = ctx.QueryStack.Pop();
                 ApplyBoost(query, node.Boost.Value);
-                _queryStack.Push(query);
+                ctx.QueryStack.Push(query);
             }
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(BooleanQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Clauses.Count == 0)
         {
-            _queryStack.Push(new MatchAllQuery());
-            return Task.FromResult<QueryNode>(node);
+            ctx.QueryStack.Push(new MatchAllQuery());
+            return node;
         }
 
         var mustClauses = new List<Query>();
@@ -102,11 +99,11 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                 if (innerClause.Query is not null && innerClause.Occur != Occur.Should)
                 {
                     // Visit the inner query
-                    AcceptAsync(innerClause.Query, context).GetAwaiter().GetResult();
+                    Accept(innerClause.Query, context);
 
-                    if (_queryStack.Count > 0)
+                    if (ctx.QueryStack.Count > 0)
                     {
-                        var innerQuery = _queryStack.Pop();
+                        var innerQuery = ctx.QueryStack.Pop();
 
                         // Apply the inner clause's occur (from +/-) to the outer structure
                         switch (innerClause.Occur)
@@ -123,12 +120,12 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                 }
             }
 
-            AcceptAsync(clause.Query, context).GetAwaiter().GetResult();
+            Accept(clause.Query, context);
 
-            if (_queryStack.Count == 0)
+            if (ctx.QueryStack.Count == 0)
                 continue;
 
-            var clauseQuery = _queryStack.Pop();
+            var clauseQuery = ctx.QueryStack.Pop();
 
             switch (clause.Occur)
             {
@@ -140,7 +137,7 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                     break;
                 case Occur.Should:
                     // Check operator to determine if this should be Must or Should
-                    if (clause.Operator == BooleanOperator.And || _context.DefaultOperator == QueryOperator.And)
+                    if (clause.Operator == BooleanOperator.And || ctx.DefaultOperator == QueryOperator.And)
                         mustClauses.Add(clauseQuery);
                     else
                         shouldClauses.Add(clauseQuery);
@@ -161,36 +158,38 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
         if (mustClauses.Count == 0 && mustNotClauses.Count == 0 && shouldClauses.Count > 0)
             boolQuery.MinimumShouldMatch = 1;
 
-        _queryStack.Push(boolQuery);
-        return Task.FromResult<QueryNode>(node);
+        ctx.QueryStack.Push(boolQuery);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
-        var previousField = _currentField;
-        _currentField = node.Field;
+        var ctx = GetContext(context);
+        var previousField = ctx.CurrentField;
+        ctx.CurrentField = node.Field;
 
         if (node.IsExists)
         {
             // field:* syntax means exists
-            _queryStack.Push(new ExistsQuery { Field = node.Field });
+            ctx.QueryStack.Push(new ExistsQuery { Field = node.Field });
         }
         else if (node.Query is not null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
         }
 
-        _currentField = previousField;
-        return Task.FromResult<QueryNode>(node);
+        ctx.CurrentField = previousField;
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         Query query;
         var term = node.UnescapedTerm;
-        var field = GetEffectiveField();
+        var field = GetEffectiveField(ctx);
 
         // Handle match all
         if (term == "*" && field is null)
@@ -205,12 +204,12 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
             {
                 query = new PrefixQuery((Field)field, prefixValue);
             }
-            else if (_context.DefaultFields is { Length: > 0 })
+            else if (ctx.DefaultFields is { Length: > 0 })
             {
                 // Use MultiMatchQuery with wildcard for prefix when no field
                 query = new MultiMatchQuery(prefixValue + "*")
                 {
-                    Fields = Fields.FromStrings(_context.DefaultFields),
+                    Fields = Fields.FromStrings(ctx.DefaultFields),
                     Type = TextQueryType.BestFields
                 };
             }
@@ -227,11 +226,11 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
             {
                 query = new WildcardQuery((Field)field) { Value = term };
             }
-            else if (_context.DefaultFields is { Length: > 0 })
+            else if (ctx.DefaultFields is { Length: > 0 })
             {
                 query = new QueryStringQuery(term)
                 {
-                    Fields = Fields.FromStrings(_context.DefaultFields)
+                    Fields = Fields.FromStrings(ctx.DefaultFields)
                 };
             }
             else
@@ -252,11 +251,11 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                     Fuzziness = fuzziness
                 };
             }
-            else if (_context.DefaultFields is { Length: > 0 })
+            else if (ctx.DefaultFields is { Length: > 0 })
             {
                 query = new MultiMatchQuery(term)
                 {
-                    Fields = Fields.FromStrings(_context.DefaultFields),
+                    Fields = Fields.FromStrings(ctx.DefaultFields),
                     Fuzziness = new Fuzziness(fuzziness)
                 };
             }
@@ -268,22 +267,22 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                 query = new QueryStringQuery(fuzzyString);
             }
         }
-        else if (field is null && _context.DefaultFields is { Length: > 1 })
+        else if (field is null && ctx.DefaultFields is { Length: > 1 })
         {
             // Multi-match query when no field specified and multiple default fields
             query = new MultiMatchQuery(term)
             {
-                Fields = Fields.FromStrings(_context.DefaultFields)
+                Fields = Fields.FromStrings(ctx.DefaultFields)
             };
         }
         else if (field is null)
         {
             // No field and no or single default field - use MultiMatchQuery
-            if (_context.DefaultFields is { Length: 1 })
+            if (ctx.DefaultFields is { Length: 1 })
             {
-                query = _context.UseScoring
-                    ? new MatchQuery((Field)_context.DefaultFields[0], term)
-                    : (Query)new TermQuery((Field)_context.DefaultFields[0], (FieldValue)term);
+                query = ctx.UseScoring
+                    ? new MatchQuery((Field)ctx.DefaultFields[0], term)
+                    : (Query)new TermQuery((Field)ctx.DefaultFields[0], (FieldValue)term);
             }
             else
             {
@@ -295,7 +294,7 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
         else
         {
             // Simple term or match query with explicit field
-            if (_context.UseScoring)
+            if (ctx.UseScoring)
             {
                 query = new MatchQuery((Field)field, term);
             }
@@ -306,30 +305,31 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
         }
 
         ApplyBoost(query, node.Boost);
-        _queryStack.Push(query);
-        return Task.FromResult<QueryNode>(node);
+        ctx.QueryStack.Push(query);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(PhraseNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         Query query;
         var phrase = node.Phrase;
-        var field = GetEffectiveField();
+        var field = GetEffectiveField(ctx);
 
-        if (field is null && _context.DefaultFields is { Length: > 1 })
+        if (field is null && ctx.DefaultFields is { Length: > 1 })
         {
             // Multi-match phrase query
             query = new MultiMatchQuery(phrase)
             {
                 Type = TextQueryType.Phrase,
-                Fields = Fields.FromStrings(_context.DefaultFields),
+                Fields = Fields.FromStrings(ctx.DefaultFields),
                 Slop = node.Slop
             };
         }
-        else if (field is null && _context.DefaultFields is { Length: 1 })
+        else if (field is null && ctx.DefaultFields is { Length: 1 })
         {
-            query = new MatchPhraseQuery((Field)_context.DefaultFields[0], phrase)
+            query = new MatchPhraseQuery((Field)ctx.DefaultFields[0], phrase)
             {
                 Slop = node.Slop
             };
@@ -352,20 +352,21 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
         }
 
         ApplyBoost(query, node.Boost);
-        _queryStack.Push(query);
-        return Task.FromResult<QueryNode>(node);
+        ctx.QueryStack.Push(query);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(RegexNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
     {
-        var field = GetEffectiveField();
+        var ctx = GetContext(context);
+        var field = GetEffectiveField(ctx);
 
         Query query;
-        if (field is null && _context.DefaultFields is { Length: >= 1 })
+        if (field is null && ctx.DefaultFields is { Length: >= 1 })
         {
             // Use first default field for regex
-            query = new RegexpQuery((Field)_context.DefaultFields[0], node.Pattern);
+            query = new RegexpQuery((Field)ctx.DefaultFields[0], node.Pattern);
         }
         else if (field is null)
         {
@@ -378,22 +379,23 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
         }
 
         ApplyBoost(query, node.Boost);
-        _queryStack.Push(query);
-        return Task.FromResult<QueryNode>(node);
+        ctx.QueryStack.Push(query);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
-        var field = _currentField ?? node.Field ?? throw new InvalidOperationException("Range query requires a field");
+        var ctx = GetContext(context);
+        var field = ctx.CurrentField ?? node.Field ?? throw new InvalidOperationException("Range query requires a field");
 
         // Check if this is a date range query
-        if (IsDateField(field))
+        if (IsDateField(ctx, field))
         {
-            var dateQuery = BuildDateRangeQuery(field, node);
+            var dateQuery = BuildDateRangeQuery(ctx, field, node);
             ApplyBoost(dateQuery, node.Boost);
-            _queryStack.Push(dateQuery);
-            return Task.FromResult<QueryNode>(node);
+            ctx.QueryStack.Push(dateQuery);
+            return node;
         }
 
         // Try to determine if this is a numeric or term range
@@ -411,67 +413,72 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
         }
 
         ApplyBoost(rangeQuery, node.Boost);
-        _queryStack.Push(rangeQuery);
-        return Task.FromResult<QueryNode>(node);
+        ctx.QueryStack.Push(rangeQuery);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(NotNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(NotNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         if (node.Query is not null)
         {
-            AcceptAsync(node.Query, context).GetAwaiter().GetResult();
+            Accept(node.Query, context);
 
-            if (_queryStack.Count > 0)
+            if (ctx.QueryStack.Count > 0)
             {
-                var innerQuery = _queryStack.Pop();
+                var innerQuery = ctx.QueryStack.Pop();
                 var boolQuery = new BoolQuery { MustNot = [innerQuery] };
-                _queryStack.Push(boolQuery);
+                ctx.QueryStack.Push(boolQuery);
             }
         }
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(ExistsNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
     {
-        _queryStack.Push(new ExistsQuery { Field = node.Field });
-        return Task.FromResult<QueryNode>(node);
+        var ctx = GetContext(context);
+        ctx.QueryStack.Push(new ExistsQuery { Field = node.Field });
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(MissingNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         // Missing is implemented as bool must_not exists
         var boolQuery = new BoolQuery
         {
             MustNot = [new ExistsQuery { Field = node.Field }]
         };
-        _queryStack.Push(boolQuery);
-        return Task.FromResult<QueryNode>(node);
+        ctx.QueryStack.Push(boolQuery);
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(MatchAllNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context)
     {
-        _queryStack.Push(new MatchAllQuery());
-        return Task.FromResult<QueryNode>(node);
+        var ctx = GetContext(context);
+        ctx.QueryStack.Push(new MatchAllQuery());
+        return node;
     }
 
     /// <inheritdoc />
-    public override Task<QueryNode> VisitAsync(MultiTermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MultiTermNode node, IQueryVisitorContext context)
     {
+        var ctx = GetContext(context);
         // MultiTermNode is typically for OR'd terms without explicit operator
         // Build a bool should query
         var shouldClauses = new List<Query>();
-        var field = GetEffectiveField();
+        var field = GetEffectiveField(ctx);
 
         foreach (var term in node.Terms)
         {
             Query termQuery;
             if (field is not null)
             {
-                if (_context.UseScoring)
+                if (ctx.UseScoring)
                 {
                     termQuery = new MatchQuery((Field)field, term);
                 }
@@ -480,11 +487,11 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                     termQuery = new TermQuery((Field)field, (FieldValue)term);
                 }
             }
-            else if (_context.DefaultFields is { Length: > 0 })
+            else if (ctx.DefaultFields is { Length: > 0 })
             {
                 termQuery = new MultiMatchQuery(term)
                 {
-                    Fields = Fields.FromStrings(_context.DefaultFields)
+                    Fields = Fields.FromStrings(ctx.DefaultFields)
                 };
             }
             else
@@ -496,7 +503,7 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
 
         if (shouldClauses.Count == 1)
         {
-            _queryStack.Push(shouldClauses[0]);
+            ctx.QueryStack.Push(shouldClauses[0]);
         }
         else if (shouldClauses.Count > 1)
         {
@@ -505,29 +512,35 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                 Should = shouldClauses,
                 MinimumShouldMatch = 1
             };
-            _queryStack.Push(boolQuery);
+            ctx.QueryStack.Push(boolQuery);
         }
 
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
-    private string? GetEffectiveField()
+    private static IElasticsearchQueryVisitorContext GetContext(IQueryVisitorContext context)
     {
-        if (_currentField is not null)
-            return _currentField;
+        return context as IElasticsearchQueryVisitorContext
+            ?? throw new InvalidOperationException("Context must be an IElasticsearchQueryVisitorContext");
+    }
 
-        if (_context.DefaultFields is { Length: 1 })
-            return _context.DefaultFields[0];
+    private static string? GetEffectiveField(IElasticsearchQueryVisitorContext ctx)
+    {
+        if (ctx.CurrentField is not null)
+            return ctx.CurrentField;
+
+        if (ctx.DefaultFields is { Length: 1 })
+            return ctx.DefaultFields[0];
 
         return null;
     }
 
-    private bool IsDateField(string field)
+    private static bool IsDateField(IElasticsearchQueryVisitorContext ctx, string field)
     {
-        return _context.IsDateField?.Invoke(field) ?? false;
+        return ctx.IsDateField?.Invoke(field) ?? false;
     }
 
-    private Query BuildDateRangeQuery(string field, RangeNode node)
+    private static Query BuildDateRangeQuery(IElasticsearchQueryVisitorContext ctx, string field, RangeNode node)
     {
         var dateRange = new DateRangeQuery((Field)field);
 
@@ -547,13 +560,13 @@ public class ElasticsearchQueryBuilderVisitor : QueryNodeVisitor
                 dateRange.Lt = node.Max;
         }
 
-        if (_context.DefaultTimeZone is not null)
-            dateRange.TimeZone = _context.DefaultTimeZone;
+        if (ctx.DefaultTimeZone is not null)
+            dateRange.TimeZone = ctx.DefaultTimeZone;
 
         return dateRange;
     }
 
-    private Query BuildNumberRangeQuery(string field, RangeNode node)
+    private static Query BuildNumberRangeQuery(string field, RangeNode node)
     {
         var numberRange = new NumberRangeQuery((Field)field);
 

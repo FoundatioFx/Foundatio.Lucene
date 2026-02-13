@@ -4,13 +4,13 @@ This guide covers advanced patterns for creating custom visitors to transform, a
 
 ## Visitor Basics
 
-All visitors extend `QueryNodeVisitor` and override methods for specific node types:
+All visitors extend `QueryVisitor` and override methods for specific node types:
 
 ```csharp
 using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Visitors;
 
-public class MyVisitor : QueryNodeVisitor
+public class MyVisitor : QueryVisitor
 {
     public override async Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
     {
@@ -49,7 +49,7 @@ If you don't call `base.VisitAsync()`, child nodes won't be visited!
 Transform nodes in place:
 
 ```csharp
-public class NormalizeTermsVisitor : QueryNodeVisitor
+public class NormalizeTermsVisitor : QueryVisitor
 {
     public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
     {
@@ -72,7 +72,7 @@ public class NormalizeTermsVisitor : QueryNodeVisitor
 Collect information from the tree:
 
 ```csharp
-public class FieldCollectorVisitor : QueryNodeVisitor
+public class FieldCollectorVisitor : QueryVisitor
 {
     public HashSet<string> Fields { get; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> Terms { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -110,7 +110,7 @@ Console.WriteLine($"Terms: {string.Join(", ", collector.Terms)}");
 Replace nodes with different nodes:
 
 ```csharp
-public class StatusExpanderVisitor : QueryNodeVisitor
+public class StatusExpanderVisitor : QueryVisitor
 {
     public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
     {
@@ -149,7 +149,7 @@ public class StatusExpanderVisitor : QueryNodeVisitor
 Collect validation errors:
 
 ```csharp
-public class ValidationVisitor : QueryNodeVisitor
+public class ValidationVisitor : QueryVisitor
 {
     private readonly List<ValidationError> _errors = new();
     public IReadOnlyList<ValidationError> Errors => _errors;
@@ -206,7 +206,7 @@ public class ValidationError
 Perform async operations during visitation:
 
 ```csharp
-public class AsyncIncludeResolver : QueryNodeVisitor
+public class AsyncIncludeResolver : QueryVisitor
 {
     private readonly IQueryRepository _repository;
 
@@ -247,7 +247,7 @@ public class AsyncIncludeResolver : QueryNodeVisitor
 The `IQueryVisitorContext` allows passing state:
 
 ```csharp
-public class ContextAwareVisitor : QueryNodeVisitor
+public class ContextAwareVisitor : QueryVisitor
 {
     public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
     {
@@ -280,7 +280,7 @@ await visitor.AcceptAsync(document, context);
 Run visitors in sequence:
 
 ```csharp
-var visitors = new List<QueryNodeVisitor>
+var visitors = new List<QueryVisitor>
 {
     new NormalizeTermsVisitor(),
     new FieldResolverQueryVisitor(fieldMap),
@@ -317,19 +317,19 @@ await chain.AcceptAsync(document, context);
 
 ```csharp
 // Good: Single responsibility
-public class LowercaseFieldsVisitor : QueryNodeVisitor { }
-public class ValidateFieldsVisitor : QueryNodeVisitor { }
-public class ExpandAliasesVisitor : QueryNodeVisitor { }
+public class LowercaseFieldsVisitor : QueryVisitor { }
+public class ValidateFieldsVisitor : QueryVisitor { }
+public class ExpandAliasesVisitor : QueryVisitor { }
 
 // Bad: Too many responsibilities
-public class DoEverythingVisitor : QueryNodeVisitor { }
+public class DoEverythingVisitor : QueryVisitor { }
 ```
 
 ### 2. Make Visitors Stateless When Possible
 
 ```csharp
 // Good: Stateless, reusable
-public class LowercaseVisitor : QueryNodeVisitor
+public class LowercaseVisitor : QueryVisitor
 {
     public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
     {
@@ -339,7 +339,7 @@ public class LowercaseVisitor : QueryNodeVisitor
 }
 
 // If state is needed, use context
-public class StatefulVisitor : QueryNodeVisitor
+public class StatefulVisitor : QueryVisitor
 {
     public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
     {
@@ -376,7 +376,7 @@ public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext c
 /// - status:all -> (status:active OR status:pending OR status:review)
 /// - status:closed -> (status:completed OR status:cancelled)
 /// </remarks>
-public class StatusExpanderVisitor : QueryNodeVisitor
+public class StatusExpanderVisitor : QueryVisitor
 {
     // ...
 }

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Foundatio.Lucene.Visitors;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -37,6 +38,33 @@ public interface IEntityFrameworkQueryVisitorContext : IQueryVisitorContext
     /// Gets a field info by name (case-insensitive).
     /// </summary>
     EntityFieldInfo? GetField(string fieldName);
+
+    // Expression builder state (for stateless visitor pattern)
+
+    /// <summary>
+    /// Stack used during expression building to compose the final expression.
+    /// </summary>
+    Stack<Expression> ExpressionStack { get; }
+
+    /// <summary>
+    /// The current field being processed during expression building.
+    /// </summary>
+    string? CurrentField { get; set; }
+
+    /// <summary>
+    /// The parameter expression for the entity type (e.g., 'e' in e => e.Name).
+    /// </summary>
+    ParameterExpression? Parameter { get; set; }
+
+    /// <summary>
+    /// The CLR type of the entity being queried.
+    /// </summary>
+    Type? ClrEntityType { get; set; }
+
+    /// <summary>
+    /// The parser configuration for the current build operation.
+    /// </summary>
+    EntityFrameworkQueryParserConfiguration? Configuration { get; set; }
 }
 
 /// <summary>
@@ -58,6 +86,23 @@ public class EntityFrameworkQueryVisitorContext : QueryVisitorContext, IEntityFr
 
     /// <inheritdoc />
     public Func<string, object?>? DateOnlyParser { get; set; } = DefaultDateOnlyParser;
+
+    // Expression builder state
+
+    /// <inheritdoc />
+    public Stack<Expression> ExpressionStack { get; } = new();
+
+    /// <inheritdoc />
+    public string? CurrentField { get; set; }
+
+    /// <inheritdoc />
+    public ParameterExpression? Parameter { get; set; }
+
+    /// <inheritdoc />
+    public Type? ClrEntityType { get; set; }
+
+    /// <inheritdoc />
+    public EntityFrameworkQueryParserConfiguration? Configuration { get; set; }
 
     /// <summary>
     /// Default DateTime parser implementation.

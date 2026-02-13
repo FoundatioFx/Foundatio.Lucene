@@ -7,7 +7,7 @@ namespace Foundatio.Lucene.Visitors;
 /// This visitor processes TermNode and RangeNode values, converting expressions like "now-1d" or "2024-01-01||+1M"
 /// into their evaluated ISO 8601 date strings.
 /// </summary>
-public class DateMathEvaluatorVisitor : QueryNodeVisitor
+public class DateMathEvaluatorVisitor : QueryVisitor
 {
     private readonly DateTimeOffset _relativeBaseTime;
     private readonly TimeZoneInfo? _timeZone;
@@ -48,7 +48,7 @@ public class DateMathEvaluatorVisitor : QueryNodeVisitor
     /// <summary>
     /// Visits a TermNode and evaluates any DateMath expression in its term value.
     /// </summary>
-    public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
     {
         var term = node.Term;
         if (!string.IsNullOrEmpty(term) && TryEvaluateDateMath(term, isUpperLimit: false, out var evaluated))
@@ -61,13 +61,13 @@ public class DateMathEvaluatorVisitor : QueryNodeVisitor
             }
         }
 
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <summary>
     /// Visits a RangeNode and evaluates any DateMath expressions in its min/max values.
     /// </summary>
-    public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
         // Evaluate min value (not an upper limit, use start of period for rounding)
         if (!string.IsNullOrEmpty(node.Min) && node.Min != "*")
@@ -105,7 +105,7 @@ public class DateMathEvaluatorVisitor : QueryNodeVisitor
             }
         }
 
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
     /// <summary>
@@ -155,10 +155,10 @@ public class DateMathEvaluatorVisitor : QueryNodeVisitor
     /// <param name="query">The query to process</param>
     /// <param name="context">The visitor context</param>
     /// <returns>The processed query with DateMath expressions evaluated</returns>
-    public Task<QueryNode> EvaluateAsync(QueryNode query, IQueryVisitorContext? context = null)
+    public QueryNode Evaluate(QueryNode query, IQueryVisitorContext? context = null)
     {
         context ??= new QueryVisitorContext();
-        return AcceptAsync(query, context);
+        return Accept(query, context);
     }
 
     /// <summary>
@@ -168,10 +168,10 @@ public class DateMathEvaluatorVisitor : QueryNodeVisitor
     /// <param name="context">The visitor context</param>
     /// <param name="relativeBaseTime">The base time to use for relative date calculations</param>
     /// <returns>The processed query with DateMath expressions evaluated</returns>
-    public static Task<QueryNode> EvaluateAsync(QueryNode query, IQueryVisitorContext? context, DateTimeOffset relativeBaseTime)
+    public static QueryNode Evaluate(QueryNode query, IQueryVisitorContext? context, DateTimeOffset relativeBaseTime)
     {
         var visitor = new DateMathEvaluatorVisitor(relativeBaseTime);
-        return visitor.EvaluateAsync(query, context);
+        return visitor.Evaluate(query, context);
     }
 
     /// <summary>
@@ -181,10 +181,10 @@ public class DateMathEvaluatorVisitor : QueryNodeVisitor
     /// <param name="context">The visitor context</param>
     /// <param name="timeZone">The timezone to use for 'now' calculations</param>
     /// <returns>The processed query with DateMath expressions evaluated</returns>
-    public static Task<QueryNode> EvaluateAsync(QueryNode query, IQueryVisitorContext? context, TimeZoneInfo timeZone)
+    public static QueryNode Evaluate(QueryNode query, IQueryVisitorContext? context, TimeZoneInfo timeZone)
     {
         var visitor = new DateMathEvaluatorVisitor(timeZone);
-        return visitor.EvaluateAsync(query, context);
+        return visitor.Evaluate(query, context);
     }
 
     /// <summary>

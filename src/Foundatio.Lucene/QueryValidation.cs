@@ -179,24 +179,3 @@ public class QueryValidationError
     }
 }
 
-/// <summary>
-/// Exception thrown when query validation fails.
-/// </summary>
-public class QueryValidationException : Exception
-{
-    public QueryValidationException(string message, QueryValidationResult? result = null, Exception? inner = null)
-        : base(message, inner)
-    {
-        Result = result ?? new QueryValidationResult();
-    }
-
-    /// <summary>
-    /// The validation result containing details about the failure.
-    /// </summary>
-    public QueryValidationResult Result { get; }
-
-    /// <summary>
-    /// The validation errors.
-    /// </summary>
-    public ICollection<QueryValidationError> Errors => Result.ValidationErrors;
-}

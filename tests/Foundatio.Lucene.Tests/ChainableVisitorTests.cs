@@ -61,7 +61,7 @@ public class ChainableVisitorTests
     #region ChainableQueryVisitor Tests
 
     [Fact]
-    public async Task ChainableVisitor_VisitsAllNodeTypes()
+    public void ChainableVisitor_VisitsAllNodeTypes()
     {
         // Use a query that includes all the node types we want to test
         var query = "field:(hello world)^2 AND title:\"test phrase\"~3 NOT status:active age:[18 TO 65]";
@@ -71,7 +71,7 @@ public class ChainableVisitorTests
         var visitor = new NodeTypeCollectorVisitor();
         var context = new QueryVisitorContext();
 
-        await visitor.AcceptAsync(document, context);
+        visitor.Accept(document, context);
 
         var nodeTypes = context.GetValue<HashSet<string>>("NodeTypes");
         Assert.NotNull(nodeTypes);
@@ -85,7 +85,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainableVisitor_CanModifyNodes()
+    public void ChainableVisitor_CanModifyNodes()
     {
         var query = "HELLO";
         var result = LuceneQuery.Parse(query);
@@ -94,7 +94,7 @@ public class ChainableVisitorTests
         var visitor = new LowercaseTermVisitor();
         var context = new QueryVisitorContext();
 
-        await visitor.AcceptAsync(document, context);
+        visitor.Accept(document, context);
 
         var output = QueryStringBuilder.ToQueryString(document);
 
@@ -102,7 +102,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainableVisitor_CanModifyFieldNames()
+    public void ChainableVisitor_CanModifyFieldNames()
     {
         var query = "author:john";
         var result = LuceneQuery.Parse(query);
@@ -111,7 +111,7 @@ public class ChainableVisitorTests
         var visitor = new FieldRenameVisitor("author", "metadata.author");
         var context = new QueryVisitorContext();
 
-        await visitor.AcceptAsync(document, context);
+        visitor.Accept(document, context);
 
         var output = QueryStringBuilder.ToQueryString(document);
 
@@ -123,7 +123,7 @@ public class ChainableVisitorTests
     #region ChainedQueryVisitor Tests
 
     [Fact]
-    public async Task ChainedVisitor_RunsVisitorsInPriorityOrder()
+    public void ChainedVisitor_RunsVisitorsInPriorityOrder()
     {
         var document = LuceneQuery.Parse("test").Document;
         var context = new QueryVisitorContext();
@@ -133,7 +133,7 @@ public class ChainableVisitorTests
             .AddVisitor(new OrderTrackerVisitor("first"), priority: 10)
             .AddVisitor(new OrderTrackerVisitor("second"), priority: 20);
 
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         var order = context.GetValue<List<string>>("ExecutionOrder");
         Assert.NotNull(order);
@@ -141,7 +141,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainedVisitor_AddVisitorBefore_InsertsCorrectly()
+    public void ChainedVisitor_AddVisitorBefore_InsertsCorrectly()
     {
         var document = LuceneQuery.Parse("test").Document;
         var context = new QueryVisitorContext();
@@ -151,7 +151,7 @@ public class ChainableVisitorTests
 
         chain.AddVisitorBefore<OrderTrackerVisitor>(new OrderTrackerVisitor("before"));
 
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         var order = context.GetValue<List<string>>("ExecutionOrder");
         Assert.NotNull(order);
@@ -159,7 +159,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainedVisitor_AddVisitorAfter_InsertsCorrectly()
+    public void ChainedVisitor_AddVisitorAfter_InsertsCorrectly()
     {
         var document = LuceneQuery.Parse("test").Document;
         var context = new QueryVisitorContext();
@@ -169,7 +169,7 @@ public class ChainableVisitorTests
 
         chain.AddVisitorAfter<OrderTrackerVisitor>(new OrderTrackerVisitor("after"));
 
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         var order = context.GetValue<List<string>>("ExecutionOrder");
         Assert.NotNull(order);
@@ -177,7 +177,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainedVisitor_RemoveVisitor_Works()
+    public void ChainedVisitor_RemoveVisitor_Works()
     {
         var document = LuceneQuery.Parse("test").Document;
         var context = new QueryVisitorContext();
@@ -188,7 +188,7 @@ public class ChainableVisitorTests
             .AddVisitor(new OrderTrackerVisitor("third"), priority: 30);
 
         chain.RemoveVisitor<LowercaseTermVisitor>();
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         var order = context.GetValue<List<string>>("ExecutionOrder");
         Assert.NotNull(order);
@@ -196,7 +196,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainedVisitor_ReplaceVisitor_Works()
+    public void ChainedVisitor_ReplaceVisitor_Works()
     {
         var document = LuceneQuery.Parse("test").Document;
         var context = new QueryVisitorContext();
@@ -205,7 +205,7 @@ public class ChainableVisitorTests
             .AddVisitor(new OrderTrackerVisitor("original"), priority: 10);
 
         chain.ReplaceVisitor<OrderTrackerVisitor>(new OrderTrackerVisitor("replacement"));
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         var order = context.GetValue<List<string>>("ExecutionOrder");
         Assert.NotNull(order);
@@ -213,7 +213,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainedVisitor_CombinesMultipleTransformations()
+    public void ChainedVisitor_CombinesMultipleTransformations()
     {
         var query = "Author:HELLO status:Active";
         var document = LuceneQuery.Parse(query).Document;
@@ -229,7 +229,7 @@ public class ChainableVisitorTests
             .AddVisitor(new FieldAliasVisitor(aliases), priority: 10)
             .AddVisitor(new LowercaseTermVisitor(), priority: 20);
 
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         var output = QueryStringBuilder.ToQueryString(document);
 
@@ -237,7 +237,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task ChainedVisitor_SharesContextBetweenVisitors()
+    public void ChainedVisitor_SharesContextBetweenVisitors()
     {
         var query = "field:value";
         var document = LuceneQuery.Parse(query).Document;
@@ -252,7 +252,7 @@ public class ChainableVisitorTests
             .AddVisitor(setter, priority: 10)
             .AddVisitor(reader, priority: 20);
 
-        await chain.AcceptAsync(document, context);
+        chain.Accept(document, context);
 
         Assert.True(context.GetValue<bool>("ReaderFoundValue"));
     }
@@ -262,12 +262,12 @@ public class ChainableVisitorTests
     #region Extension Method Tests
 
     [Fact]
-    public async Task RunAsync_WithNewContext_Works()
+    public void Run_WithNewContext_Works()
     {
         var document = LuceneQuery.Parse("TEST").Document;
         var visitor = new LowercaseTermVisitor();
 
-        var result = await visitor.RunAsync(document);
+        var result = visitor.Run(document);
 
         var output = QueryStringBuilder.ToQueryString(result);
 
@@ -275,7 +275,7 @@ public class ChainableVisitorTests
     }
 
     [Fact]
-    public async Task RunAsync_WithProvidedContext_PreservesContext()
+    public void Run_WithProvidedContext_PreservesContext()
     {
         var document = LuceneQuery.Parse("test").Document;
         var context = new QueryVisitorContext();
@@ -283,7 +283,7 @@ public class ChainableVisitorTests
 
         var visitor = new OrderTrackerVisitor("visitor");
 
-        await visitor.RunAsync(document, context);
+        visitor.Run(document, context);
 
         // Both pre-existing and visitor-added values should be in context
         Assert.Equal("value", context.GetValue<string>("preExisting"));
@@ -294,7 +294,7 @@ public class ChainableVisitorTests
 
     #region Test Helper Visitors
 
-    private class NodeTypeCollectorVisitor : QueryNodeVisitor
+    private class NodeTypeCollectorVisitor : QueryVisitor
     {
         private void TrackNodeType(QueryNode node, IQueryVisitorContext context)
         {
@@ -307,96 +307,96 @@ public class ChainableVisitorTests
             nodeTypes.Add(node.GetType().Name);
         }
 
-        public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+        protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
 
-        public override Task<QueryNode> VisitAsync(GroupNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
 
-        public override Task<QueryNode> VisitAsync(BooleanQueryNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
 
-        public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
 
-        public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(PhraseNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(RegexNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(NotNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(NotNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
 
-        public override Task<QueryNode> VisitAsync(ExistsNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(MissingNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(MatchAllNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
 
-        public override Task<QueryNode> VisitAsync(MultiTermNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(MultiTermNode node, IQueryVisitorContext context)
         {
             TrackNodeType(node, context);
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
     }
 
-    private class LowercaseTermVisitor : QueryNodeVisitor
+    private class LowercaseTermVisitor : QueryVisitor
     {
-        public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
         {
             node.Term = node.Term.ToLowerInvariant();
             node.UnescapedTerm = node.UnescapedTerm.ToLowerInvariant();
-            return Task.FromResult<QueryNode>(node);
+            return node;
         }
     }
 
-    private class FieldRenameVisitor : QueryNodeVisitor
+    private class FieldRenameVisitor : QueryVisitor
     {
         private readonly string _oldName;
         private readonly string _newName;
@@ -407,15 +407,15 @@ public class ChainableVisitorTests
             _newName = newName;
         }
 
-        public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
         {
             if (node.Field == _oldName)
                 node.Field = _newName;
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
     }
 
-    private class FieldAliasVisitor : QueryNodeVisitor
+    private class FieldAliasVisitor : QueryVisitor
     {
         private readonly Dictionary<string, string> _aliases;
 
@@ -424,15 +424,15 @@ public class ChainableVisitorTests
             _aliases = aliases;
         }
 
-        public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
         {
             if (_aliases.TryGetValue(node.Field, out var newName))
                 node.Field = newName;
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
     }
 
-    private class OrderTrackerVisitor : QueryNodeVisitor
+    private class OrderTrackerVisitor : QueryVisitor
     {
         private readonly string _name;
         private bool _tracked;
@@ -442,7 +442,7 @@ public class ChainableVisitorTests
             _name = name;
         }
 
-        public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+        protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
         {
             // Only track once at the document level
             if (!_tracked)
@@ -456,11 +456,11 @@ public class ChainableVisitorTests
                 }
                 order.Add(_name);
             }
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
     }
 
-    private class ContextSetterVisitor : QueryNodeVisitor
+    private class ContextSetterVisitor : QueryVisitor
     {
         private readonly string _key;
         private readonly object _value;
@@ -471,14 +471,14 @@ public class ChainableVisitorTests
             _value = value;
         }
 
-        public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+        protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
         {
             context.SetValue(_key, _value);
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
     }
 
-    private class ContextReaderVisitor : QueryNodeVisitor
+    private class ContextReaderVisitor : QueryVisitor
     {
         private readonly string _key;
         private readonly object _expectedValue;
@@ -489,11 +489,11 @@ public class ChainableVisitorTests
             _expectedValue = expectedValue;
         }
 
-        public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context)
+        protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context)
         {
             var value = context.GetValue<object>(_key);
             context.SetValue("ReaderFoundValue", Equals(value, _expectedValue));
-            return base.VisitAsync(node, context);
+            return base.Visit(node, context);
         }
     }
 

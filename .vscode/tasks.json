@@ -39,9 +39,9 @@
 			"group": "build"
 		},
 		{
-			"label": "benchmark",
+			"label": "benchmark: Run All",
 			"type": "shell",
-			"command": "dotnet run -c Release",
+			"command": "dotnet run -c Release -- --job short --filter *",
 			"options": {
 				"cwd": "${workspaceFolder}/benchmarks/Foundatio.Lucene.Benchmarks"
 			},
@@ -49,7 +49,30 @@
 			"presentation": {
 				"reveal": "always",
 				"panel": "new"
-			}
+			},
+			"group": "test"
+		},
+		{
+			"label": "benchmark: Run with Filter",
+			"type": "shell",
+			"command": "dotnet run -c Release -- --filter ${input:benchmarkFilter}",
+			"options": {
+				"cwd": "${workspaceFolder}/benchmarks/Foundatio.Lucene.Benchmarks"
+			},
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"group": "test"
+		}
+	],
+	"inputs": [
+		{
+			"id": "benchmarkFilter",
+			"type": "promptString",
+			"description": "Benchmark filter (e.g., *Parse*, *Complex*, *RoundTrip*)",
+			"default": "*"
 		}
 	]
 }

@@ -87,7 +87,7 @@ docs                                    # VitePress documentation site
 
 ### Architecture Patterns
 
-- **Visitor-based design**: Query transformations use visitor pattern (`IQueryNodeVisitor`, `ChainableQueryVisitor`)
+- **Visitor-based design**: Query transformations use visitor pattern (`IQueryVisitor`, `ChainableQueryVisitor`)
 - **AST-based parsing**: Queries are parsed into Abstract Syntax Trees with typed nodes
 - **Chainable visitors**: Multiple visitors can be composed via `ChainedQueryVisitor`
 - **Dependency Injection**: Use constructor injection; extend via configuration lambdas

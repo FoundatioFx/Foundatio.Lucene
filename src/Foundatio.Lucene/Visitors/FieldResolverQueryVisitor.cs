@@ -3,40 +3,40 @@ using Foundatio.Lucene.Ast;
 namespace Foundatio.Lucene.Visitors;
 
 /// <summary>
-/// A visitor that resolves field names using a field resolver.
+/// A visitor that resolves field names using a FieldMap.
 /// This allows using field aliases that are mapped to their actual field names.
 /// </summary>
-public class FieldResolverQueryVisitor : QueryNodeVisitor
+public class FieldResolverQueryVisitor : QueryVisitor
 {
-    private readonly QueryFieldResolver? _globalResolver;
+    private readonly FieldMap? _fieldMap;
 
     /// <summary>
-    /// Creates a new FieldResolverQueryVisitor with no global resolver.
-    /// A resolver can be set on the context instead.
+    /// Creates a new FieldResolverQueryVisitor with no field map.
+    /// A FieldMap can be set on the context instead.
     /// </summary>
     public FieldResolverQueryVisitor()
     {
     }
 
     /// <summary>
-    /// Creates a new FieldResolverQueryVisitor with the specified global resolver.
+    /// Creates a new FieldResolverQueryVisitor with the specified field map.
     /// </summary>
-    /// <param name="globalResolver">The resolver to use when resolving field names.</param>
-    public FieldResolverQueryVisitor(QueryFieldResolver? globalResolver)
+    /// <param name="fieldMap">The field map to use when resolving field names.</param>
+    public FieldResolverQueryVisitor(FieldMap? fieldMap)
     {
-        _globalResolver = globalResolver;
+        _fieldMap = fieldMap;
     }
 
     /// <summary>
     /// Visits a FieldQueryNode and resolves the field name.
     /// </summary>
-    public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // First visit children
-        await base.VisitAsync(node, context).ConfigureAwait(false);
+        base.Visit(node, context);
 
         // Then resolve the field
-        await ResolveFieldAsync(node, context).ConfigureAwait(false);
+        ResolveField(node, context);
 
         return node;
     }
@@ -44,224 +44,158 @@ public class FieldResolverQueryVisitor : QueryNodeVisitor
     /// <summary>
     /// Visits an ExistsNode and resolves the field name.
     /// </summary>
-    public override async Task<QueryNode> VisitAsync(ExistsNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
     {
-        await ResolveExistsFieldAsync(node, context).ConfigureAwait(false);
+        ResolveExistsField(node, context);
         return node;
     }
 
     /// <summary>
     /// Visits a MissingNode and resolves the field name.
     /// </summary>
-    public override async Task<QueryNode> VisitAsync(MissingNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
     {
-        await ResolveMissingFieldAsync(node, context).ConfigureAwait(false);
+        ResolveMissingField(node, context);
         return node;
     }
 
     /// <summary>
     /// Visits a RangeNode and resolves the field name.
     /// </summary>
-    public override async Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
-        await ResolveRangeFieldAsync(node, context).ConfigureAwait(false);
+        ResolveRangeField(node, context);
         return node;
     }
 
-    private async Task ResolveFieldAsync(FieldQueryNode node, IQueryVisitorContext context)
+    private FieldMap? GetEffectiveFieldMap(IQueryVisitorContext context)
+    {
+        // Context field map takes precedence
+        var contextFieldMap = context.GetFieldMap();
+        return contextFieldMap ?? _fieldMap;
+    }
+
+    private void ResolveField(FieldQueryNode node, IQueryVisitorContext context)
     {
         if (string.IsNullOrEmpty(node.Field))
             return;
 
-        var contextResolver = context.GetFieldResolver();
-        if (_globalResolver is null && contextResolver is null)
+        var fieldMap = GetEffectiveFieldMap(context);
+        if (fieldMap is null)
             return;
 
-        try
+        var resolvedField = fieldMap.ResolveField(node.Field);
+        if (resolvedField is null)
         {
-            string? resolvedField = null;
-
-            // Try context resolver first
-            if (contextResolver is not null)
-                resolvedField = await contextResolver(node.Field, context).ConfigureAwait(false);
-
-            // Fall back to global resolver
-            if (resolvedField is null && _globalResolver is not null)
-                resolvedField = await _globalResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null)
-            {
-                // Add to unresolved fields list
-                context.GetValidationResult().UnresolvedFields.Add(node.Field);
-                return;
-            }
-
-            if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-            {
-                node.SetOriginalField(context, node.Field);
-                node.Field = resolvedField;
-            }
+            // Add to unresolved fields list
+            context.GetValidationResult().UnresolvedFields.Add(node.Field);
+            return;
         }
-        catch (Exception ex)
+
+        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
         {
-            context.AddValidationError($"Error in field resolver callback when resolving field ({node.Field}): {ex.Message}");
+            node.SetOriginalField(context, node.Field);
+            node.Field = resolvedField;
         }
     }
 
-    private async Task ResolveExistsFieldAsync(ExistsNode node, IQueryVisitorContext context)
+    private void ResolveExistsField(ExistsNode node, IQueryVisitorContext context)
     {
         if (string.IsNullOrEmpty(node.Field))
             return;
 
-        var contextResolver = context.GetFieldResolver();
-        if (_globalResolver is null && contextResolver is null)
+        var fieldMap = GetEffectiveFieldMap(context);
+        if (fieldMap is null)
             return;
 
-        try
+        var resolvedField = fieldMap.ResolveField(node.Field);
+        if (resolvedField is null)
         {
-            string? resolvedField = null;
-
-            if (contextResolver is not null)
-                resolvedField = await contextResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null && _globalResolver is not null)
-                resolvedField = await _globalResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null)
-            {
-                context.GetValidationResult().UnresolvedFields.Add(node.Field);
-                return;
-            }
-
-            if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-            {
-                node.SetOriginalField(context, node.Field);
-                node.Field = resolvedField;
-            }
+            context.GetValidationResult().UnresolvedFields.Add(node.Field);
+            return;
         }
-        catch (Exception ex)
+
+        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
         {
-            context.AddValidationError($"Error in field resolver callback when resolving field ({node.Field}): {ex.Message}");
+            node.SetOriginalField(context, node.Field);
+            node.Field = resolvedField;
         }
     }
 
-    private async Task ResolveMissingFieldAsync(MissingNode node, IQueryVisitorContext context)
+    private void ResolveMissingField(MissingNode node, IQueryVisitorContext context)
     {
         if (string.IsNullOrEmpty(node.Field))
             return;
 
-        var contextResolver = context.GetFieldResolver();
-        if (_globalResolver is null && contextResolver is null)
+        var fieldMap = GetEffectiveFieldMap(context);
+        if (fieldMap is null)
             return;
 
-        try
+        var resolvedField = fieldMap.ResolveField(node.Field);
+        if (resolvedField is null)
         {
-            string? resolvedField = null;
-
-            if (contextResolver is not null)
-                resolvedField = await contextResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null && _globalResolver is not null)
-                resolvedField = await _globalResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null)
-            {
-                context.GetValidationResult().UnresolvedFields.Add(node.Field);
-                return;
-            }
-
-            if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-            {
-                node.SetOriginalField(context, node.Field);
-                node.Field = resolvedField;
-            }
+            context.GetValidationResult().UnresolvedFields.Add(node.Field);
+            return;
         }
-        catch (Exception ex)
+
+        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
         {
-            context.AddValidationError($"Error in field resolver callback when resolving field ({node.Field}): {ex.Message}");
+            node.SetOriginalField(context, node.Field);
+            node.Field = resolvedField;
         }
     }
 
-    private async Task ResolveRangeFieldAsync(RangeNode node, IQueryVisitorContext context)
+    private void ResolveRangeField(RangeNode node, IQueryVisitorContext context)
     {
         if (string.IsNullOrEmpty(node.Field))
             return;
 
-        var contextResolver = context.GetFieldResolver();
-        if (_globalResolver is null && contextResolver is null)
+        var fieldMap = GetEffectiveFieldMap(context);
+        if (fieldMap is null)
             return;
 
-        try
+        var resolvedField = fieldMap.ResolveField(node.Field);
+        if (resolvedField is null)
         {
-            string? resolvedField = null;
-
-            if (contextResolver is not null)
-                resolvedField = await contextResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null && _globalResolver is not null)
-                resolvedField = await _globalResolver(node.Field, context).ConfigureAwait(false);
-
-            if (resolvedField is null)
-            {
-                context.GetValidationResult().UnresolvedFields.Add(node.Field);
-                return;
-            }
-
-            if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-            {
-                node.SetOriginalField(context, node.Field);
-                node.Field = resolvedField;
-            }
+            context.GetValidationResult().UnresolvedFields.Add(node.Field);
+            return;
         }
-        catch (Exception ex)
+
+        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
         {
-            context.AddValidationError($"Error in field resolver callback when resolving field ({node.Field}): {ex.Message}");
+            node.SetOriginalField(context, node.Field);
+            node.Field = resolvedField;
         }
     }
 
-    #region Static RunAsync Methods
+    #region Static Run Methods
 
     /// <summary>
-    /// Runs the field resolver visitor on a query document asynchronously using the specified resolver.
+    /// Runs the field resolver visitor on a query document using the specified field map.
     /// </summary>
     /// <param name="document">The query document to process.</param>
-    /// <param name="resolver">The field resolver to use.</param>
+    /// <param name="fieldMap">The field map to use for resolution.</param>
     /// <param name="context">Optional context. If null, a new context is created.</param>
     /// <returns>The processed query document.</returns>
-    public static Task<QueryDocument> RunAsync(QueryDocument document, QueryFieldResolver resolver, IQueryVisitorContext? context = null)
+    public static QueryDocument Run(QueryDocument document, FieldMap fieldMap, IQueryVisitorContext? context = null)
     {
         context ??= new QueryVisitorContext();
-        context.SetFieldResolver(resolver);
-        return new FieldResolverQueryVisitor().RunAsync(document, context);
+        context.SetFieldMap(fieldMap);
+        return new FieldResolverQueryVisitor().Run(document, context);
     }
 
     /// <summary>
-    /// Runs the field resolver visitor on a query document asynchronously using a synchronous resolver.
-    /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="resolver">The synchronous field resolver to use.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document.</returns>
-    public static Task<QueryDocument> RunAsync(QueryDocument document, Func<string, string?> resolver, IQueryVisitorContext? context = null)
-    {
-        context ??= new QueryVisitorContext();
-        context.SetFieldResolver(resolver);
-        return new FieldResolverQueryVisitor().RunAsync(document, context);
-    }
-
-    /// <summary>
-    /// Runs the field resolver visitor on a query document asynchronously using a field map.
+    /// Runs the field resolver visitor on a query document using a dictionary as field map.
     /// Uses hierarchical field resolution for nested field paths.
     /// </summary>
     /// <param name="document">The query document to process.</param>
-    /// <param name="map">The field map to use for resolution.</param>
+    /// <param name="map">The field map dictionary to use for resolution.</param>
     /// <param name="context">Optional context. If null, a new context is created.</param>
     /// <returns>The processed query document.</returns>
-    public static Task<QueryDocument> RunAsync(QueryDocument document, IDictionary<string, string> map, IQueryVisitorContext? context = null)
+    public static QueryDocument Run(QueryDocument document, IDictionary<string, string> map, IQueryVisitorContext? context = null)
     {
-        context ??= new QueryVisitorContext();
-        context.SetFieldResolver(map.ToHierarchicalFieldResolver());
-        return new FieldResolverQueryVisitor().RunAsync(document, context);
+        var fieldMap = new FieldMap(map);
+        return Run(document, fieldMap, context);
     }
 
     #endregion

@@ -16,7 +16,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-01||+1M/d");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -36,7 +36,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-01+1M/d");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -55,7 +55,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-15||+10d");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -72,7 +72,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-15||-5d");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -90,7 +90,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-01||+1M+5d/d");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -108,7 +108,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-06-15||/y");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -127,7 +127,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-06-15||/M");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -147,7 +147,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-01T10:30:00Z||+2h");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -166,7 +166,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:[2024-01-01||/M TO 2024-01-01||+1M/M]");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -185,7 +185,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-06-15||/w");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -203,7 +203,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-06-15-7d");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -221,7 +221,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:2024-01-15/M");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -246,7 +246,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse($"timestamp:{expression}");
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         var doc = evaluated as QueryDocument;
         Assert.NotNull(doc?.Query);
@@ -267,7 +267,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var fieldNode = evaluated as QueryDocument;
@@ -288,7 +288,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var fieldNode = evaluated as QueryDocument;
@@ -308,7 +308,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var fieldNode = evaluated as QueryDocument;
@@ -329,7 +329,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var fieldNode = evaluated as QueryDocument;
@@ -350,7 +350,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var fieldNode = evaluated as QueryDocument;
@@ -371,7 +371,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -392,7 +392,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -412,7 +412,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -436,7 +436,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -456,7 +456,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -476,7 +476,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert - Just verify it doesn't throw and produces a result
         Assert.NotNull(evaluated);
@@ -498,7 +498,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(pacificZone);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -519,7 +519,7 @@ public class DateMathEvaluatorVisitorTests
         var visitor = new DateMathEvaluatorVisitor(_fixedTime);
 
         // Act
-        var evaluated = await visitor.EvaluateAsync(result.Document!);
+        var evaluated = visitor.Evaluate(result.Document!);
 
         // Assert
         var doc = evaluated as QueryDocument;
@@ -539,7 +539,7 @@ public class DateMathEvaluatorVisitorTests
         var result = LuceneQuery.Parse("timestamp:now-1d");
 
         // Act
-        var evaluated = await DateMathEvaluatorVisitor.EvaluateAsync(result.Document!, null, _fixedTime);
+        var evaluated = DateMathEvaluatorVisitor.Evaluate(result.Document!, null, _fixedTime);
 
         // Assert
         var doc = evaluated as QueryDocument;

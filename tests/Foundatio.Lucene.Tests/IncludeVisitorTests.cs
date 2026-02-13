@@ -22,11 +22,6 @@ public class IncludeVisitorTests
         ["term-only"] = "active"
     };
 
-    private Task<string?> TestResolver(string name)
-    {
-        return Task.FromResult(_includes.TryGetValue(name, out var value) ? value : null);
-    }
-
     private static string ToQueryString(QueryDocument document)
     {
         return new QueryStringBuilder().Visit(document);
@@ -35,7 +30,7 @@ public class IncludeVisitorTests
     #region Basic Include Expansion
 
     [Fact]
-    public async Task ExpandIncludesAsync_SimpleInclude_ReturnsExpandedQuery()
+    public void ExpandIncludes_SimpleInclude_ReturnsExpandedQuery()
     {
         // Arrange
         var query = "@include:simple";
@@ -43,7 +38,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -51,7 +46,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_ComplexInclude_ReturnsExpandedQuery()
+    public void ExpandIncludes_ComplexInclude_ReturnsExpandedQuery()
     {
         // Arrange
         var query = "@include:complex";
@@ -59,7 +54,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -67,7 +62,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_IncludeWithOtherTerms_ReturnsExpandedQuery()
+    public void ExpandIncludes_IncludeWithOtherTerms_ReturnsExpandedQuery()
     {
         // Arrange
         var query = "@include:simple AND name:test";
@@ -75,7 +70,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -83,7 +78,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_MultipleIncludes_ReturnsExpandedQuery()
+    public void ExpandIncludes_MultipleIncludes_ReturnsExpandedQuery()
     {
         // Arrange
         var query = "@include:simple OR @include:complex";
@@ -91,7 +86,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -99,7 +94,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_NoIncludes_ReturnsOriginalQuery()
+    public void ExpandIncludes_NoIncludes_ReturnsOriginalQuery()
     {
         // Arrange
         var query = "status:active AND name:test";
@@ -107,7 +102,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -119,7 +114,7 @@ public class IncludeVisitorTests
     #region Nested Includes
 
     [Fact]
-    public async Task ExpandIncludesAsync_NestedInclude_ReturnsFullyExpandedQuery()
+    public void ExpandIncludes_NestedInclude_ReturnsFullyExpandedQuery()
     {
         // Arrange
         var query = "@include:nested";
@@ -127,7 +122,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -135,7 +130,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_DeeplyNestedInclude_ReturnsFullyExpandedQuery()
+    public void ExpandIncludes_DeeplyNestedInclude_ReturnsFullyExpandedQuery()
     {
         // Arrange
         var query = "@include:nested2";
@@ -143,7 +138,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -155,16 +150,18 @@ public class IncludeVisitorTests
     #region Recursive Include Detection
 
     [Fact]
-    public async Task ExpandIncludesAsync_SelfRecursiveInclude_DetectsRecursion()
+    public void ExpandIncludes_SelfRecursiveInclude_DetectsRecursion()
     {
         // Arrange
         var query = "@include:self";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -173,16 +170,18 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_MutuallyRecursiveIncludes_DetectsRecursion()
+    public void ExpandIncludes_MutuallyRecursiveIncludes_DetectsRecursion()
     {
         // Arrange
         var query = "@include:recursive1";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -195,16 +194,18 @@ public class IncludeVisitorTests
     #region Unresolved Includes
 
     [Fact]
-    public async Task ExpandIncludesAsync_UnresolvedInclude_TracksInResult()
+    public void ExpandIncludes_UnresolvedInclude_TracksInResult()
     {
         // Arrange
         var query = "@include:nonexistent";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -212,16 +213,18 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_EmptyInclude_TracksAsUnresolved()
+    public void ExpandIncludes_EmptyInclude_TracksAsUnresolved()
     {
         // Arrange
         var query = "@include:empty";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -229,16 +232,18 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_WhitespaceInclude_TracksAsUnresolved()
+    public void ExpandIncludes_WhitespaceInclude_TracksAsUnresolved()
     {
         // Arrange
         var query = "@include:whitespace";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -250,16 +255,18 @@ public class IncludeVisitorTests
     #region Referenced Includes Tracking
 
     [Fact]
-    public async Task ExpandIncludesAsync_TracksReferencedIncludes()
+    public void ExpandIncludes_TracksReferencedIncludes()
     {
         // Arrange
         var query = "@include:simple AND @include:complex";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -268,16 +275,18 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_NestedInclude_TracksAllIncludes()
+    public void ExpandIncludes_NestedInclude_TracksAllIncludes()
     {
         // Arrange
         var query = "@include:nested";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
         var context = new QueryVisitorContext();
+        context.SetIncludes(_includes);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -287,60 +296,10 @@ public class IncludeVisitorTests
 
     #endregion
 
-    #region Include Resolver Errors
+    #region No Includes Configured
 
     [Fact]
-    public async Task ExpandIncludesAsync_ResolverThrows_AddsValidationError()
-    {
-        // Arrange
-        var query = "@include:error";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-
-        Task<string?> errorResolver(string name)
-        {
-            throw new InvalidOperationException("Test error");
-        }
-
-        // Act
-        await parseResult.Document.ExpandIncludesAsync(errorResolver, context);
-
-        // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.False(validationResult.IsValid);
-        Assert.Contains(validationResult.ValidationErrors, e => e.Message.Contains("Error"));
-    }
-
-    [Fact]
-    public async Task ExpandIncludesAsync_InvalidIncludeQuery_AddsValidationError()
-    {
-        // Arrange
-        var query = "@include:badquery";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-
-        Task<string?> badResolver(string name)
-        {
-            return Task.FromResult<string?>("(((("); // Unclosed parentheses
-        }
-
-        // Act
-        await parseResult.Document.ExpandIncludesAsync(badResolver, context);
-
-        // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.False(validationResult.IsValid);
-        Assert.Contains(validationResult.ValidationErrors, e => e.Message.Contains("Invalid"));
-    }
-
-    #endregion
-
-    #region No Resolver
-
-    [Fact]
-    public async Task ExpandIncludesAsync_NoResolver_TracksAllAsUnresolved()
+    public void ExpandIncludes_NoIncludesConfigured_TracksAllAsUnresolved()
     {
         // Arrange
         var query = "@include:simple";
@@ -350,7 +309,7 @@ public class IncludeVisitorTests
 
         // Act
         var visitor = new IncludeVisitor();
-        await visitor.RunAsync(parseResult.Document, context);
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var validationResult = context.GetValidationResult();
@@ -362,7 +321,7 @@ public class IncludeVisitorTests
     #region Skip Include Function
 
     [Fact]
-    public async Task ExpandIncludesAsync_WithSkipFunction_SkipsSpecifiedIncludes()
+    public void ExpandIncludes_WithSkipFunction_SkipsSpecifiedIncludes()
     {
         // Arrange
         var query = "@include:simple AND @include:complex";
@@ -376,11 +335,12 @@ public class IncludeVisitorTests
             return name == "simple";
         }
 
-        context.SetIncludeResolver(TestResolver);
+        context.SetIncludes(_includes);
         context.SetShouldSkipIncludeFunc(shouldSkip);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var output = ToQueryString(parseResult.Document);
@@ -389,7 +349,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_SkipFunctionFromContext_SkipsSpecifiedIncludes()
+    public void ExpandIncludes_SkipFunctionFromContext_SkipsSpecifiedIncludes()
     {
         // Arrange
         var query = "@include:simple";
@@ -399,10 +359,12 @@ public class IncludeVisitorTests
 
         bool shouldSkip(FieldQueryNode node, IQueryVisitorContext ctx) => true;
 
+        context.SetIncludes(_includes);
         context.SetShouldSkipIncludeFunc(shouldSkip);
 
         // Act
-        await parseResult.Document.ExpandIncludesAsync(TestResolver, context);
+        var visitor = new IncludeVisitor();
+        visitor.Run(parseResult.Document, context);
 
         // Assert
         var output = ToQueryString(parseResult.Document);
@@ -411,32 +373,10 @@ public class IncludeVisitorTests
 
     #endregion
 
-    #region Context-Based Resolver
-
-    [Fact]
-    public async Task ExpandIncludesAsync_ResolverFromContext_Works()
-    {
-        // Arrange
-        var query = "@include:simple";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludeResolver(TestResolver);
-
-        // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(context);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active)", output);
-    }
-
-    #endregion
-
     #region Include with Boost and Other Modifiers
 
     [Fact]
-    public async Task ExpandIncludesAsync_IncludeWithBoost_ReturnsExpandedQuery()
+    public void ExpandIncludes_IncludeWithBoost_ReturnsExpandedQuery()
     {
         // Arrange
         var query = "@include:with-boost";
@@ -444,7 +384,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -452,7 +392,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_IncludeWithGroup_ReturnsExpandedQuery()
+    public void ExpandIncludes_IncludeWithGroup_ReturnsExpandedQuery()
     {
         // Arrange
         var query = "@include:with-group";
@@ -460,7 +400,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -472,7 +412,7 @@ public class IncludeVisitorTests
     #region Include with Phrase Value
 
     [Fact]
-    public async Task ExpandIncludesAsync_IncludeWithPhraseValue_Works()
+    public void ExpandIncludes_IncludeWithPhraseValue_Works()
     {
         // Arrange
         var includes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -480,15 +420,12 @@ public class IncludeVisitorTests
             ["my include"] = "status:active"
         };
 
-        Task<string?> resolver(string name) =>
-            Task.FromResult(includes.TryGetValue(name, out var value) ? value : null);
-
         var query = "@include:\"my include\"";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(resolver);
+        var result = parseResult.Document.ExpandIncludes(includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -500,7 +437,7 @@ public class IncludeVisitorTests
     #region Integration with ChainedVisitor
 
     [Fact]
-    public async Task IncludeVisitor_WithChainedVisitor_WorksCorrectly()
+    public void IncludeVisitor_WithChainedVisitor_WorksCorrectly()
     {
         // Arrange
         var query = "@include:simple AND name:Test";
@@ -508,14 +445,14 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         var context = new QueryVisitorContext();
-        context.SetIncludeResolver(TestResolver);
+        context.SetIncludes(_includes);
 
         var chainedVisitor = new ChainedQueryVisitor()
             .AddVisitor(new IncludeVisitor(), 0)
             .AddVisitor(new LowercaseFieldVisitor(), 1);
 
         // Act
-        var result = await chainedVisitor.RunAsync(parseResult.Document, context);
+        var result = chainedVisitor.Run(parseResult.Document, context);
 
         // Assert
         var output = ToQueryString(result);
@@ -523,11 +460,11 @@ public class IncludeVisitorTests
     }
 
     // Helper visitor for chained test
-    private class LowercaseFieldVisitor : QueryNodeVisitor
+    private class LowercaseFieldVisitor : QueryVisitor
     {
-        public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
         {
-            await base.VisitAsync(node, context).ConfigureAwait(false);
+            base.Visit(node, context);
 
             if (node.Query is TermNode term && term.Term is not null)
                 term.Term = term.Term.ToLowerInvariant();
@@ -541,7 +478,7 @@ public class IncludeVisitorTests
     #region Edge Cases
 
     [Fact]
-    public async Task ExpandIncludesAsync_IncludeWithTermOnlyValue_Works()
+    public void ExpandIncludes_IncludeWithTermOnlyValue_Works()
     {
         // Arrange
         var query = "@include:term-only";
@@ -549,7 +486,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -557,7 +494,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_CaseInsensitiveIncludeName_Works()
+    public void ExpandIncludes_CaseInsensitiveIncludeName_Works()
     {
         // Arrange
         var query = "@include:SIMPLE";
@@ -565,7 +502,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -573,15 +510,15 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_CaseInsensitiveFieldName_Works()
+    public void ExpandIncludes_CaseInsensitiveFieldName_Works()
     {
-        // Arrange  
+        // Arrange
         var query = "@INCLUDE:simple";
         var parseResult = LuceneQuery.Parse(query);
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -589,7 +526,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_InGroup_Works()
+    public void ExpandIncludes_InGroup_Works()
     {
         // Arrange
         var query = "(status:pending OR @include:simple)";
@@ -597,7 +534,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
@@ -605,7 +542,7 @@ public class IncludeVisitorTests
     }
 
     [Fact]
-    public async Task ExpandIncludesAsync_WithNot_Works()
+    public void ExpandIncludes_WithNot_Works()
     {
         // Arrange
         var query = "NOT @include:simple";
@@ -613,7 +550,7 @@ public class IncludeVisitorTests
         Assert.True(parseResult.IsSuccess);
 
         // Act
-        var result = await parseResult.Document.ExpandIncludesAsync(TestResolver);
+        var result = parseResult.Document.ExpandIncludes(_includes);
 
         // Assert
         var output = ToQueryString(result);
