@@ -421,11 +421,12 @@ public class DateMathEvaluatorVisitorTests
         Assert.NotNull(field);
         var range = field.Query as RangeNode;
         Assert.NotNull(range);
-        // For < with /d rounding and isUpperLimit=true, should round to end of day
+        // For < (exclusive upper) with /d rounding, should floor-round to start of day
+        // Meaning "less than start of day" — correct Elasticsearch lt behavior
         var value = range.Min ?? range.Max;
         Assert.NotNull(value);
         Assert.Contains("2024-06-15", value);
-        Assert.Contains("23:59:59", value); // End of day due to upper limit rounding
+        Assert.Contains("00:00:00", value); // Start of day (floor for exclusive upper)
     }
 
     [Fact]
@@ -550,4 +551,305 @@ public class DateMathEvaluatorVisitorTests
         Assert.NotNull(term);
         Assert.Contains("2024-06-14", term.Term);
     }
+
+    #region Inclusive/Exclusive Range with Date Math Rounding Tests
+
+    [Fact]
+    public async Task InclusiveRange_DateMathRounding_RoundsMinDownAndMaxUp()
+    {
+        // [now/d TO now/d] — inclusive on both sides
+        // Min (inclusive): rounds to start of day (isUpperLimit=false)
+        // Max (inclusive): rounds to end of day (isUpperLimit=true)
+        var result = LuceneQuery.Parse("timestamp:[now/d TO now/d]");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.True(range.MaxInclusive);
+        Assert.Contains("2024-06-15", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of day
+        Assert.Contains("2024-06-15", range.Max);
+        Assert.Contains("23:59:59", range.Max); // End of day
+    }
+
+    [Fact]
+    public async Task InclusiveExclusiveRange_DateMathRounding_RoundsMaxDown()
+    {
+        // [now/d TO now/d} — inclusive min, exclusive max
+        // Min (inclusive): rounds to start of day (isUpperLimit=false)
+        // Max (exclusive): rounds to start of day (isUpperLimit=false) so < start_of_day
+        var result = LuceneQuery.Parse("timestamp:[now/d TO now/d}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        Assert.Contains("2024-06-15", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of day
+        Assert.Contains("2024-06-15", range.Max);
+        Assert.Contains("00:00:00", range.Max); // Start of day (floor for exclusive upper)
+    }
+
+    [Fact]
+    public async Task ExclusiveInclusiveRange_DateMathRounding_RoundsMinUp()
+    {
+        // {now/d TO now/d] — exclusive min, inclusive max
+        // Min (exclusive): rounds to end of day (isUpperLimit=true) so > end_of_day
+        // Max (inclusive): rounds to end of day (isUpperLimit=true)
+        var result = LuceneQuery.Parse("timestamp:{now/d TO now/d]");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.False(range.MinInclusive);
+        Assert.True(range.MaxInclusive);
+        Assert.Contains("2024-06-15", range.Min);
+        Assert.Contains("23:59:59", range.Min); // End of day (ceiling for exclusive lower)
+        Assert.Contains("2024-06-15", range.Max);
+        Assert.Contains("23:59:59", range.Max); // End of day
+    }
+
+    [Fact]
+    public async Task ExclusiveRange_DateMathRounding_RoundsMinUpAndMaxDown()
+    {
+        // {now/d TO now/d} — exclusive on both sides
+        // Min (exclusive): rounds to end of day (isUpperLimit=true)
+        // Max (exclusive): rounds to start of day (isUpperLimit=false)
+        var result = LuceneQuery.Parse("timestamp:{now/d TO now/d}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.False(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        Assert.Contains("2024-06-15", range.Min);
+        Assert.Contains("23:59:59", range.Min); // End of day (ceiling for exclusive lower)
+        Assert.Contains("2024-06-15", range.Max);
+        Assert.Contains("00:00:00", range.Max); // Start of day (floor for exclusive upper)
+    }
+
+    [Fact]
+    public async Task InclusiveExclusiveRange_MonthRounding_RoundsCorrectly()
+    {
+        // [now/M TO now/M} — inclusive min, exclusive max with month rounding
+        // Min (inclusive): rounds to start of month (isUpperLimit=false)
+        // Max (exclusive): rounds to start of month (isUpperLimit=false)
+        var result = LuceneQuery.Parse("timestamp:[now/M TO now/M}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        Assert.Contains("2024-06-01", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of month
+        Assert.Contains("2024-06-01", range.Max);
+        Assert.Contains("00:00:00", range.Max); // Start of month (floor for exclusive upper)
+    }
+
+    [Fact]
+    public async Task InclusiveRange_MonthRounding_RoundsMinToStartMaxToEnd()
+    {
+        // [now/M TO now/M] — inclusive on both sides with month rounding
+        // Min (inclusive): rounds to start of month
+        // Max (inclusive): rounds to end of month
+        var result = LuceneQuery.Parse("timestamp:[now/M TO now/M]");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.True(range.MaxInclusive);
+        Assert.Contains("2024-06-01", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of month
+        Assert.Contains("2024-06-30", range.Max); // End of June
+        Assert.Contains("23:59:59", range.Max); // End of day
+    }
+
+    [Fact]
+    public async Task InclusiveExclusiveRange_DifferentDates_RoundsCorrectly()
+    {
+        // [now-7d/d TO now/d} — common pattern: "last 7 full days"
+        // Min (inclusive): now-7d rounded to start of day
+        // Max (exclusive): now rounded to start of day
+        var result = LuceneQuery.Parse("timestamp:[now-7d/d TO now/d}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        Assert.Contains("2024-06-08", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of day 7 days ago
+        Assert.Contains("2024-06-15", range.Max);
+        Assert.Contains("00:00:00", range.Max); // Start of today (exclusive upper → floor)
+    }
+
+    [Fact]
+    public async Task ExclusiveInclusiveRange_DifferentDates_RoundsCorrectly()
+    {
+        // {now-7d/d TO now/d] — exclusive lower, inclusive upper
+        // Min (exclusive): now-7d rounded to end of day
+        // Max (inclusive): now rounded to end of day
+        var result = LuceneQuery.Parse("timestamp:{now-7d/d TO now/d]");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.False(range.MinInclusive);
+        Assert.True(range.MaxInclusive);
+        Assert.Contains("2024-06-08", range.Min);
+        Assert.Contains("23:59:59", range.Min); // End of day 7 days ago (ceiling for exclusive lower)
+        Assert.Contains("2024-06-15", range.Max);
+        Assert.Contains("23:59:59", range.Max); // End of today
+    }
+
+    [Fact]
+    public async Task InclusiveExclusiveRange_HourRounding_RoundsCorrectly()
+    {
+        // [now/h TO now/h} — inclusive min, exclusive max with hour rounding
+        // Min (inclusive): rounds to start of hour (12:00:00)
+        // Max (exclusive): rounds to start of hour (12:00:00)
+        var result = LuceneQuery.Parse("timestamp:[now/h TO now/h}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        // _fixedTime is 12:30, so /h floor = 12:00:00, /h ceiling = 12:59:59
+        Assert.Contains("12:00:00", range.Min); // Start of hour
+        Assert.Contains("12:00:00", range.Max); // Start of hour (floor for exclusive upper)
+    }
+
+    [Fact]
+    public async Task ExclusiveRange_HourRounding_RoundsMinUpMaxDown()
+    {
+        // {now/h TO now/h} — exclusive on both sides with hour rounding
+        // Min (exclusive): rounds to end of hour (12:59:59)
+        // Max (exclusive): rounds to start of hour (12:00:00)
+        var result = LuceneQuery.Parse("timestamp:{now/h TO now/h}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.False(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        Assert.Contains("12:59:59", range.Min); // End of hour (ceiling for exclusive lower)
+        Assert.Contains("12:00:00", range.Max); // Start of hour (floor for exclusive upper)
+    }
+
+    [Fact]
+    public async Task InclusiveExclusiveRange_ExplicitDate_RoundsCorrectly()
+    {
+        // [2024-01-01||/M TO 2024-03-01||/M} — explicit dates with month rounding
+        // Min (inclusive): 2024-01-01 rounded to start of month → 2024-01-01T00:00:00
+        // Max (exclusive): 2024-03-01 rounded to start of month → 2024-03-01T00:00:00
+        var result = LuceneQuery.Parse("timestamp:[2024-01-01||/M TO 2024-03-01||/M}");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.False(range.MaxInclusive);
+        Assert.Contains("2024-01-01", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of January
+        Assert.Contains("2024-03-01", range.Max);
+        Assert.Contains("00:00:00", range.Max); // Start of March (floor for exclusive upper)
+    }
+
+    [Fact]
+    public async Task InclusiveRange_ExplicitDate_RoundsMinDownMaxUp()
+    {
+        // [2024-01-01||/M TO 2024-03-01||/M] — inclusive on both sides, explicit dates
+        // Min (inclusive): start of January
+        // Max (inclusive): end of March
+        var result = LuceneQuery.Parse("timestamp:[2024-01-01||/M TO 2024-03-01||/M]");
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var evaluated = visitor.Evaluate(result.Document!);
+
+        var doc = evaluated as QueryDocument;
+        Assert.NotNull(doc?.Query);
+        var field = doc.Query as FieldQueryNode;
+        Assert.NotNull(field);
+        var range = field.Query as RangeNode;
+        Assert.NotNull(range);
+        Assert.True(range.MinInclusive);
+        Assert.True(range.MaxInclusive);
+        Assert.Contains("2024-01-01", range.Min);
+        Assert.Contains("00:00:00", range.Min); // Start of January
+        Assert.Contains("2024-03-31", range.Max); // End of March
+        Assert.Contains("23:59:59", range.Max); // End of day
+    }
+
+    #endregion
 }

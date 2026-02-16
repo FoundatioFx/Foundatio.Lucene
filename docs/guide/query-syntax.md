@@ -258,6 +258,81 @@ now/M                    // Round to start of current month
 now-1d/d                 // Start of yesterday
 ```
 
+### Rounding with Inclusive/Exclusive Ranges
+
+Rounding behavior changes depending on whether a range boundary is inclusive or exclusive. This follows Elasticsearch's conventions:
+
+**Inclusive boundaries** round to maximize the matched range:
+
+- Inclusive min (`[`): rounds **down** (start of period) — e.g., `[now/d` → start of today
+- Inclusive max (`]`): rounds **up** (end of period) — e.g., `now/d]` → end of today
+
+**Exclusive boundaries** round to minimize the matched range:
+
+- Exclusive min (`{`): rounds **up** (end of period) — e.g., `{now/d` → end of today, then `>`
+- Exclusive max (`}`): rounds **down** (start of period) — e.g., `now/d}` → start of today, then `<`
+
+This applies to all rounding units (`/d`, `/M`, `/h`, `/y`, etc.) and to short-form operators:
+
+| Query | Rounding | Effective |
+| ----- | -------- | --------- |
+| `[now/d TO now/d]` | min→start, max→end | Entire current day |
+| `[now/d TO now/d}` | min→start, max→start | Empty (start ≤ x < start) |
+| `{now/d TO now/d]` | min→end, max→end | Empty (end < x ≤ end) |
+| `>=now/d` | start of day | From start of today onward |
+| `>now/d` | end of day | After today |
+| `<now/d` | start of day | Before today |
+| `<=now/d` | end of day | Through end of today |
+| `[now/M TO now/M]` | min→start of month, max→end of month | Entire current month |
+| `>=now/h` | start of hour | From start of current hour |
+
+::: tip
+The same `/unit` rounding expression produces different concrete dates depending on whether the boundary is inclusive or exclusive. This matches Elasticsearch's native behavior for `gte`/`gt`/`lte`/`lt` with date math.
+:::
+
+### Common Date Range Patterns
+
+```
+// This month (start of current month through end of current month)
+created:[now/M TO now/M]
+
+// Last month
+created:[now-1M/M TO now-1M/M]
+
+// Year to date (start of current year through now)
+created:[now/y TO now]
+
+// Last year
+created:[now-1y/y TO now-1y/y]
+
+// Today
+created:[now/d TO now/d]
+
+// Yesterday
+created:[now-1d/d TO now-1d/d]
+
+// Last 7 full days (not including today)
+created:[now-7d/d TO now-1d/d]
+
+// Last 30 days (rolling, including partial today)
+created:[now-30d TO now]
+
+// This week (start of current week through end of current week)
+created:[now/w TO now/w]
+
+// Last hour
+created:[now-1h/h TO now-1h/h]
+
+// Last 15 minutes (rolling)
+created:[now-15m TO now]
+
+// Last 4 hours (rolling)
+created:[now-4h TO now]
+
+// Last 4 full hours (rounded to hour boundaries)
+created:[now-4h/h TO now/h]
+```
+
 ## Includes
 
 Reference saved or named queries:

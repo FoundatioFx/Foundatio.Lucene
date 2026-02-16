@@ -69,39 +69,27 @@ public class DateMathEvaluatorVisitor : QueryVisitor
     /// </summary>
     protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
-        // Evaluate min value (not an upper limit, use start of period for rounding)
+        // Evaluate min value
+        // Inclusive min ([): round down (start of period) — ">= start"
+        // Exclusive min ({): round up (end of period) — "> end"
         if (!string.IsNullOrEmpty(node.Min) && node.Min != "*")
         {
-            if (TryEvaluateDateMath(node.Min, isUpperLimit: false, out var evaluatedMin))
+            bool isUpperLimit = !node.MinInclusive;
+            if (TryEvaluateDateMath(node.Min, isUpperLimit, out var evaluatedMin))
             {
                 node.Min = evaluatedMin;
             }
         }
 
-        // Evaluate max value (upper limit, use end of period for rounding)
+        // Evaluate max value
+        // Inclusive max (]): round up (end of period) — "<= end"
+        // Exclusive max (}): round down (start of period) — "< start"
         if (!string.IsNullOrEmpty(node.Max) && node.Max != "*")
         {
-            if (TryEvaluateDateMath(node.Max, isUpperLimit: true, out var evaluatedMax))
+            bool isUpperLimit = node.MaxInclusive;
+            if (TryEvaluateDateMath(node.Max, isUpperLimit, out var evaluatedMax))
             {
                 node.Max = evaluatedMax;
-            }
-        }
-
-        // Handle short-form operators (>, >=, <, <=)
-        // For < and <= operators, the value acts as an upper limit
-        if (node.Operator.HasValue)
-        {
-            var value = node.Min ?? node.Max;
-            if (!string.IsNullOrEmpty(value) && value != "*")
-            {
-                bool isUpperLimit = node.Operator.Value is RangeOperator.LessThan or RangeOperator.LessThanOrEqual;
-                if (TryEvaluateDateMath(value, isUpperLimit, out var evaluatedValue))
-                {
-                    if (node.Min != null)
-                        node.Min = evaluatedValue;
-                    else
-                        node.Max = evaluatedValue;
-                }
             }
         }
 
