@@ -333,6 +333,7 @@ public class LuceneLexer
         int startColumn = _column;
 
         bool hasWildcard = false;
+        bool hasEscapes = false;
         bool escaped = false;
 
         while (_position < _sourceMemory.Length)
@@ -349,6 +350,7 @@ public class LuceneLexer
 
             if (c == '\\')
             {
+                hasEscapes = true;
                 escaped = true;
                 _position++;
                 _column++;
@@ -380,7 +382,18 @@ public class LuceneLexer
 
         int length = _position - start;
         var valueSpan = Source.Slice(start, length);
-        var valueMemory = Slice(start, length);
+
+        ReadOnlyMemory<char> valueMemory;
+        if (hasEscapes)
+        {
+            // Must process escapes - allocates a new string
+            valueMemory = ProcessEscapes(valueSpan).AsMemory();
+        }
+        else
+        {
+            // Zero-copy slice
+            valueMemory = Slice(start, length);
+        }
 
         TokenType type;
 

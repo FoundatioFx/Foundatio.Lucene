@@ -193,7 +193,7 @@ public class QueryStringBuilder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AppendTerm(TermNode node)
     {
-        _builder.Append(node.Term);
+        AppendEscapedTermValue(node.Term);
 
         if (node.IsPrefix)
         {
@@ -246,25 +246,26 @@ public class QueryStringBuilder
             {
                 case RangeOperator.GreaterThan:
                     _builder.Append('>');
-                    _builder.Append(node.Min ?? "*");
+                    AppendEscapedTermValue(node.Min ?? "*");
                     break;
                 case RangeOperator.GreaterThanOrEqual:
                     _builder.Append(">=");
-                    _builder.Append(node.Min ?? "*");
+                    AppendEscapedTermValue(node.Min ?? "*");
                     break;
                 case RangeOperator.LessThan:
                     _builder.Append('<');
-                    _builder.Append(node.Max ?? "*");
+                    AppendEscapedTermValue(node.Max ?? "*");
                     break;
                 case RangeOperator.LessThanOrEqual:
                     _builder.Append("<=");
-                    _builder.Append(node.Max ?? "*");
+                    AppendEscapedTermValue(node.Max ?? "*");
                     break;
             }
         }
         else
         {
-            // Standard range syntax
+            // Standard range syntax — values inside brackets don't need escaping
+            // since they're delimited by [ ] { } and TO keyword
             _builder.Append(node.MinInclusive ? '[' : '{');
             _builder.Append(node.Min ?? "*");
             _builder.Append(" TO ");
@@ -343,5 +344,34 @@ public class QueryStringBuilder
         {
             _builder.Append(value.ToString("0.##", CultureInfo.InvariantCulture));
         }
+    }
+
+    /// <summary>
+    /// Appends a term value, escaping any characters that are special in Lucene query syntax.
+    /// This ensures round-trip fidelity when the lexer has already unescaped the value.
+    /// </summary>
+    private void AppendEscapedTermValue(string? value)
+    {
+        if (value is null)
+            return;
+
+        foreach (char c in value)
+        {
+            if (IsSpecialTermChar(c))
+                _builder.Append('\\');
+
+            _builder.Append(c);
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the character requires escaping inside an unquoted term value.
+    /// These are characters that would terminate or alter term tokenization.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsSpecialTermChar(char c)
+    {
+        return c is ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' or '>' or '<' or '=' or '\\'
+            || char.IsWhiteSpace(c);
     }
 }

@@ -852,4 +852,104 @@ public class DateMathEvaluatorVisitorTests
     }
 
     #endregion
+
+    #region ES-Compatible Escaped Date Math Tests
+
+    [Fact]
+    public async Task EscapedSlash_ShortFormGreaterThan_ParsesSameAsUnescaped()
+    {
+        // ES query_string requires \/ but our parser should handle both
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var unescaped = LuceneQuery.Parse(@"created:>now/d");
+        var escaped = LuceneQuery.Parse(@"created:>now\/d");
+        var unescapedDoc = visitor.Evaluate(unescaped.Document!) as QueryDocument;
+        var escapedDoc = visitor.Evaluate(escaped.Document!) as QueryDocument;
+
+        var unescapedRange = (unescapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+        var escapedRange = (escapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+
+        Assert.NotNull(unescapedRange);
+        Assert.NotNull(escapedRange);
+        Assert.Equal(unescapedRange.Min, escapedRange.Min);
+        Assert.Equal(unescapedRange.Max, escapedRange.Max);
+        Assert.Equal(unescapedRange.MinInclusive, escapedRange.MinInclusive);
+        Assert.Equal(unescapedRange.MaxInclusive, escapedRange.MaxInclusive);
+    }
+
+    [Fact]
+    public async Task EscapedSlash_ShortFormLessThanOrEqual_ParsesSameAsUnescaped()
+    {
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var unescaped = LuceneQuery.Parse(@"created:<=now/d");
+        var escaped = LuceneQuery.Parse(@"created:<=now\/d");
+        var unescapedDoc = visitor.Evaluate(unescaped.Document!) as QueryDocument;
+        var escapedDoc = visitor.Evaluate(escaped.Document!) as QueryDocument;
+
+        var unescapedRange = (unescapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+        var escapedRange = (escapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+
+        Assert.NotNull(unescapedRange);
+        Assert.NotNull(escapedRange);
+        Assert.Equal(unescapedRange.Min, escapedRange.Min);
+        Assert.Equal(unescapedRange.Max, escapedRange.Max);
+    }
+
+    [Fact]
+    public async Task EscapedSlash_BracketRange_ParsesSameAsUnescaped()
+    {
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var unescaped = LuceneQuery.Parse(@"created:[now-1d/d TO now/d]");
+        var escaped = LuceneQuery.Parse(@"created:[now-1d\/d TO now\/d]");
+        var unescapedDoc = visitor.Evaluate(unescaped.Document!) as QueryDocument;
+        var escapedDoc = visitor.Evaluate(escaped.Document!) as QueryDocument;
+
+        var unescapedRange = (unescapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+        var escapedRange = (escapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+
+        Assert.NotNull(unescapedRange);
+        Assert.NotNull(escapedRange);
+        Assert.Equal(unescapedRange.Min, escapedRange.Min);
+        Assert.Equal(unescapedRange.Max, escapedRange.Max);
+    }
+
+    [Fact]
+    public async Task EscapedSlash_DateWithRounding_ParsesSameAsUnescaped()
+    {
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var unescaped = LuceneQuery.Parse(@"created:>=2024-01-15||/M");
+        var escaped = LuceneQuery.Parse(@"created:>=2024-01-15||\/M");
+        var unescapedDoc = visitor.Evaluate(unescaped.Document!) as QueryDocument;
+        var escapedDoc = visitor.Evaluate(escaped.Document!) as QueryDocument;
+
+        var unescapedRange = (unescapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+        var escapedRange = (escapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+
+        Assert.NotNull(unescapedRange);
+        Assert.NotNull(escapedRange);
+        Assert.Equal(unescapedRange.Min, escapedRange.Min);
+    }
+
+    [Fact]
+    public async Task EscapedSlash_DateWithArithmeticAndRounding_ParsesSameAsUnescaped()
+    {
+        var visitor = new DateMathEvaluatorVisitor(_fixedTime);
+
+        var unescaped = LuceneQuery.Parse(@"created:>2024-01-15||+1M/d");
+        var escaped = LuceneQuery.Parse(@"created:>2024-01-15||+1M\/d");
+        var unescapedDoc = visitor.Evaluate(unescaped.Document!) as QueryDocument;
+        var escapedDoc = visitor.Evaluate(escaped.Document!) as QueryDocument;
+
+        var unescapedRange = (unescapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+        var escapedRange = (escapedDoc!.Query as FieldQueryNode)!.Query as RangeNode;
+
+        Assert.NotNull(unescapedRange);
+        Assert.NotNull(escapedRange);
+        Assert.Equal(unescapedRange.Min, escapedRange.Min);
+    }
+
+    #endregion
 }

@@ -57,6 +57,21 @@ public class LexerTests
     }
 
     [Theory]
+    [InlineData(@"now\/d", "now/d")]
+    [InlineData(@"now-1d\/d", "now-1d/d")]
+    [InlineData(@"2024-01-15||\/d", "2024-01-15||/d")]
+    [InlineData(@"2024-01-15||+1M\/M", "2024-01-15||+1M/M")]
+    [InlineData(@"hello\/world", "hello/world")]
+    public void Tokenize_EscapedTerm_StripsBackslashes(string input, string expectedValue)
+    {
+        var lexer = new LuceneLexer(input);
+        var token = lexer.NextToken();
+
+        Assert.Equal(TokenType.Term, token.Type);
+        Assert.Equal(expectedValue, token.GetString());
+    }
+
+    [Theory]
     [InlineData("/pattern/", "pattern")]
     [InlineData("/test\\.regex/", "test\\.regex")]
     public void Tokenize_Regex_ReturnsExpectedPattern(string input, string expectedPattern)
