@@ -287,7 +287,7 @@ This applies to all rounding units (`/d`, `/M`, `/h`, `/y`, etc.) and to short-f
 | `>=now/h` | start of hour | From start of current hour |
 
 ::: tip
-The same `/unit` rounding expression produces different concrete dates depending on whether the boundary is inclusive or exclusive. This matches Elasticsearch's native behavior for `gte`/`gt`/`lte`/`lt` with date math.
+The same `/unit` rounding expression produces different concrete dates depending on whether the boundary is inclusive or exclusive. This matches [Elasticsearch's native date math rounding behavior](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-range-query#range-query-date-math-rounding).
 :::
 
 ### Common Date Range Patterns
