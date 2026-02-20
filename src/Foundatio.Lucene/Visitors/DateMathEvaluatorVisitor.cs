@@ -9,40 +9,46 @@ namespace Foundatio.Lucene.Visitors;
 /// </summary>
 public class DateMathEvaluatorVisitor : QueryVisitor
 {
-    private readonly DateTimeOffset _relativeBaseTime;
+    private readonly TimeProvider _timeProvider;
     private readonly TimeZoneInfo? _timeZone;
     private readonly string _dateFormat;
 
     /// <summary>
     /// Creates a new DateMathEvaluatorVisitor with the specified base time.
+    /// When a fixed base time is provided, 'now' always resolves to this value.
     /// </summary>
     /// <param name="relativeBaseTime">The base time to use for relative calculations (e.g., 'now')</param>
     /// <param name="dateFormat">The format to use when outputting evaluated dates. Defaults to ISO 8601 with timezone.</param>
     public DateMathEvaluatorVisitor(DateTimeOffset relativeBaseTime, string dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz")
     {
-        _relativeBaseTime = relativeBaseTime;
+        _timeProvider = new FixedTimeProvider(relativeBaseTime);
         _dateFormat = dateFormat;
     }
 
     /// <summary>
     /// Creates a new DateMathEvaluatorVisitor with the specified timezone.
+    /// 'now' is resolved fresh at evaluation time using the given timezone.
     /// </summary>
     /// <param name="timeZone">The timezone to use for 'now' calculations and dates without explicit timezone information</param>
+    /// <param name="timeProvider">Optional time provider for controlling 'now'. Defaults to <see cref="TimeProvider.System"/>.</param>
     /// <param name="dateFormat">The format to use when outputting evaluated dates. Defaults to ISO 8601 with timezone.</param>
-    public DateMathEvaluatorVisitor(TimeZoneInfo timeZone, string dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz")
+    public DateMathEvaluatorVisitor(TimeZoneInfo timeZone, TimeProvider? timeProvider = null, string dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz")
     {
         _timeZone = timeZone ?? throw new ArgumentNullException(nameof(timeZone));
-        _relativeBaseTime = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _dateFormat = dateFormat;
     }
 
     /// <summary>
-    /// Creates a new DateMathEvaluatorVisitor using the current time in UTC.
+    /// Creates a new DateMathEvaluatorVisitor using the specified time provider.
+    /// 'now' is resolved fresh at evaluation time via the time provider, so this instance can be safely reused as a singleton.
     /// </summary>
+    /// <param name="timeProvider">Optional time provider for controlling 'now'. Defaults to <see cref="TimeProvider.System"/>.</param>
     /// <param name="dateFormat">The format to use when outputting evaluated dates. Defaults to ISO 8601 with timezone.</param>
-    public DateMathEvaluatorVisitor(string dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz")
-        : this(DateTimeOffset.UtcNow, dateFormat)
+    public DateMathEvaluatorVisitor(TimeProvider? timeProvider = null, string dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz")
     {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _dateFormat = dateFormat;
     }
 
     /// <summary>
@@ -119,14 +125,12 @@ public class DateMathEvaluatorVisitor : QueryVisitor
         bool success;
         DateTimeOffset evaluated;
 
-        if (_timeZone != null)
-        {
-            success = DateMath.TryParse(expression, _timeZone, isUpperLimit, out evaluated);
-        }
-        else
-        {
-            success = DateMath.TryParse(expression, _relativeBaseTime, isUpperLimit, out evaluated);
-        }
+        var now = _timeProvider.GetUtcNow();
+        var baseTime = _timeZone is not null
+            ? TimeZoneInfo.ConvertTime(now, _timeZone)
+            : now;
+
+        success = DateMath.TryParse(expression, baseTime, isUpperLimit, out evaluated);
 
         if (success)
         {
@@ -179,7 +183,7 @@ public class DateMathEvaluatorVisitor : QueryVisitor
     /// Quick check if expression looks like a date followed by date math operations.
     /// Pattern: date-like string followed by +/-/digit/time-unit (e.g., 2024-01-01+1M or 2024-06-15-7d/d)
     /// </summary>
-    private static bool LooksLikeDateMathWithOperations(string expression)
+    private static bool LooksLikeDateMathWithOperations(ReadOnlySpan<char> expression)
     {
         // Must start with a date-like pattern (4 digits)
         if (expression.Length < 12 || !char.IsDigit(expression[0]))
@@ -207,5 +211,14 @@ public class DateMathEvaluatorVisitor : QueryVisitor
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// A simple TimeProvider that always returns a fixed time. Used when a specific
+    /// base time is provided via the <see cref="DateMathEvaluatorVisitor(DateTimeOffset, string)"/> constructor.
+    /// </summary>
+    private sealed class FixedTimeProvider(DateTimeOffset fixedUtcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => fixedUtcNow;
     }
 }

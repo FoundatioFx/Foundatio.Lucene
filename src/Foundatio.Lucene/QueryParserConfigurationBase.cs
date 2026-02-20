@@ -31,4 +31,10 @@ public abstract class QueryParserConfigurationBase
     /// Additional visitors to run before building the query.
     /// </summary>
     public List<QueryVisitor> Visitors { get; } = [];
+
+    /// <summary>
+    /// Time provider for controlling 'now' in date math expressions.
+    /// Defaults to <see cref="TimeProvider.System"/>.
+    /// </summary>
+    public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 }

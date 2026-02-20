@@ -16,7 +16,7 @@ public class ElasticsearchQueryParser
     // Stateless visitors that can be safely reused as singletons
     private readonly FieldResolverQueryVisitor? _fieldResolverVisitor;
     private readonly IncludeVisitor? _includeVisitor;
-    private readonly DateMathEvaluatorVisitor _dateMathVisitor = new();
+    private readonly DateMathEvaluatorVisitor _dateMathVisitor;
     private readonly ValidationVisitor _validationVisitor = new();
     private readonly List<QueryVisitor> _customVisitors;
 
@@ -45,6 +45,8 @@ public class ElasticsearchQueryParser
         }
 
         _customVisitors = [.. _config.Visitors];
+
+        _dateMathVisitor = new DateMathEvaluatorVisitor(_config.TimeProvider);
     }
 
     /// <summary>
