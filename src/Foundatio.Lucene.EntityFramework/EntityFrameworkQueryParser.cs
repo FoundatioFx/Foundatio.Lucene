@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Visitors;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Foundatio.Lucene.EntityFramework;
@@ -14,6 +16,12 @@ public class EntityFrameworkQueryParser
     private static readonly ConcurrentDictionary<Type, List<EntityFieldInfo>> _reflectionFieldCache = new();
     private readonly ConcurrentDictionary<Type, EntityFrameworkQueryOptions> _entityTypeOptions = new();
 
+    // Stateless visitors reused as singletons; per-request configuration (field map,
+    // includes) is carried on the visitor context, so no visitor is allocated per query.
+    private readonly FieldResolverQueryVisitor _fieldResolverVisitor = new();
+    private readonly IncludeVisitor _includeVisitor = new();
+    private readonly DateMathEvaluatorVisitor _dateMathVisitor;
+
     /// <summary>
     /// Creates a new EntityFrameworkQueryParser with optional configuration.
     /// </summary>
@@ -22,6 +30,7 @@ public class EntityFrameworkQueryParser
         var config = new EntityFrameworkQueryParserConfiguration();
         configure?.Invoke(config);
         Configuration = config;
+        _dateMathVisitor = new DateMathEvaluatorVisitor(config.TimeProvider);
     }
 
     /// <summary>
@@ -146,6 +155,7 @@ public class EntityFrameworkQueryParser
         SetupContextDefaults<T>(context, options);
 
         var document = ParseQuery(query);
+        ApplyVisitorPipeline(document, context, typeof(T), options);
 
         return ExpressionBuilderVisitor.Instance.BuildExpression<T>(document, context, Configuration);
     }
@@ -263,6 +273,7 @@ public class EntityFrameworkQueryParser
         SetupContextDefaults(entityType, context, options);
 
         var document = ParseQuery(query);
+        ApplyVisitorPipeline(document, context, entityType, options);
 
         return ExpressionBuilderVisitor.Instance.BuildExpression(entityType, document, context, Configuration);
     }
@@ -305,6 +316,39 @@ public class EntityFrameworkQueryParser
         if (!parseResult.IsSuccess && parseResult.Errors.Count > 0)
             throw new FormatException($"Failed to parse query: {string.Join(", ", parseResult.Errors.Select(e => e.Message))}");
         return parseResult.Document;
+    }
+
+    /// <summary>
+    /// Runs the shared pre-build visitor pipeline (field alias resolution, @include expansion,
+    /// and date-math evaluation) over the parsed document so these behave identically to the
+    /// Elasticsearch integration. Per-scope field map and includes come from per-request options
+    /// (highest precedence) then options registered for the entity type.
+    /// </summary>
+    private void ApplyVisitorPipeline(Ast.QueryDocument document, EntityFrameworkQueryVisitorContext context, Type entityType, EntityFrameworkQueryOptions? options)
+    {
+        if (document.Query is null)
+            return;
+
+        var registeredOptions = GetOptions(entityType);
+
+        // Resolve field aliases (per-request > registered)
+        var fieldMap = options?.FieldMap ?? registeredOptions?.FieldMap;
+        if (fieldMap is not null)
+        {
+            context.SetFieldMap(fieldMap);
+            document.Query = _fieldResolverVisitor.Accept(document.Query, context);
+        }
+
+        // Expand @includes (per-request > registered)
+        var includes = options?.Includes ?? registeredOptions?.Includes;
+        if (includes is not null)
+        {
+            context.SetIncludes(includes);
+            document.Query = _includeVisitor.Accept(document.Query, context);
+        }
+
+        // Evaluate date math (now-7d, now/d, 2024-01-01||+1M, ...)
+        document.Query = _dateMathVisitor.Accept(document.Query, context);
     }
 
     /// <summary>
