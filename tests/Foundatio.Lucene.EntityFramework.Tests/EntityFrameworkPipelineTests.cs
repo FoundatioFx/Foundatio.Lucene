@@ -96,4 +96,15 @@ public class EntityFrameworkPipelineTests
 
         Assert.False(result.IsSuccess);
     }
+
+    [Fact]
+    public void TryBuildFilter_MalformedQuery_ReturnsFailureNotThrow()
+    {
+        var parser = new EntityFrameworkQueryParser();
+
+        var result = parser.TryBuildFilter<Employee>("(unbalanced AND");
+
+        Assert.False(result.IsSuccess);
+        Assert.NotNull(result.Error);
+    }
 }
