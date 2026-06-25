@@ -8,12 +8,14 @@ namespace Foundatio.Lucene;
 /// <param name="Length">The length of the error span in characters.</param>
 /// <param name="Line">The line number where the error occurred (1-based).</param>
 /// <param name="Column">The column number where the error occurred (1-based).</param>
+/// <param name="Code">The error code classifying the parse error. Defaults to <see cref="QueryErrorCode.ParseError"/>.</param>
 public readonly record struct ParseError(
     string Message,
     int Position,
     int Length,
     int Line,
-    int Column)
+    int Column,
+    QueryErrorCode Code = QueryErrorCode.ParseError)
 {
     /// <summary>
     /// The end position of the error (Position + Length).
