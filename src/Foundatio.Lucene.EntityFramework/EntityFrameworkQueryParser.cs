@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
-using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Visitors;
 using Microsoft.EntityFrameworkCore.Metadata;
 

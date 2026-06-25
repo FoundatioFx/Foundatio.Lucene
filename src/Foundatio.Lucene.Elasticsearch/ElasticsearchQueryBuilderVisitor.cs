@@ -1,7 +1,6 @@
 using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.QueryDsl;
 using Foundatio.Lucene.Ast;
-using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Elasticsearch;
 
