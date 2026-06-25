@@ -60,6 +60,9 @@ public class CrossEngineFixture : IAsyncLifetime
             .WithEnvironment("ELASTIC_PASSWORD", EsPassword)
             .WithEnvironment("xpack.security.enabled", "true")
             .WithEnvironment("xpack.security.http.ssl.enabled", "false")
+            // Cap the JVM heap so this container can run alongside the other integration
+            // containers (the test data set is tiny).
+            .WithEnvironment("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
             .WithWaitStrategy(Wait.ForUnixContainer()
                 .UntilHttpRequestIsSucceeded(r => r
                     .ForPort(ElasticsearchPort)
