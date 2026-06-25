@@ -106,7 +106,7 @@ docs                                    # VitePress documentation site
 
 ### Common Patterns
 
-- **Async suffix**: Methods that are genuinely asynchronous end with `Async`. The parser, query builders, and visitor pipeline are **synchronous** — there are no `ParseAsync`/`BuildQueryAsync`/`VisitAsync` methods
+- **Async suffix**: Methods that are genuinely asynchronous end with `Async`. The parser, query builders, and visitor pipeline are synchronous
 - **CancellationToken**: Last parameter, defaulted to `default` in public APIs
 - **Extension methods**: Place in `Extensions/` directory, use descriptive class names (e.g., `QueryNodeExtensions`)
 - **Logging**: Use structured logging with `ILogger`, log at appropriate levels

@@ -185,10 +185,9 @@ public class ValidationError
 
 ### Async work: resolve outside the pipeline
 
-The visitor pipeline is **synchronous by design** — there is no `VisitAsync`. When a transformation
-needs data from an async source (for example loading saved queries for `@include`), do the async
-work *before* running the pipeline and pass the results in. The built-in include expansion takes a
-pre-resolved dictionary:
+The visitor pipeline is **synchronous by design**. When a transformation needs data from an async
+source (for example loading saved queries for `@include`), do the async work *before* running the
+pipeline and pass the results in. The built-in include expansion takes a pre-resolved dictionary:
 
 ```csharp
 // Resolve saved queries asynchronously up front...

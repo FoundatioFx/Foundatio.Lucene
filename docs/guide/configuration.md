@@ -2,8 +2,6 @@
 
 This guide covers configuration options for the various components of Foundatio.Lucene.
 
-The parser APIs are **synchronous** — there are no `*Async` parse/build/visitor methods.
-
 ## Core Parser
 
 The core parser is stateless and requires no configuration:
