@@ -90,7 +90,7 @@ var options = new QueryValidationOptions
 options.AllowedFields.Add("title");
 options.AllowedFields.Add("status");
 
-var validationResult = await QueryValidator.ValidateAsync(document, options);
+var validationResult = QueryValidator.Validate(document, options);
 ```
 
 ### 🏷️ Field Aliasing
@@ -103,7 +103,7 @@ var fieldMap = new FieldMap
     { "user", "account.username" },
     { "created", "metadata.timestamp" }
 };
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 ```
 
 ### 📅 Date Math Support
