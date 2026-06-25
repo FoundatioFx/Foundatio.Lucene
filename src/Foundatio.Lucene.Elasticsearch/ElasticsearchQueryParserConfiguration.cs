@@ -1,3 +1,5 @@
+using Foundatio.Lucene.Ast;
+
 namespace Foundatio.Lucene.Elasticsearch;
 
 /// <summary>
@@ -13,12 +15,7 @@ public class ElasticsearchQueryParserConfiguration : QueryParserConfigurationBas
     /// <summary>
     /// Default boolean operator for implicit combinations.
     /// </summary>
-    public QueryOperator DefaultOperator { get; set; }
-
-    /// <summary>
-    /// Function to check if a field is a geo_point field.
-    /// </summary>
-    public Func<string, bool>? IsGeoPointField { get; set; }
+    public BooleanOperator DefaultOperator { get; set; } = BooleanOperator.Or;
 
     /// <summary>
     /// Function to check if a field is a date field.
@@ -29,9 +26,4 @@ public class ElasticsearchQueryParserConfiguration : QueryParserConfigurationBas
     /// Default timezone for date range queries.
     /// </summary>
     public string? DefaultTimeZone { get; set; }
-
-    /// <summary>
-    /// Function to resolve location strings to coordinates.
-    /// </summary>
-    public Func<string, Task<string?>>? GeoLocationResolver { get; set; }
 }

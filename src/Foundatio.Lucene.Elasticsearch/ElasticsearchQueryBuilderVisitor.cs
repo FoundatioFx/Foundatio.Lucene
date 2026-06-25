@@ -134,7 +134,7 @@ public class ElasticsearchQueryBuilderVisitor : QueryVisitor<IElasticsearchQuery
                     break;
                 case Occur.Should:
                     // Check operator to determine if this should be Must or Should
-                    if (clause.Operator == BooleanOperator.And || context.DefaultOperator == QueryOperator.And)
+                    if (clause.Operator == BooleanOperator.And || context.DefaultOperator == BooleanOperator.And)
                         mustClauses.Add(clauseQuery);
                     else
                         shouldClauses.Add(clauseQuery);

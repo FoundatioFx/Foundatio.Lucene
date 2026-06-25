@@ -238,10 +238,8 @@ public class ElasticsearchQueryParser
             UseScoring = options?.UseScoring ?? registeredOptions?.UseScoring ?? _config.UseScoring,
             DefaultFields = options?.DefaultFields ?? registeredOptions?.DefaultFields ?? _config.DefaultFields,
             DefaultOperator = _config.DefaultOperator,
-            IsGeoPointField = options?.IsGeoPointField ?? registeredOptions?.IsGeoPointField ?? _config.IsGeoPointField,
             IsDateField = options?.IsDateField ?? registeredOptions?.IsDateField ?? _config.IsDateField,
-            DefaultTimeZone = options?.DefaultTimeZone ?? registeredOptions?.DefaultTimeZone ?? _config.DefaultTimeZone,
-            GeoLocationResolver = _config.GeoLocationResolver
+            DefaultTimeZone = options?.DefaultTimeZone ?? registeredOptions?.DefaultTimeZone ?? _config.DefaultTimeZone
         };
 
         // Set up validation options: per-request > registered > global

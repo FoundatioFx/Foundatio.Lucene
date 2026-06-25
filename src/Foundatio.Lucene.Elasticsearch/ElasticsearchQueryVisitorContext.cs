@@ -1,16 +1,8 @@
 using Elastic.Clients.Elasticsearch.QueryDsl;
+using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Elasticsearch;
-
-/// <summary>
-/// Boolean operator used when combining queries with implicit AND/OR.
-/// </summary>
-public enum QueryOperator
-{
-    Or,
-    And
-}
 
 /// <summary>
 /// Context interface for Elasticsearch query building.
@@ -30,12 +22,7 @@ public interface IElasticsearchQueryVisitorContext : IQueryVisitorContext
     /// <summary>
     /// Default boolean operator for implicit combinations.
     /// </summary>
-    QueryOperator DefaultOperator { get; set; }
-
-    /// <summary>
-    /// Function to check if a field is a geo_point field.
-    /// </summary>
-    Func<string, bool>? IsGeoPointField { get; set; }
+    BooleanOperator DefaultOperator { get; set; }
 
     /// <summary>
     /// Function to check if a field is a date field.
@@ -46,11 +33,6 @@ public interface IElasticsearchQueryVisitorContext : IQueryVisitorContext
     /// Default timezone for date range queries.
     /// </summary>
     string? DefaultTimeZone { get; set; }
-
-    /// <summary>
-    /// Function to resolve location strings to coordinates.
-    /// </summary>
-    Func<string, Task<string?>>? GeoLocationResolver { get; set; }
 
     /// <summary>
     /// Stack used during query building to accumulate Query objects.
@@ -77,19 +59,13 @@ public class ElasticsearchQueryVisitorContext : QueryVisitorContext, IElasticsea
     public string[]? DefaultFields { get; set; }
 
     /// <inheritdoc />
-    public QueryOperator DefaultOperator { get; set; }
-
-    /// <inheritdoc />
-    public Func<string, bool>? IsGeoPointField { get; set; }
+    public BooleanOperator DefaultOperator { get; set; } = BooleanOperator.Or;
 
     /// <inheritdoc />
     public Func<string, bool>? IsDateField { get; set; }
 
     /// <inheritdoc />
     public string? DefaultTimeZone { get; set; }
-
-    /// <inheritdoc />
-    public Func<string, Task<string?>>? GeoLocationResolver { get; set; }
 
     /// <inheritdoc />
     public Stack<Query> QueryStack { get; } = new();

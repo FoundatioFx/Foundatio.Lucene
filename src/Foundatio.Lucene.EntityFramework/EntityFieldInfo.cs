@@ -30,11 +30,6 @@ public class EntityFieldInfo
     public bool IsNumber { get; set; }
 
     /// <summary>
-    /// Whether the field is a money/decimal type with specific precision.
-    /// </summary>
-    public bool IsMoney { get; set; }
-
-    /// <summary>
     /// Whether the field is a DateTime type.
     /// </summary>
     public bool IsDate { get; set; }
@@ -116,7 +111,7 @@ public class EntityFieldInfo
     }
 
     /// <inheritdoc />
-    protected bool Equals(EntityFieldInfo other) => Name == other.Name;
+    protected bool Equals(EntityFieldInfo other) => string.Equals(FullName, other.FullName, StringComparison.Ordinal);
 
     /// <inheritdoc />
     public override bool Equals(object? obj)
@@ -128,5 +123,5 @@ public class EntityFieldInfo
     }
 
     /// <inheritdoc />
-    public override int GetHashCode() => Name.GetHashCode();
+    public override int GetHashCode() => FullName.GetHashCode(StringComparison.Ordinal);
 }

@@ -22,14 +22,14 @@ public static class ElasticsearchQueryParserConfigurationExtensions
     public static ElasticsearchQueryParserConfiguration UseSearchMode(this ElasticsearchQueryParserConfiguration config)
     {
         config.UseScoring = true;
-        config.DefaultOperator = QueryOperator.Or;
+        config.DefaultOperator = BooleanOperator.Or;
         return config;
     }
 
     /// <summary>
     /// Sets the default boolean operator.
     /// </summary>
-    public static ElasticsearchQueryParserConfiguration SetDefaultOperator(this ElasticsearchQueryParserConfiguration config, QueryOperator op)
+    public static ElasticsearchQueryParserConfiguration SetDefaultOperator(this ElasticsearchQueryParserConfiguration config, BooleanOperator op)
     {
         config.DefaultOperator = op;
         return config;
@@ -59,24 +59,6 @@ public static class ElasticsearchQueryParserConfigurationExtensions
     public static ElasticsearchQueryParserConfiguration UseDateFields(this ElasticsearchQueryParserConfiguration config, Func<string, bool> resolver)
     {
         config.IsDateField = resolver;
-        return config;
-    }
-
-    /// <summary>
-    /// Configures which fields are geo_point fields.
-    /// </summary>
-    public static ElasticsearchQueryParserConfiguration UseGeoFields(this ElasticsearchQueryParserConfiguration config, Func<string, bool> resolver)
-    {
-        config.IsGeoPointField = resolver;
-        return config;
-    }
-
-    /// <summary>
-    /// Sets the geo location resolver.
-    /// </summary>
-    public static ElasticsearchQueryParserConfiguration UseGeoLocationResolver(this ElasticsearchQueryParserConfiguration config, Func<string, Task<string?>> resolver)
-    {
-        config.GeoLocationResolver = resolver;
         return config;
     }
 
