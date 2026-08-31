@@ -13,6 +13,7 @@
     <Project Path="tests/Foundatio.Lucene.Tests/Foundatio.Lucene.Tests.csproj" />
     <Project Path="tests/Foundatio.Lucene.EntityFramework.Tests/Foundatio.Lucene.EntityFramework.Tests.csproj" />
     <Project Path="tests/Foundatio.Lucene.Elasticsearch.Tests/Foundatio.Lucene.Elasticsearch.Tests.csproj" />
+    <Project Path="tests/Foundatio.Lucene.Parity.Tests/Foundatio.Lucene.Parity.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Foundatio.Lucene.Benchmarks/Foundatio.Lucene.Benchmarks.csproj" />

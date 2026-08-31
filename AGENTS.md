@@ -55,7 +55,7 @@ src
 │   ├── Visitors                        # Query visitors for traversal/transformation
 │   ├── Extensions                      # Extension methods for nodes and strings
 │   ├── LuceneQuery.cs                  # Main entry point for parsing
-│   ├── LuceneParser.cs                 # Pratt parser implementation
+│   ├── LuceneParser.cs                 # Recursive-descent parser implementation
 │   ├── LuceneLexer.cs                  # Tokenizer for query strings
 │   ├── QueryStringBuilder.cs           # Converts AST back to query string
 │   ├── QueryValidator.cs               # Query validation against options
@@ -106,7 +106,7 @@ docs                                    # VitePress documentation site
 
 ### Common Patterns
 
-- **Async suffix**: All async methods end with `Async` (e.g., `ParseAsync`, `BuildQueryAsync`)
+- **Async suffix**: Methods that are genuinely asynchronous end with `Async`. The parser, query builders, and visitor pipeline are synchronous
 - **CancellationToken**: Last parameter, defaulted to `default` in public APIs
 - **Extension methods**: Place in `Extensions/` directory, use descriptive class names (e.g., `QueryNodeExtensions`)
 - **Logging**: Use structured logging with `ILogger`, log at appropriate levels
@@ -114,15 +114,15 @@ docs                                    # VitePress documentation site
 
 ### Visitor Pattern (Critical for Extensions)
 
-Extend `ChainableQueryVisitor` and override `VisitAsync` methods for specific node types:
+Extend `QueryVisitor` and override the synchronous `Visit` methods for specific node types:
 
 ```csharp
-public class MyVisitor : ChainableQueryVisitor
+public class MyVisitor : QueryVisitor
 {
-    public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // Transform the node
-        return await base.VisitAsync(node, context); // Visits children
+        return base.Visit(node, context); // Visits children
     }
 }
 ```
@@ -379,18 +379,18 @@ if (result.IsSuccess)
 
 ```csharp
 var fieldMap = new FieldMap { { "user", "account.user" }, { "created", "metadata.timestamp" } };
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 ```
 
 - `FieldMap` is case-insensitive (uses `StringComparer.OrdinalIgnoreCase`)
-- `ToHierarchicalFieldResolver()` extension supports nested paths (`data.field` → `resolved.field`)
+- `FieldMap.ResolutionMode` is `Hierarchical` by default, so nested paths resolve by longest matching prefix (`data.field` → `resolved.field`)
 
 ### Validation Pattern
 
 ```csharp
 var options = new QueryValidationOptions { AllowLeadingWildcards = false };
 options.AllowedFields.Add("title");
-var validationResult = await QueryValidator.ValidateAsync(document, options);
+var validationResult = QueryValidator.Validate(document, options);
 ```
 
 ### Entity Framework Integration
@@ -413,7 +413,7 @@ var parser = new ElasticsearchQueryParser(config =>
     config.DefaultFields = ["title", "content"];
     config.FieldMap = new FieldMap { { "author", "metadata.author" } };
 });
-var query = await parser.BuildQueryAsync("author:john AND status:active");
+var query = parser.BuildQuery("author:john AND status:active");
 // Returns Elastic.Clients.Elasticsearch.QueryDsl.Query
 ```
 

@@ -17,11 +17,6 @@ public sealed record ElasticsearchQueryOptions : QueryOptionsBase
     public string? DefaultTimeZone { get; init; }
 
     /// <summary>
-    /// Function to determine if a field is a geo point field. Overrides global IsGeoPointField if provided.
-    /// </summary>
-    public Func<string, bool>? IsGeoPointField { get; init; }
-
-    /// <summary>
     /// Function to determine if a field is a date field. Overrides global IsDateField if provided.
     /// </summary>
     public Func<string, bool>? IsDateField { get; init; }
@@ -43,7 +38,6 @@ public class ElasticsearchQueryOptionsBuilder
     private string[]? _defaultFields;
     private bool? _useScoring;
     private string? _defaultTimeZone;
-    private Func<string, bool>? _isGeoPointField;
     private Func<string, bool>? _isDateField;
 
     /// <summary>
@@ -140,25 +134,6 @@ public class ElasticsearchQueryOptionsBuilder
     }
 
     /// <summary>
-    /// Sets the function to determine if a field is a geo point field.
-    /// </summary>
-    public ElasticsearchQueryOptionsBuilder WithGeoPointFields(Func<string, bool> isGeoPointField)
-    {
-        _isGeoPointField = isGeoPointField;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the function to determine if a field is a geo point field using a set of field names.
-    /// </summary>
-    public ElasticsearchQueryOptionsBuilder WithGeoPointFields(params string[] fieldNames)
-    {
-        var fieldSet = new HashSet<string>(fieldNames, StringComparer.OrdinalIgnoreCase);
-        _isGeoPointField = field => fieldSet.Contains(field);
-        return this;
-    }
-
-    /// <summary>
     /// Sets the function to determine if a field is a date field.
     /// </summary>
     public ElasticsearchQueryOptionsBuilder WithDateFields(Func<string, bool> isDateField)
@@ -190,7 +165,6 @@ public class ElasticsearchQueryOptionsBuilder
             DefaultFields = _defaultFields,
             UseScoring = _useScoring,
             DefaultTimeZone = _defaultTimeZone,
-            IsGeoPointField = _isGeoPointField,
             IsDateField = _isDateField
         };
     }

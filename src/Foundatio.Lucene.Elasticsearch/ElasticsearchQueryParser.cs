@@ -13,9 +13,11 @@ public class ElasticsearchQueryParser
     private readonly ElasticsearchQueryParserConfiguration _config;
     private readonly ConcurrentDictionary<string, ElasticsearchQueryOptions> _indexOptions = new(StringComparer.OrdinalIgnoreCase);
 
-    // Stateless visitors that can be safely reused as singletons
-    private readonly FieldResolverQueryVisitor? _fieldResolverVisitor;
-    private readonly IncludeVisitor? _includeVisitor;
+    // Stateless visitors reused as singletons across all requests. Per-request
+    // configuration (field map, includes) is carried on the visitor context, so
+    // no visitor is allocated per query even when each scope supplies its own config.
+    private readonly FieldResolverQueryVisitor _fieldResolverVisitor = new();
+    private readonly IncludeVisitor _includeVisitor = new();
     private readonly DateMathEvaluatorVisitor _dateMathVisitor;
     private readonly ValidationVisitor _validationVisitor = new();
     private readonly List<QueryVisitor> _customVisitors;
@@ -32,17 +34,6 @@ public class ElasticsearchQueryParser
     {
         _config = new ElasticsearchQueryParserConfiguration();
         configure?.Invoke(_config);
-
-        // Initialize stateless visitors that can be reused across all requests
-        if (_config.FieldMap is not null)
-        {
-            _fieldResolverVisitor = new FieldResolverQueryVisitor(_config.FieldMap);
-        }
-
-        if (_config.Includes is not null)
-        {
-            _includeVisitor = new IncludeVisitor(_config.Includes);
-        }
 
         _customVisitors = [.. _config.Visitors];
 
@@ -205,33 +196,25 @@ public class ElasticsearchQueryParser
         // Create the visitor context, merging global config with registered and per-request options
         var context = CreateContext(registeredOptions, options);
 
-        // Build visitor chain for this request
+        // Build visitor chain for this request. The field map and includes for this
+        // scope are carried on the context so the singleton visitors can be reused
+        // without allocating a new visitor per query.
         QueryNode currentNode = document;
 
-        // Determine which field resolver to use (per-request > registered > global)
-        var fieldMap = options?.FieldMap ?? registeredOptions?.FieldMap;
-        var fieldResolver = fieldMap is not null
-            ? new FieldResolverQueryVisitor(fieldMap)
-            : _fieldResolverVisitor;
-
-        if (fieldResolver is not null)
+        // Resolve field aliases (per-request > registered > global)
+        var fieldMap = options?.FieldMap ?? registeredOptions?.FieldMap ?? _config.FieldMap;
+        if (fieldMap is not null)
         {
-            currentNode = fieldResolver.Accept(currentNode, context);
+            context.SetFieldMap(fieldMap);
+            currentNode = _fieldResolverVisitor.Accept(currentNode, context);
         }
 
-        // Determine which includes to use (per-request > registered > global)
+        // Expand includes (per-request > registered > global)
         var includes = options?.Includes ?? registeredOptions?.Includes ?? _config.Includes;
         if (includes is not null)
         {
             context.SetIncludes(includes);
-            var includeVisitor = (options?.Includes ?? registeredOptions?.Includes) is not null
-                ? new IncludeVisitor(includes)
-                : _includeVisitor;
-
-            if (includeVisitor is not null)
-            {
-                currentNode = includeVisitor.Accept(currentNode, context);
-            }
+            currentNode = _includeVisitor.Accept(currentNode, context);
         }
 
         currentNode = _dateMathVisitor.Accept(currentNode, context);
@@ -255,10 +238,8 @@ public class ElasticsearchQueryParser
             UseScoring = options?.UseScoring ?? registeredOptions?.UseScoring ?? _config.UseScoring,
             DefaultFields = options?.DefaultFields ?? registeredOptions?.DefaultFields ?? _config.DefaultFields,
             DefaultOperator = _config.DefaultOperator,
-            IsGeoPointField = options?.IsGeoPointField ?? registeredOptions?.IsGeoPointField ?? _config.IsGeoPointField,
             IsDateField = options?.IsDateField ?? registeredOptions?.IsDateField ?? _config.IsDateField,
-            DefaultTimeZone = options?.DefaultTimeZone ?? registeredOptions?.DefaultTimeZone ?? _config.DefaultTimeZone,
-            GeoLocationResolver = _config.GeoLocationResolver
+            DefaultTimeZone = options?.DefaultTimeZone ?? registeredOptions?.DefaultTimeZone ?? _config.DefaultTimeZone
         };
 
         // Set up validation options: per-request > registered > global
