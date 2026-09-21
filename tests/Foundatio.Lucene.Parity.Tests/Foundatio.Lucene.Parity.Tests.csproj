@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.4.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.8" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Foundatio.Lucene.EntityFramework\Foundatio.Lucene.EntityFramework.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.Lucene.Elasticsearch\Foundatio.Lucene.Elasticsearch.csproj" />
+  </ItemGroup>
+
+</Project>

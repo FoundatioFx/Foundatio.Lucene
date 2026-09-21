@@ -74,7 +74,7 @@ var fieldMap = new FieldMap
     { "created", "metadata.timestamp" }
 };
 
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
 var resolved = QueryStringBuilder.ToQueryString(result.Document);
 // Returns: "account.username:john AND metadata.timestamp:[2020-01-01 TO 2020-12-31]"
@@ -96,7 +96,7 @@ var options = new QueryValidationOptions
 options.AllowedFields.Add("title");
 options.AllowedFields.Add("status");
 
-var validationResult = await QueryValidator.ValidateAsync(result.Document, options);
+var validationResult = QueryValidator.Validate(result.Document, options);
 
 if (!validationResult.IsValid)
 {
@@ -183,9 +183,6 @@ var parser = new ElasticsearchQueryParser(config =>
         { "author", "metadata.author" },
         { "created", "metadata.timestamp" }
     };
-
-    // Configure geo field detection for geo queries
-    config.IsGeoPointField = field => field == "location";
 
     // Configure date field detection for date ranges
     config.IsDateField = field => field.EndsWith("date") || field.EndsWith("timestamp");

@@ -95,7 +95,7 @@ using Foundatio.Lucene;
 var result = LuceneQuery.Parse("created:[now-7d TO now]");
 
 // Evaluate the date math expressions
-await DateMathEvaluatorVisitor.RunAsync(result.Document);
+new DateMathEvaluatorVisitor().Evaluate(result.Document);
 
 // Now the date values are resolved to actual dates
 ```
@@ -129,8 +129,8 @@ using Foundatio.Lucene;
 var result = LuceneQuery.Parse("date:[now-1d TO now]");
 
 // Custom "now" reference point
-var referenceTime = new DateTime(2024, 6, 15, 12, 0, 0);
-await DateMathEvaluatorVisitor.RunAsync(result.Document, referenceTime);
+var referenceTime = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+new DateMathEvaluatorVisitor(referenceTime).Evaluate(result.Document);
 ```
 
 ## Common Patterns
@@ -261,15 +261,15 @@ When testing, use a fixed reference time:
 
 ```csharp
 [Fact]
-public async Task DateMath_EvaluatesCorrectly()
+public void DateMath_EvaluatesCorrectly()
 {
     // Arrange
     var result = LuceneQuery.Parse("date:[now-1d TO now]");
-    var referenceTime = new DateTime(2024, 6, 15, 12, 0, 0, DateTimeKind.Utc);
-    
+    var referenceTime = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+
     // Act
-    await DateMathEvaluatorVisitor.RunAsync(result.Document, referenceTime);
-    
+    new DateMathEvaluatorVisitor(referenceTime).Evaluate(result.Document);
+
     // Assert - check the resolved values
     // Expected: date:[2024-06-14T12:00:00Z TO 2024-06-15T12:00:00Z]
 }

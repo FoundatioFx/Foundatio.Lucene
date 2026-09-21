@@ -1,3 +1,4 @@
+using System.Globalization;
 using Foundatio.Lucene.Ast;
 
 namespace Foundatio.Lucene.Tests;
@@ -433,6 +434,83 @@ public class ParserTests
         var result = LuceneQuery.Parse("(hello world");
 
         Assert.True(result.HasErrors);
+    }
+
+    [Fact]
+    public void Parse_NestingBeyondMaxDepth_ReturnsDepthErrorInsteadOfRecursing()
+    {
+        // 200 nested groups exceeds the default max depth (100) but is shallow
+        // enough to parse without crashing if the bound is missing.
+        var query = new string('(', 200) + "x" + new string(')', 200);
+
+        var result = LuceneQuery.Parse(query);
+
+        Assert.True(result.HasErrors);
+        Assert.Contains(result.Errors, e => e.Message.Contains("depth", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Parse_ExtremelyDeepNesting_DoesNotStackOverflow()
+    {
+        // Without a parse-time depth bound this throws an uncatchable StackOverflowException.
+        var query = new string('(', 50_000) + "x" + new string(')', 50_000);
+
+        var result = LuceneQuery.Parse(query);
+
+        Assert.NotNull(result);
+        Assert.True(result.HasErrors);
+    }
+
+    [Fact]
+    public void Parse_NestingBeyondMaxDepth_ErrorIsClassifiedAsMaxDepthExceeded()
+    {
+        var query = new string('(', 200) + "x" + new string(')', 200);
+
+        var result = LuceneQuery.Parse(query);
+
+        Assert.Contains(result.Errors, e => e.Code == QueryErrorCode.MaxDepthExceeded);
+    }
+
+    [Fact]
+    public void Parse_UnterminatedPhraseWithTrailingBackslash_DoesNotThrow()
+    {
+        // A trailing backslash must not advance the lexer past the end of the buffer.
+        var result = LuceneQuery.Parse("\"ab\\");
+
+        Assert.NotNull(result.Document);
+        Assert.IsType<PhraseNode>(result.Document.Query);
+        Assert.Equal("ab", ((PhraseNode)result.Document.Query!).Phrase);
+    }
+
+    [Fact]
+    public void Parse_UnterminatedRegexWithTrailingBackslash_DoesNotThrow()
+    {
+        var result = LuceneQuery.Parse("/ab\\");
+
+        Assert.NotNull(result.Document);
+        Assert.IsType<RegexNode>(result.Document.Query);
+    }
+
+    [Fact]
+    public void Parse_BoostedTerm_WithCommaDecimalCulture_ParsesInvariant()
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            // de-DE uses ',' as the decimal separator and '.' as the group separator,
+            // so a current-culture parse of "2.5" would yield 25.
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+
+            var result = LuceneQuery.Parse("important^2.5");
+
+            Assert.True(result.IsSuccess);
+            var term = (TermNode)result.Document.Query!;
+            Assert.Equal(2.5f, term.Boost);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     [Fact]

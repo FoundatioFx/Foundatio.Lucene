@@ -41,7 +41,7 @@ var parser = new ElasticsearchQueryParser(config =>
     config.DefaultFields = ["title", "content", "description"];
 
     // Default boolean operator (AND or OR)
-    config.DefaultOperator = QueryOperator.And;
+    config.DefaultOperator = BooleanOperator.And;
 
     // Field aliasing
     config.FieldMap = new FieldMap
@@ -51,23 +51,20 @@ var parser = new ElasticsearchQueryParser(config =>
         { "updated", "metadata.updatedAt" }
     };
 
-    // Geo field detection
-    config.IsGeoPointField = field => field == "location" || field.EndsWith("_geo");
-
     // Date field detection
-    config.IsDateField = field => 
-        field.EndsWith("date") || 
+    config.IsDateField = field =>
+        field.EndsWith("date") ||
         field.EndsWith("timestamp") ||
-        field == "created" || 
+        field == "created" ||
         field == "updated";
 
     // Default timezone for date ranges
     config.DefaultTimeZone = "America/Chicago";
 
-    // Include resolver for @include syntax
-    config.IncludeResolver = async name =>
+    // Pre-resolved @include content (resolve saved queries from your store before building)
+    config.Includes = new Dictionary<string, string>
     {
-        return await _savedQueryService.GetQueryAsync(name);
+        ["active"] = "status:active AND deleted:false"
     };
 
     // Query validation
@@ -198,60 +195,9 @@ Field existence checks:
 
 ## Geo Queries
 
-The Elasticsearch integration supports geo queries when `IsGeoPointField` is configured.
-
-### Distance Queries
-
-```csharp
-config.IsGeoPointField = field => field == "location";
-
-// Input: field:lat,lon~distance
-"location:40.7128,-74.0060~10km"
-
-// Output
-{
-    "geo_distance": {
-        "distance": "10km",
-        "location": {
-            "lat": 40.7128,
-            "lon": -74.0060
-        }
-    }
-}
-```
-
-### Bounding Box Queries
-
-```csharp
-// Input: field:[min_lon,min_lat TO max_lon,max_lat]
-"location:[-74.1,40.6 TO -73.9,40.8]"
-
-// Output
-{
-    "geo_bounding_box": {
-        "location": {
-            "top_left": { "lat": 40.8, "lon": -74.1 },
-            "bottom_right": { "lat": 40.6, "lon": -73.9 }
-        }
-    }
-}
-```
-
-### Geo Location Resolution
-
-You can resolve location names to coordinates:
-
-```csharp
-config.GeoLocationResolver = async locationName =>
-{
-    // Resolve "New York" to coordinates
-    var coords = await _geocodingService.ResolveAsync(locationName);
-    return coords != null ? $"{coords.Lat},{coords.Lon}" : null;
-};
-
-// Input
-"location:\"New York\"~50mi"
-```
+> Geo query generation (`geo_distance` / `geo_bounding_box`) is **not supported in 1.0**. It is
+> planned for a later release with a design that keeps the visitor pipeline synchronous (collect geo
+> references, resolve coordinates outside the pipeline, then annotate the AST).
 
 ## Date Queries
 
@@ -274,14 +220,6 @@ config.DefaultTimeZone = "America/Chicago";
         }
     }
 }
-```
-
-## Async API
-
-For async operations (like include resolution or geo location resolution):
-
-```csharp
-var query = await parser.BuildQueryAsync("@include:saved-filter AND status:active");
 ```
 
 ## Error Handling

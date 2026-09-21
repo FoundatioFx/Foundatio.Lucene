@@ -343,7 +343,8 @@ Reference saved or named queries:
 ```
 
 ::: info
-Include expansion requires configuring an `IncludeResolver` function.
+Include expansion requires supplying the referenced queries via the parser's `Includes` dictionary
+(or per-request options). Names are resolved against that pre-resolved content.
 :::
 
 ## Escaping Special Characters

@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Foundatio.Lucene\Foundatio.Lucene.csproj" />
     <ProjectReference Include="..\..\src\Foundatio.Lucene.EntityFramework\Foundatio.Lucene.EntityFramework.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.Lucene.Elasticsearch\Foundatio.Lucene.Elasticsearch.csproj" />
   </ItemGroup>
 
 </Project>

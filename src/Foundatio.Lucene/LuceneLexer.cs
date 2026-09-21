@@ -122,7 +122,7 @@ public class LuceneLexer
     private void AddError(char c)
     {
         _errors ??= new List<ParseError>(4);
-        _errors.Add(new ParseError(string.Concat("Unexpected character: '", c.ToString(), "'"), _position, 1, _line, _column));
+        _errors.Add(new ParseError(string.Concat("Unexpected character: '", c.ToString(), "'"), _position, 1, _line, _column, QueryErrorCode.UnexpectedToken));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -174,8 +174,17 @@ public class LuceneLexer
             if (c == '\\')
             {
                 hasEscapes = true;
-                _position += 2;
-                _column += 2;
+                // Guard against a trailing backslash running past the end of the buffer.
+                if (_position + 1 < _sourceMemory.Length)
+                {
+                    _position += 2;
+                    _column += 2;
+                }
+                else
+                {
+                    _position++;
+                    _column++;
+                }
             }
             else if (c == '"')
             {
@@ -268,8 +277,17 @@ public class LuceneLexer
             char c = Source[_position];
             if (c == '\\')
             {
-                _position += 2;
-                _column += 2;
+                // Guard against a trailing backslash running past the end of the buffer.
+                if (_position + 1 < _sourceMemory.Length)
+                {
+                    _position += 2;
+                    _column += 2;
+                }
+                else
+                {
+                    _position++;
+                    _column++;
+                }
             }
             else if (c == '/')
             {

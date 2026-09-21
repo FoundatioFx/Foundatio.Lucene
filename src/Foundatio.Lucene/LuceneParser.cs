@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Foundatio.Lucene.Ast;
 
@@ -11,12 +12,20 @@ public class LuceneParser
 {
     private readonly List<Token> _tokens;
     private int _position;
+    private int _depth;
     private List<ParseError>? _errors;
 
     /// <summary>
     /// The default operator to use when no explicit operator is specified.
     /// </summary>
     public BooleanOperator DefaultOperator { get; set; } = BooleanOperator.Or;
+
+    /// <summary>
+    /// The maximum nesting depth of grouped expressions the parser will recurse into.
+    /// Input exceeding this depth records a <see cref="ParseError"/> and stops recursing,
+    /// guarding against stack-overflow denial-of-service from deeply nested queries.
+    /// </summary>
+    public int MaxDepth { get; set; } = 100;
 
     /// <summary>
     /// Whether to split on whitespace when parsing groups.
@@ -358,53 +367,97 @@ public class LuceneParser
         var startToken = CurrentToken;
         Advance(); // Skip (
 
-        SkipWhitespace();
-
-        QueryNode? innerQuery;
-
-        if (!SplitOnWhitespace)
+        _depth++;
+        try
         {
-            // Try to parse as MultiTerm first (consecutive simple terms without operators)
-            innerQuery = TryParseMultiTerm();
-            if (innerQuery == null)
+            // Guard against stack-overflow from deeply nested groups. Recursion only
+            // ever re-enters ParseQuery via ParseGroup, so bounding it here is sufficient.
+            if (_depth > MaxDepth)
             {
-                // Fall back to normal query parsing
+                Errors.Add(new ParseError($"Query nesting depth exceeds the maximum of {MaxDepth}.", startToken.Position, startToken.Length, startToken.Line, startToken.Column, QueryErrorCode.MaxDepthExceeded));
+                ConsumeBalancedGroup();
+                return new GroupNode
+                {
+                    Query = null,
+                    StartPosition = startToken.Position,
+                    EndPosition = CurrentToken.Position,
+                    StartLine = startToken.Line,
+                    StartColumn = startToken.Column
+                };
+            }
+
+            SkipWhitespace();
+
+            QueryNode? innerQuery;
+
+            if (!SplitOnWhitespace)
+            {
+                // Try to parse as MultiTerm first (consecutive simple terms without operators)
+                innerQuery = TryParseMultiTerm();
+                if (innerQuery == null)
+                {
+                    // Fall back to normal query parsing
+                    innerQuery = ParseQuery();
+                }
+            }
+            else
+            {
                 innerQuery = ParseQuery();
             }
-        }
-        else
-        {
-            innerQuery = ParseQuery();
-        }
 
-        SkipWhitespace();
+            SkipWhitespace();
 
-        if (CurrentToken.Type == TokenType.RightParen)
-        {
-            Advance(); // Skip )
+            if (CurrentToken.Type == TokenType.RightParen)
+            {
+                Advance(); // Skip )
+            }
+            else
+            {
+                Errors.Add(new ParseError("Expected ')'", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column, QueryErrorCode.UnmatchedBracket));
+            }
+
+            var group = new GroupNode
+            {
+                Query = innerQuery,
+                StartPosition = startToken.Position,
+                EndPosition = CurrentToken.Position,
+                StartLine = startToken.Line,
+                StartColumn = startToken.Column
+            };
+
+            // Check for boost
+            SkipWhitespace();
+            if (CurrentToken.Type == TokenType.Caret)
+            {
+                group.Boost = ParseBoost();
+            }
+
+            return group;
         }
-        else
+        finally
         {
-            Errors.Add(new ParseError("Expected ')'", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column));
+            _depth--;
         }
+    }
 
-        var group = new GroupNode
+    /// <summary>
+    /// Consumes tokens up to and including the closing parenthesis that matches the
+    /// already-consumed opening parenthesis, balancing nested parentheses iteratively.
+    /// Used to discard an over-deep group without further recursion.
+    /// </summary>
+    private void ConsumeBalancedGroup()
+    {
+        int balance = 1;
+        while (!IsAtEnd() && balance > 0)
         {
-            Query = innerQuery,
-            StartPosition = startToken.Position,
-            EndPosition = CurrentToken.Position,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
+            var type = CurrentToken.Type;
+            Advance();
 
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            group.Boost = ParseBoost();
+            if (type == TokenType.LeftParen)
+                balance++;
+            else if (type == TokenType.RightParen)
+                balance--;
         }
-
-        return group;
     }
 
     /// <summary>
@@ -759,37 +812,6 @@ public class LuceneParser
     }
 
     /// <summary>
-    /// Parses a number as a term.
-    /// </summary>
-    private TermNode ParseNumberTerm()
-    {
-        var startToken = CurrentToken;
-        var term = CurrentToken.Value;
-
-        Advance();
-
-        var node = new TermNode
-        {
-            TermMemory = term,
-            UnescapedTermMemory = term,
-            StartPosition = startToken.Position,
-            EndPosition = startToken.Position + startToken.Length,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            node.Boost = ParseBoost();
-            node.EndPosition = CurrentToken.Position;
-        }
-
-        return node;
-    }
-
-    /// <summary>
     /// Parses a quoted phrase.
     /// </summary>
     private PhraseNode ParsePhrase()
@@ -881,7 +903,7 @@ public class LuceneParser
         // Expect TO
         if (CurrentToken.Type != TokenType.To)
         {
-            Errors.Add(new ParseError("Expected 'TO' in range query", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column));
+            Errors.Add(new ParseError("Expected 'TO' in range query", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column, QueryErrorCode.InvalidRange));
         }
         else
         {
@@ -907,7 +929,7 @@ public class LuceneParser
         }
         else
         {
-            Errors.Add(new ParseError("Expected ']' or '}' to close range query", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column));
+            Errors.Add(new ParseError("Expected ']' or '}' to close range query", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column, QueryErrorCode.UnmatchedBracket));
         }
 
         var node = new RangeNode
@@ -1040,7 +1062,7 @@ public class LuceneParser
 
         if (CurrentToken.Type == TokenType.Term)
         {
-            if (float.TryParse(CurrentToken.Span, out float boost))
+            if (float.TryParse(CurrentToken.Span, NumberStyles.Float, CultureInfo.InvariantCulture, out float boost))
             {
                 Advance();
                 return boost;
@@ -1064,7 +1086,7 @@ public class LuceneParser
 
         if (CurrentToken.Type == TokenType.Term)
         {
-            if (int.TryParse(CurrentToken.Span, out int distance))
+            if (int.TryParse(CurrentToken.Span, NumberStyles.Integer, CultureInfo.InvariantCulture, out int distance))
             {
                 Advance();
                 return distance;

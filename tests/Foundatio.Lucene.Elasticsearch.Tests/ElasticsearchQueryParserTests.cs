@@ -1,4 +1,5 @@
 using Elastic.Clients.Elasticsearch.QueryDsl;
+using Foundatio.Lucene.Ast;
 
 namespace Foundatio.Lucene.Elasticsearch.Tests;
 
@@ -395,7 +396,7 @@ public class ElasticsearchQueryParserTests
     {
         var parser = new ElasticsearchQueryParser(c =>
         {
-            c.DefaultOperator = QueryOperator.And;
+            c.DefaultOperator = BooleanOperator.And;
             c.UseScoring = true;
         });
         var query = parser.BuildQuery("foo bar");

@@ -32,7 +32,7 @@ var fieldMap = new FieldMap
     { "created", "metadata.timestamp" }
 };
 
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
 var resolved = QueryStringBuilder.ToQueryString(result.Document);
 // Returns: "account.username:john AND metadata.timestamp:[now-1d TO now]"
@@ -45,7 +45,7 @@ Evaluate date math expressions to actual dates:
 ```csharp
 var result = LuceneQuery.Parse("created:[now-7d TO now]");
 
-await DateMathEvaluatorVisitor.RunAsync(result.Document);
+new DateMathEvaluatorVisitor().Evaluate(result.Document);
 
 // Date expressions are now evaluated to actual DateTime values
 ```
@@ -57,17 +57,13 @@ Expand `@include:name` references to saved queries:
 ```csharp
 var result = LuceneQuery.Parse("@include:active-filter AND category:books");
 
-Func<string, Task<string?>> resolver = async name =>
+// Pre-resolve saved queries (from a database, file, etc.) into a dictionary.
+var includes = new Dictionary<string, string>
 {
-    // Load saved query from database, file, etc.
-    return name switch
-    {
-        "active-filter" => "status:active AND deleted:false",
-        _ => null
-    };
+    ["active-filter"] = "status:active AND deleted:false"
 };
 
-await IncludeVisitor.RunAsync(result.Document, resolver);
+result.Document.ExpandIncludes(includes);
 
 var expanded = QueryStringBuilder.ToQueryString(result.Document);
 // Returns: "(status:active AND deleted:false) AND category:books"
@@ -80,7 +76,7 @@ Extract all field names used in a query:
 ```csharp
 var result = LuceneQuery.Parse("title:hello AND author:john AND date:[2024-01-01 TO *]");
 
-var fields = await GetReferencedFieldsVisitor.RunAsync(result.Document);
+var fields = result.Document.GetReferencedFields();
 // Returns: ["title", "author", "date"]
 ```
 
@@ -94,27 +90,27 @@ using Foundatio.Lucene.Visitors;
 
 public class LowercaseTermVisitor : QueryVisitor
 {
-    public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
     {
         // Lowercase the term
         node.Term = node.Term?.ToLowerInvariant();
-        return Task.FromResult<QueryNode>(node);
+        return node;
     }
 
-    public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // Lowercase the field name
         node.Field = node.Field?.ToLowerInvariant();
 
         // Visit children (the field's value)
-        return await base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 }
 
 // Usage
 var result = LuceneQuery.Parse("Title:HELLO");
 var visitor = new LowercaseTermVisitor();
-await visitor.AcceptAsync(result.Document, new QueryVisitorContext());
+visitor.Accept(result.Document, new QueryVisitorContext());
 
 var output = QueryStringBuilder.ToQueryString(result.Document);
 // Returns: "title:hello"
@@ -127,7 +123,7 @@ Use `IQueryVisitorContext` to pass state between visitors or across the traversa
 ```csharp
 public class FieldCollectorVisitor : QueryVisitor
 {
-    public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // Get or create the field list in context
         var fields = context.GetValue<List<string>>("CollectedFields") ?? new List<string>();
@@ -138,13 +134,13 @@ public class FieldCollectorVisitor : QueryVisitor
             context.SetValue("CollectedFields", fields);
         }
 
-        return await base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 }
 
 // Usage
 var context = new QueryVisitorContext();
-await new FieldCollectorVisitor().AcceptAsync(result.Document, context);
+new FieldCollectorVisitor().Accept(result.Document, context);
 
 var fields = context.GetValue<List<string>>("CollectedFields");
 ```
@@ -160,7 +156,7 @@ var chain = new ChainedQueryVisitor()
     .AddVisitor(new LowercaseTermVisitor(), priority: 30)
     .AddVisitor(new ValidationVisitor(), priority: 100);
 
-await chain.AcceptAsync(document, context);
+chain.Accept(document, context);
 ```
 
 Visitors with lower priority numbers run first.
@@ -173,43 +169,40 @@ Override these methods to handle specific node types:
 public class MyVisitor : QueryVisitor
 {
     // Called for the root document
-    public override Task<QueryNode> VisitAsync(QueryDocument node, IQueryVisitorContext context);
+    protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context);
 
     // Simple terms like: hello
-    public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context);
 
     // Quoted phrases like: "hello world"
-    public override Task<QueryNode> VisitAsync(PhraseNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context);
 
     // Field queries like: title:hello
-    public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context);
 
     // Range queries like: [1 TO 10]
-    public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context);
 
     // Boolean combinations like: a AND b
-    public override Task<QueryNode> VisitAsync(BooleanQueryNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context);
 
     // Parenthetical groups like: (a OR b)
-    public override Task<QueryNode> VisitAsync(GroupNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context);
 
     // Negations like: NOT a
-    public override Task<QueryNode> VisitAsync(NotNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(NotNode node, IQueryVisitorContext context);
 
     // Existence checks like: _exists_:field
-    public override Task<QueryNode> VisitAsync(ExistsNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context);
 
     // Missing checks like: _missing_:field
-    public override Task<QueryNode> VisitAsync(MissingNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context);
 
     // Match all like: *:*
-    public override Task<QueryNode> VisitAsync(MatchAllNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context);
 
     // Regex patterns like: /pattern/
-    public override Task<QueryNode> VisitAsync(RegexNode node, IQueryVisitorContext context);
-
-    // Include references like: @include:name
-    public override Task<QueryNode> VisitAsync(IncludeNode node, IQueryVisitorContext context);
+    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context);
 }
 ```
 
@@ -220,24 +213,16 @@ Return a different node to replace the current one:
 ```csharp
 public class ExpandStatusVisitor : QueryVisitor
 {
-    public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // Replace status:all with a group of all statuses
-        if (node.Field == "status" && node.Value is TermNode term && term.Term == "all")
+        if (node.Field == "status" && node.Query is TermNode { Term: "all" })
         {
-            var group = new GroupNode
-            {
-                Child = new BooleanQueryNode
-                {
-                    Left = new FieldQueryNode { Field = "status", Value = new TermNode { Term = "active" } },
-                    Operator = QueryOperator.Or,
-                    Right = new FieldQueryNode { Field = "status", Value = new TermNode { Term = "pending" } }
-                }
-            };
-            return Task.FromResult<QueryNode>(group);
+            // Re-parsing is simpler and safer than hand-building AST nodes.
+            return LuceneQuery.Parse("(status:active OR status:pending)").Document.Query!;
         }
 
-        return base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 }
 
@@ -259,14 +244,14 @@ public class RemoveFieldVisitor : QueryVisitor
         _fieldsToRemove = new HashSet<string>(fields, StringComparer.OrdinalIgnoreCase);
     }
 
-    public override Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         if (_fieldsToRemove.Contains(node.Field ?? ""))
         {
-            return Task.FromResult<QueryNode>(null!);
+            return null!;
         }
 
-        return base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 }
 ```
