@@ -38,6 +38,12 @@ public sealed record ElasticsearchQueryOptions : QueryOptionsBase
     public RuntimeFieldResolver? RuntimeFieldResolver { get; init; }
 
     /// <summary>
+    /// Set to <see langword="false"/> to skip the runtime field resolver for a request (for example on endpoints
+    /// that shouldn't pay for runtime fields), which also lets the synchronous methods run without it.
+    /// </summary>
+    public bool? EnableRuntimeFieldResolver { get; init; }
+
+    /// <summary>
     /// Overrides <see cref="ElasticsearchQueryParserConfiguration.NestedFilterResolver"/>.
     /// </summary>
     public NestedFilterResolver? NestedFilterResolver { get; init; }

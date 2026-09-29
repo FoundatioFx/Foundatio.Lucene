@@ -305,6 +305,25 @@ public class FieldResolutionTests
     }
 
     [Fact]
+    public void BuildQuery_WithRuntimeFieldResolverDisabledPerRequest_SkipsResolverAndResolutionPhase()
+    {
+        bool called = false;
+        var parser = TestMapping.CreateScoringParser(c => c.RuntimeFieldResolver = (_, _, _) =>
+        {
+            called = true;
+            return ValueTask.FromResult<ElasticRuntimeField?>(null);
+        });
+        var context = parser.CreateContext(new ElasticsearchQueryOptions { EnableRuntimeFieldResolver = false });
+
+        var result = parser.BuildQuery("computed:1.5", context);
+
+        Assert.False(called);
+        Assert.Empty(context.RuntimeFields);
+        ElasticAssert.Json("{'term':{'computed':{'value':'1.5'}}}", result);
+        Assert.Throws<InvalidOperationException>(() => parser.BuildQuery("computed:1.5"));
+    }
+
+    [Fact]
     public async Task BuildQueryAsync_WithRuntimeFieldResolverAndUnresolvedFieldsDisallowed_AcceptsRuntimeFields()
     {
         var parser = TestMapping.CreateParser(c =>

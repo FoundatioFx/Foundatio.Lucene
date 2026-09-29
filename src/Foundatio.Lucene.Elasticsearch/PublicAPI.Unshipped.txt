@@ -237,3 +237,5 @@ virtual Foundatio.Lucene.Elasticsearch.NestedFilterResolver.Invoke(Foundatio.Luc
 virtual Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver.Invoke(string! field, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.Elasticsearch.ElasticRuntimeField?>
 ~override Foundatio.Lucene.Elasticsearch.NestedFilterContext.Equals(object obj) -> bool
 ~override Foundatio.Lucene.Elasticsearch.NestedFilterContext.ToString() -> string
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EnableRuntimeFieldResolver.get -> bool?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EnableRuntimeFieldResolver.init -> void

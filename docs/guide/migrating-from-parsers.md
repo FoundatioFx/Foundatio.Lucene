@@ -55,6 +55,7 @@ Settings that Foundatio.Parsers kept on the visitor context move to options. Con
 | `context.UseScoring` / `UseSearchMode()` | `c.UseScoring`, `c.UseSearchMode()`, or `options.UseScoring` |
 | `context.DefaultOperator` | `c.DefaultOperator` or `options.DefaultOperator` (default AND, as before) |
 | `context.DefaultTimeZone` | `c.DefaultTimeZone` or `options.DefaultTimeZone` |
+| `context.EnableRuntimeFieldResolver(false)` | `options.EnableRuntimeFieldResolver = false` |
 | `context.SetValue("StartDate", ...)` | `options.StartDate` / `options.EndDate` |
 
 `BuildAggregationsAsync` returned an `AggregationMap`; `BuildAggregations` returns an `IDictionary<string, Aggregation>` you can assign directly to the search request.

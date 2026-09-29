@@ -163,6 +163,8 @@ var query = await parser.BuildQueryAsync("day_of_week:MONDAY", context);
 // context.RuntimeFields contains day_of_week
 ```
 
+Set `EnableRuntimeFieldResolver = false` in the request's `ElasticsearchQueryOptions` to skip the resolver for that request.
+
 ## Aggregations and sorts
 
 ```csharp

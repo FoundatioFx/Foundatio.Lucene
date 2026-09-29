@@ -85,7 +85,9 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
         context.DefaultTimeZone = options?.DefaultTimeZone ?? registered?.DefaultTimeZone ?? config.DefaultTimeZone;
         context.UseNested = config.UseNested;
         context.GeoLocationResolver = options?.GeoLocationResolver ?? registered?.GeoLocationResolver ?? config.GeoLocationResolver;
-        context.RuntimeFieldResolver = options?.RuntimeFieldResolver ?? registered?.RuntimeFieldResolver ?? config.RuntimeFieldResolver;
+        context.RuntimeFieldResolver = options?.EnableRuntimeFieldResolver ?? registered?.EnableRuntimeFieldResolver ?? true
+            ? options?.RuntimeFieldResolver ?? registered?.RuntimeFieldResolver ?? config.RuntimeFieldResolver
+            : null;
         context.NestedFilterResolver = options?.NestedFilterResolver ?? registered?.NestedFilterResolver ?? config.NestedFilterResolver;
         context.StartDate = options?.StartDate ?? registered?.StartDate;
         context.EndDate = options?.EndDate ?? registered?.EndDate;
