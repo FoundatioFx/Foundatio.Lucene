@@ -206,8 +206,10 @@ internal static class ElasticsearchAggregationBuilder
 
                 if (calendar is not null)
                     histogram.CalendarInterval = calendar;
+                else if (TryCreateDuration(interval, out var fixedInterval))
+                    histogram.FixedInterval = fixedInterval;
                 else
-                    histogram.FixedInterval = interval;
+                    _result.AddError($"Invalid interval '{interval}' for aggregation {expression.Name}; use a calendar unit (d, w, M, ...) or a fixed interval such as 90m or 2d.", expression.Position);
             }
 
             if (expression.GetModifier("missing") is { } missing)
@@ -219,7 +221,13 @@ internal static class ElasticsearchAggregationBuilder
             }
 
             if (expression.GetModifier("offset") is { } offset)
-                histogram.Offset = offset.IsExcluded && !offset.Value.StartsWith('-') ? "-" + offset.Value : offset.Value;
+            {
+                string value = offset.IsExcluded && !offset.Value.StartsWith('-') ? "-" + offset.Value : offset.Value;
+                if (TryCreateDuration(value, out var duration))
+                    histogram.Offset = duration;
+                else
+                    _result.AddError($"Invalid @offset '{offset.Value}' for aggregation {expression.Name}; use a duration such as 6h or -30m.", offset.Position);
+            }
 
             Aggregation aggregation = histogram;
             if (expression.BoostText is not null)
@@ -240,6 +248,20 @@ internal static class ElasticsearchAggregationBuilder
 
             var seconds = Round(perBucket, TimeSpan.FromSeconds(15));
             return seconds < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(15) : seconds;
+        }
+
+        private static bool TryCreateDuration(string value, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Duration? duration)
+        {
+            try
+            {
+                duration = value;
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                duration = null;
+                return false;
+            }
         }
 
         private static TimeSpan Round(TimeSpan value, TimeSpan unit) => TimeSpan.FromTicks((long)Math.Round(value.Ticks / (double)unit.Ticks) * unit.Ticks);
