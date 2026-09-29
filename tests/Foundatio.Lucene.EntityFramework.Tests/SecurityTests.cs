@@ -1,5 +1,4 @@
 using System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.Lucene.EntityFramework.Tests;
 

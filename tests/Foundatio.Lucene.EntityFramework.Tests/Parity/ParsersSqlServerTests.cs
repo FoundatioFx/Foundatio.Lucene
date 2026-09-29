@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-
 namespace Foundatio.Lucene.EntityFramework.Tests.Parity;
 
 /// <summary>

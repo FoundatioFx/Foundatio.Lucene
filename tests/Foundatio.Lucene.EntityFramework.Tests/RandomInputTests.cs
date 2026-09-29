@@ -1,6 +1,5 @@
 using System.Text;
 using Foundatio.Lucene.Ast;
-using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.Lucene.EntityFramework.Tests;
 

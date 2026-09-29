@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.Lucene.EntityFramework.Tests;
 
