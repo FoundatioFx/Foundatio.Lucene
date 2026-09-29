@@ -474,8 +474,8 @@ public class DateMathTests
 
     [Theory]
     [InlineData("UTC")]
-    [InlineData("US/Eastern")]
-    [InlineData("US/Pacific")]
+    [InlineData("America/New_York")]
+    [InlineData("America/Los_Angeles")]
     public void ParseTimeZone_Now_ReturnsCorrectTimezone(string timeZoneId)
     {
         var timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
@@ -489,7 +489,7 @@ public class DateMathTests
     [Fact]
     public void ParseTimeZone_ExplicitDateWithoutTimezone_UsesSpecifiedTimezone()
     {
-        var easternTimeZone = TimeZoneInfo.FindSystemTimeZoneById("US/Eastern");
+        var easternTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
         const string expression = "2023-06-15T14:30:00";
 
         var result = DateMath.Parse(expression, easternTimeZone);
@@ -511,7 +511,7 @@ public class DateMathTests
     [Fact]
     public void ParseTimeZone_ExplicitDateWithTimezone_PreservesOriginalTimezone()
     {
-        var pacificTimeZone = TimeZoneInfo.FindSystemTimeZoneById("US/Pacific");
+        var pacificTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         const string expression = "2023-06-15T14:30:00+05:00";
 
         var result = DateMath.Parse(expression, pacificTimeZone);
@@ -552,7 +552,7 @@ public class DateMathTests
     [InlineData("now/M", true)]
     public void ParseTimeZone_RoundingOperations_ReturnsCorrectResult(string expression, bool isUpperLimit)
     {
-        var centralTimeZone = TimeZoneInfo.FindSystemTimeZoneById("US/Central");
+        var centralTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
 
         var result = DateMath.Parse(expression, centralTimeZone, isUpperLimit);
 
@@ -592,7 +592,7 @@ public class DateMathTests
     [Fact]
     public void TryParseTimeZone_ValidExpression_ReturnsTrue()
     {
-        var mountainTimeZone = TimeZoneInfo.FindSystemTimeZoneById("US/Mountain");
+        var mountainTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Denver");
         const string expression = "now+2d";
 
         bool success = DateMath.TryParse(expression, mountainTimeZone, false, out DateTimeOffset result);
