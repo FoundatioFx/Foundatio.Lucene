@@ -479,7 +479,7 @@ public class ValidationTests
         Assert.Equal("Invalid sort: bad field", exception.Message);
         Assert.Same(result, exception.Result);
         Assert.Single(exception.Errors);
-        Assert.Equal(QueryErrorCode.ValidationError, exception.ErrorCode);
+        Assert.Equal(QueryErrorCode.FieldRestricted, exception.ErrorCode);
     }
 
     [Fact]
