@@ -17,5 +17,6 @@
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Foundatio.Lucene.Benchmarks/Foundatio.Lucene.Benchmarks.csproj" />
+    <Project Path="benchmarks/Foundatio.Parsers.Benchmarks/Foundatio.Parsers.Benchmarks.csproj" />
   </Folder>
 </Solution>
