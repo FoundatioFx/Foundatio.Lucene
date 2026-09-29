@@ -19,28 +19,28 @@ hero:
 features:
   - icon: 🔍
     title: Full Lucene Syntax
-    details: Support for terms, phrases, fields, ranges, boolean operators, wildcards, regex, and more.
-  - icon: 🗃️
-    title: Entity Framework Integration
-    details: Convert Lucene queries directly to LINQ expressions for EF Core database queries.
+    details: Terms, phrases, fields and field groups, ranges, boolean logic with clear precedence, wildcards, fuzzy, regex, date math, and saved-query includes.
+  - icon: ⚡
+    title: Fast
+    details: 36-45× faster parsing and 7-11× faster Elasticsearch query building than Foundatio.Parsers, with a fraction of the allocations.
   - icon: 🔎
-    title: Elasticsearch Support
-    details: Generate Elasticsearch Query DSL from Lucene syntax using the official .NET client.
-  - icon: 🔄
-    title: Round-Trip Capable
-    details: Parse queries to an AST and convert back to query strings with full fidelity.
+    title: Elasticsearch
+    details: Mapping-aware Query DSL, aggregations, and sorts, including nested fields, geo, runtime fields, and time zones.
+  - icon: 🗃️
+    title: Entity Framework Core
+    details: Queries and sorts become LINQ expressions that run on the database, restricted to the fields your model exposes.
+  - icon: 📊
+    title: Sorts and Aggregations
+    details: The same syntax describes sorts (-created +title) and aggregations (terms:(status~10 max:created)).
+  - icon: 🧭
+    title: Sync Core, Explicit Async
+    details: Parsing and building are synchronous; includes, field lookups, and mapping loads resolve in a separate async phase.
   - icon: 🛡️
-    title: Query Validation
-    details: Restrict allowed fields, operators, and patterns with comprehensive validation.
-  - icon: 📅
-    title: Date Math Support
-    details: Elasticsearch-style date math expressions like `now-1d` and `2024-01-01||+1M/d`.
+    title: Safe for User Input
+    details: Bounded nesting and include expansion, and field and operation rules enforced on every build.
   - icon: 🔧
-    title: Visitor Pattern
-    details: Transform, validate, or analyze queries with composable visitors.
-  - icon: 🏷️
-    title: Field Aliasing
-    details: Map user-friendly field names to your actual data model for security and usability.
+    title: Visitors
+    details: Transform, validate, invert, or analyze queries, and turn trees back into query text.
 ---
 
 ## Quick Example
@@ -48,13 +48,27 @@ features:
 ```csharp
 using Foundatio.Lucene;
 
-// Parse a user query
-var result = LuceneQuery.Parse("title:hello AND status:active");
-
-if (result.IsSuccess)
+var result = LuceneQuery.Parse("title:hello AND (status:open OR status:regressed)");
+if (!result.IsSuccess)
 {
-    var document = result.Document; // QueryDocument (root AST node)
+    foreach (var error in result.Errors)
+        Console.WriteLine($"{error.Line}:{error.Column} {error.Message}");
 }
+```
+
+### Elasticsearch
+
+```csharp
+using Foundatio.Lucene.Elasticsearch;
+
+var parser = new ElasticsearchQueryParser(c => c.UseMappings(ElasticMappingResolver.Create(client, "events")));
+
+var search = await parser.BuildSearchAsync(
+    query: "type:error created:[now-7d TO now]",
+    aggregations: "terms:(status~10 max:created)",
+    sort: "-created");
+
+var response = await client.SearchAsync<Event>(s => s.Indices("events").Apply(search));
 ```
 
 ### Entity Framework
@@ -64,18 +78,5 @@ using Foundatio.Lucene.EntityFramework;
 
 var parser = new EntityFrameworkQueryParser();
 var filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
-var results = await context.Employees.Where(filter).ToListAsync();
-```
-
-### Elasticsearch
-
-```csharp
-using Foundatio.Lucene.Elasticsearch;
-
-var parser = new ElasticsearchQueryParser(config =>
-{
-    config.UseScoring = true;
-    config.DefaultFields = ["title", "content"];
-});
-var query = parser.BuildQuery("author:john AND status:active");
+var employees = await db.Employees.Where(filter).ToListAsync();
 ```

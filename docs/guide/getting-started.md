@@ -1,203 +1,132 @@
 # Getting Started
 
-Foundatio.Lucene is a library for parsing Lucene-style query strings and converting them to various output formats. This guide will walk you through the basic setup and your first query.
-
 ## Installation
 
-Install the NuGet packages for your use case:
-
-::: code-group
-
-```bash [Core Parser]
+```bash
+# Parsing, visitors, validation
 dotnet add package Foundatio.Lucene
-```
 
-```bash [Entity Framework]
+# Elasticsearch queries, aggregations, and sorts
+dotnet add package Foundatio.Lucene.Elasticsearch
+
+# Entity Framework Core filters and sorts
 dotnet add package Foundatio.Lucene.EntityFramework
 ```
 
-```bash [Elasticsearch]
-dotnet add package Foundatio.Lucene.Elasticsearch
-```
+The packages target .NET 8 and .NET 10.
 
-:::
-
-## Basic Parsing
-
-The simplest usage is to parse a query string into an AST:
+## Parsing
 
 ```csharp
 using Foundatio.Lucene;
 
-var result = LuceneQuery.Parse("title:hello AND status:active");
+var result = LuceneQuery.Parse("title:hello AND (status:open OR status:regressed)");
 
 if (result.IsSuccess)
 {
-    var document = result.Document; // QueryDocument (root AST node)
-    Console.WriteLine($"Parsed {document.Children.Count} clauses");
+    var document = result.Document;
 }
 else
 {
-    // Handle errors - partial AST may still be available
     foreach (var error in result.Errors)
-    {
-        Console.WriteLine($"Error at {error.Line}:{error.Column}: {error.Message}");
-    }
+        Console.WriteLine($"{error.Line}:{error.Column} {error.Message}");
 }
 ```
 
-## Converting Back to Query String
+Parsing never throws for malformed input. The document contains everything that could be parsed, and each error has a position you can use to highlight the problem.
 
-You can convert the AST back to a query string:
-
-```csharp
-using Foundatio.Lucene;
-
-var result = LuceneQuery.Parse("title:test AND (status:active OR status:pending)");
-var queryString = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "title:test AND (status:active OR status:pending)"
-```
-
-## Field Aliasing
-
-Map user-friendly field names to your actual data model:
+Clauses written next to each other are AND-ed by default. For a search box where `apple banana` should match either word, use OR:
 
 ```csharp
-using Foundatio.Lucene;
-using Foundatio.Lucene.Visitors;
-
-var result = LuceneQuery.Parse("user:john AND created:[2020-01-01 TO 2020-12-31]");
-
-var fieldMap = new FieldMap
-{
-    { "user", "account.username" },
-    { "created", "metadata.timestamp" }
-};
-
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-var resolved = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "account.username:john AND metadata.timestamp:[2020-01-01 TO 2020-12-31]"
+var result = LuceneQuery.Parse("apple banana", BooleanOperator.Or);
 ```
 
-## Query Validation
+See [Query Syntax](./query-syntax) for the complete syntax and how operators combine.
 
-Restrict what users can query:
+## Back to text
 
 ```csharp
-using Foundatio.Lucene;
-
-var result = LuceneQuery.Parse("*wildcard AND title:test");
-
-var options = new QueryValidationOptions
-{
-    AllowLeadingWildcards = false
-};
-options.AllowedFields.Add("title");
-options.AllowedFields.Add("status");
-
-var validationResult = QueryValidator.Validate(result.Document, options);
-
-if (!validationResult.IsValid)
-{
-    Console.WriteLine(validationResult.Message);
-}
+var document = LuceneQuery.Parse("title:(a OR b) -status:closed").Document;
+string text = QueryStringBuilder.ToQueryString(document); // title:(a OR b) -status:closed
 ```
 
-## Entity Framework Integration
+## Elasticsearch
 
-Enable dynamic, user-driven queries in your API endpoints:
+```csharp
+using Foundatio.Lucene.Elasticsearch;
+
+var parser = new ElasticsearchQueryParser(c =>
+{
+    c.UseMappings(ElasticMappingResolver.Create(client, "events"));
+    c.DefaultFields = ["message"];
+});
+
+var query = await parser.BuildQueryAsync("type:error AND created:[now-7d TO now]");
+var response = await client.SearchAsync<Event>(s => s.Indices("events").Query(query));
+```
+
+Aggregations and sorts use the same syntax:
+
+```csharp
+var search = await parser.BuildSearchAsync(
+    query: "type:error",
+    aggregations: "terms:(status~10 max:created) date:created~1d",
+    sort: "-created");
+
+var response = await client.SearchAsync<Event>(s => s.Indices("events").Apply(search));
+```
+
+See [Elasticsearch](./elasticsearch).
+
+## Entity Framework Core
 
 ```csharp
 using Foundatio.Lucene.EntityFramework;
 
-// In your API controller or service
-[HttpGet("employees")]
-public async Task<IActionResult> SearchEmployees([FromQuery] string query)
-{
-    var parser = new EntityFrameworkQueryParser();
+var parser = new EntityFrameworkQueryParser(c => c.DefaultFields = ["Name"]);
 
-    // User provides: "name:john AND salary:[50000 TO *] AND department:engineering"
-    var filter = parser.BuildFilter<Employee>(query);
-
-    var results = await _context.Employees
-        .Where(filter)
-        .ToListAsync();
-
-    return Ok(results);
-}
+Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
+var employees = await db.Employees.Where(filter).ToListAsync();
 ```
 
-With field aliasing to protect your data model:
+See [Entity Framework](./entity-framework).
+
+## Field aliases
+
+Let users query with friendly names:
 
 ```csharp
-var parser = new EntityFrameworkQueryParser();
-
-// Map user-friendly names to actual entity properties
-var fieldMap = new FieldMap
+var parser = new ElasticsearchQueryParser(c => c.FieldMap = new FieldMap
 {
-    { "name", "FullName" },
-    { "dept", "Department.Name" },
-    { "hired", "HireDate" }
-};
-
-// User query: "name:john AND dept:engineering AND hired:[2020-01-01 TO *]"
-var filter = parser.BuildFilter<Employee>(userQuery, fieldMap);
-```
-
-## Elasticsearch Integration
-
-Generate Elasticsearch Query DSL from Lucene syntax:
-
-```csharp
-using Foundatio.Lucene.Elasticsearch;
-using Elastic.Clients.Elasticsearch;
-
-var parser = new ElasticsearchQueryParser();
-
-// Build an Elasticsearch Query from a Lucene query string
-var query = parser.BuildQuery("title:hello AND status:active");
-
-// Use with the Elasticsearch client
-var client = new ElasticsearchClient();
-var response = await client.SearchAsync<Document>(s => s
-    .Index("my-index")
-    .Query(query)
-);
-```
-
-With configuration options:
-
-```csharp
-var parser = new ElasticsearchQueryParser(config =>
-{
-    // Use scoring queries (match) instead of filter queries (term)
-    config.UseScoring = true;
-
-    // Set default fields for unfielded terms
-    config.DefaultFields = ["title", "content"];
-
-    // Map user-friendly field names
-    config.FieldMap = new FieldMap
-    {
-        { "author", "metadata.author" },
-        { "created", "metadata.timestamp" }
-    };
-
-    // Configure date field detection for date ranges
-    config.IsDateField = field => field.EndsWith("date") || field.EndsWith("timestamp");
-    config.DefaultTimeZone = "America/Chicago";
+    { "user", "account.username" },
+    { "created", "metadata.timestamp" }
 });
 
-var query = parser.BuildQuery("author:john AND created:[2024-01-01 TO now]");
+var query = parser.BuildQuery("user:john created:>now-1d");
 ```
 
-## Next Steps
+See [Field Mapping](./field-mapping).
 
-Now that you have the basics working, explore more advanced features:
+## Restricting what users can query
 
-- [Query Syntax](./query-syntax) - Learn all the supported syntax
-- [Visitors](./visitors) - Transform and analyze queries
-- [Field Mapping](./field-mapping) - Advanced field aliasing
-- [Entity Framework](./entity-framework) - Deep dive into EF integration
-- [Elasticsearch](./elasticsearch) - Deep dive into ES integration
+```csharp
+var validation = new QueryValidationOptions { AllowLeadingWildcards = false };
+validation.AllowedFields.Add("title");
+validation.AllowedFields.Add("status");
+
+var parser = new ElasticsearchQueryParser(c => c.ValidationOptions = validation);
+
+var result = parser.TryBuildQuery("secret:x");
+// result.IsSuccess == false
+// result.ErrorMessage: "Invalid query: Query uses field(s) (secret) that are not allowed to be used."
+```
+
+See [Validation](./validation) and [Security](./security).
+
+## Next steps
+
+- [Query Syntax](./query-syntax)
+- [Sorting and Aggregations](./sorting-and-aggregations)
+- [Configuration](./configuration)
+- [Visitors](./visitors)
+- [Migrating from Foundatio.Parsers](./migrating-from-parsers)
