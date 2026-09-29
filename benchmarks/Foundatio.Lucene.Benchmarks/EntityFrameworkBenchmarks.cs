@@ -35,50 +35,34 @@ public class EntityFrameworkBenchmarks
     private const string NavigationQuery = "Company.Name:Acme AND Department.Name:Engineering";
     private const string CollectionQuery = "Employees.Name:John";
     private const string FullTextQuery = "Name:developer AND Title:senior";
+    private const string SortExpression = "-Salary Company.Name +Name";
 
     private EntityFrameworkQueryParser _parser = null!;
     private EntityFrameworkQueryParser _parserWithFullText = null!;
-    private EntityFrameworkQueryVisitorContext _context = null!;
-    private EntityFrameworkQueryVisitorContext _contextWithFullText = null!;
+    private EntityFrameworkQueryOptions _tenantOptions = null!;
     private BenchmarkDbContext _dbContext = null!;
-
-    // Pre-parsed documents for expression building benchmarks
-    private LuceneParseResult _simpleTermParsed = null!;
-    private LuceneParseResult _simpleFieldParsed = null!;
-    private LuceneParseResult _multiFieldParsed = null!;
-    private LuceneParseResult _wildcardParsed = null!;
-    private LuceneParseResult _rangeParsed = null!;
-    private LuceneParseResult _complexParsed = null!;
 
     [GlobalSetup]
     public void Setup()
     {
-        // Setup parser without full-text
-        _parser = new EntityFrameworkQueryParser();
-
-        // Setup parser with full-text fields
-        _parserWithFullText = new EntityFrameworkQueryParser(config =>
-        {
-            config.AddFullTextFields("Employee.Name", "Employee.Title");
-        });
-
-        // Setup DbContext for metadata-based discovery
-        var options = new DbContextOptionsBuilder<BenchmarkDbContext>()
+        _dbContext = new BenchmarkDbContext(new DbContextOptionsBuilder<BenchmarkDbContext>()
             .UseInMemoryDatabase("BenchmarkDb")
-            .Options;
-        _dbContext = new BenchmarkDbContext(options);
+            .Options);
 
-        // Pre-create contexts
-        _context = new EntityFrameworkQueryVisitorContext();
-        _contextWithFullText = new EntityFrameworkQueryVisitorContext();
+        var model = _dbContext.Model;
+        _parser = new EntityFrameworkQueryParser(config => config.UseModel(model).SetDefaultFields("Name", "Title"));
+        _parserWithFullText = new EntityFrameworkQueryParser(config => config.UseModel(model).AddFullTextFields("Employee.Name", "Employee.Title"));
+        _tenantOptions = new EntityFrameworkQueryOptions
+        {
+            FieldMap = new FieldMap { { "who", "Name" }, { "org", "Company.Name" } },
+            DefaultFields = ["Name"]
+        };
 
-        // Pre-parse queries for expression-only benchmarks
-        _simpleTermParsed = LuceneQuery.Parse(SimpleTermQuery);
-        _simpleFieldParsed = LuceneQuery.Parse(SimpleFieldQuery);
-        _multiFieldParsed = LuceneQuery.Parse(MultiFieldQuery);
-        _wildcardParsed = LuceneQuery.Parse(WildcardQuery);
-        _rangeParsed = LuceneQuery.Parse(RangeQuery);
-        _complexParsed = LuceneQuery.Parse(ComplexQuery);
+        // Warm the per-parser field metadata caches so the benchmarks measure steady-state cost.
+        _parser.BuildFilter<Employee>(ComplexQuery);
+        _parser.BuildFilter<Employee>(NavigationQuery);
+        _parser.BuildFilter<Company>(CollectionQuery);
+        _parserWithFullText.BuildFilter<Employee>(FullTextQuery);
     }
 
     [GlobalCleanup]
@@ -135,32 +119,19 @@ public class EntityFrameworkBenchmarks
 
     #endregion
 
-    #region Context Reuse Comparison
+    #region Per-Request Options, Queryable Extensions, and Sorting
 
     [Benchmark]
-    public Expression<Func<Employee, bool>> BuildFilter_NewContext()
-    {
-        var context = new EntityFrameworkQueryVisitorContext();
-        return _parser.BuildFilter<Employee>(SimpleFieldQuery, context);
-    }
+    public Expression<Func<Employee, bool>> BuildFilter_WithTenantOptions()
+        => _parser.BuildFilter<Employee>("who:John AND org:Acme*", _tenantOptions);
 
     [Benchmark]
-    public Expression<Func<Employee, bool>> BuildFilter_ReusedContext()
-    {
-        // Note: In real usage, context should be reset between uses
-        return _parser.BuildFilter<Employee>(SimpleFieldQuery, _context);
-    }
-
-    #endregion
-
-    #region With EF Metadata Discovery
+    public Expression Where_OnDbSet()
+        => _dbContext.Employees.Where(ComplexQuery, _parser).Expression;
 
     [Benchmark]
-    public Expression<Func<Employee, bool>> BuildFilter_WithEfMetadata()
-    {
-        var entityType = _dbContext.Model.FindEntityType(typeof(Employee))!;
-        return _parser.BuildFilter<Employee>(SimpleFieldQuery, entityType);
-    }
+    public Expression OrderBy_OnDbSet()
+        => _dbContext.Employees.OrderBy(SortExpression, _parser).Expression;
 
     #endregion
 }

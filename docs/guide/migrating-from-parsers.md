@@ -113,6 +113,33 @@ Most queries behave exactly as before. These are the intentional differences, mo
 
 The syntax itself is a superset: everything Foundatio.Parsers accepted is accepted, and a few things it rejected now work, such as unquoted times in values (`time:10:30:00`) and escaping any character.
 
+## SqlQueries to Entity Framework
+
+`SqlQueryParser` produced Dynamic LINQ text; `EntityFrameworkQueryParser` builds expression trees, so there's no Dynamic LINQ dependency, no `FTS.Contains` function to map, and no way for query values to inject expressions.
+
+| Foundatio.Parsers.SqlQueries | Foundatio.Lucene.EntityFramework |
+|---|---|
+| `new SqlQueryParser(c => ...)` | `new EntityFrameworkQueryParser(c => ...)` |
+| `parser.GetContext(db.Employees.EntityType)` | not needed: `db.Employees.Where(query, parser)` reads the model, or use `c.UseModel(db.Model)` / `options.Model` |
+| `await parser.ToDynamicLinqAsync(query, context)` + `Where(parsingConfig, text)` | `query.Where(text, parser)`, `parser.BuildFilter<T>(text)`, or `BuildFilterAsync` for async resolvers |
+| `c.SetDefaultFields(fields, SqlSearchOperator.Contains)` | `c.SetDefaultFields(fields, SearchOperator.Contains)` |
+| `c.SetFullTextFields([...])` | `c.AddFullTextFields(...)` |
+| `c.SetSearchTokenizer(...)` | `c.UseSearchTokenizer(...)` |
+| `c.SetDateTimeParser(...)` / `SetDateOnlyParser(...)` | `c.SetTimeZone(...)`, `c.SetDateTimeStorageTimeZone(...)`, `c.TimeProvider` |
+| `c.SetFieldDepth(n)` | `c.SetMaxFieldDepth(n)` |
+| `c.UseEntityTypePropertyFilter` / `NavigationFilter` / `SkipNavigationFilter` | same names |
+| custom `EntityFieldInfo`s on the context + a visitor calling `node.SetQuery("...")` | `EntityFrameworkQueryOptions.AdditionalFields` + `c.UseCustomFieldExpressionBuilder(...)`, or `node.SetFilterExpression(lambda)` from a visitor |
+| no sorting | `query.OrderBy(sort, parser)` / `parser.BuildSort<T>(sort)` |
+
+Behavior differences, in addition to the ones above:
+
+- Unknown fields and values that don't fit the field type (`salary:abc`) are validation errors instead of passing through or producing empty output.
+- Field groups (`name:(a OR b)`), open-ended ranges (`salary:[* TO 5]`), and date rounding (`now/d`) work, and dates round like Elasticsearch: `created:>2024-01-01` starts on January 2.
+- Terms on full-text fields use `CONTAINS` whether or not they have a field. `Contains` default-field searches on full-text fields use the prefix term `"john*"` instead of `"*john*"`, and advanced wildcards on full-text fields fall back to `LIKE` instead of being rejected.
+- Field paths may revisit an entity type (`manager.manager.name`), bounded by `MaxFieldDepth`, and field metadata is cached per parser rather than globally.
+
+See [Entity Framework](./entity-framework) for details.
+
 ## Validation
 
 `QueryValidator` methods are synchronous (`ValidateQuery`, `ValidateSort`, `ValidateAggregations`), and the providers have their own `Validate*` methods that include mapping-based field resolution. `QueryValidationOptions` has the same properties (`AllowedFields`, `RestrictedFields`, `AllowLeadingWildcards`, `AllowUnresolvedFields`, `AllowUnresolvedIncludes`, `AllowedOperations`, `RestrictedOperations`, `AllowedMaxNodeDepth`, `ShouldThrow`) plus `AllowedMaxSortFields`, `MaxIncludeDepth`, and `MaxIncludeExpansions`. Allowed and restricted fields also cover sub-fields, so restricting `secret` restricts `secret.keyword`. Building a query always enforces validation.

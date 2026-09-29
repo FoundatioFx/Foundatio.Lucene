@@ -53,7 +53,7 @@ Regular expressions are rejected by the Entity Framework provider by default. El
 
 ## Report unknown fields
 
-By default a field that can't be resolved (not in the Elasticsearch mapping, not an Entity Framework property) is passed through. Set `AllowUnresolvedFields = false` to reject queries that use them — useful to catch typos and to make sure queries only touch known fields:
+By default a field that can't be resolved (for example one that isn't in the Elasticsearch mapping) is passed through. The Entity Framework provider always rejects fields that aren't in the model. Set `AllowUnresolvedFields = false` to reject queries that use unresolved fields — useful to catch typos and to make sure queries only touch known fields:
 
 ```csharp
 validation.AllowUnresolvedFields = false;
