@@ -19,7 +19,7 @@ var fieldMap = new FieldMap
 };
 
 var result = LuceneQuery.Parse("user:john AND created:[2024-01-01 TO *]");
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
 var resolved = QueryStringBuilder.ToQueryString(result.Document);
 // Returns: "account.username:john AND metadata.createdAt:[2024-01-01 TO *]"
@@ -43,7 +43,8 @@ var fieldMap = new FieldMap
 
 ## Hierarchical Field Resolution
 
-For nested field structures, use `ToHierarchicalFieldResolver()`:
+`FieldMap.ResolutionMode` is `Hierarchical` by default, so nested field structures resolve by the
+longest matching prefix — no extra setup required:
 
 ```csharp
 var fieldMap = new FieldMap
@@ -53,12 +54,13 @@ var fieldMap = new FieldMap
     { "data.created", "payload.metadata.createdAt" }
 };
 
-var resolver = fieldMap.ToHierarchicalFieldResolver();
-await FieldResolverQueryVisitor.RunAsync(result.Document, resolver);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
 // "data.user:john" -> "payload.account.username:john"
 // "data.status:active" -> "payload.status:active" (partial match on "data")
 ```
+
+Set `fieldMap.ResolutionMode = FieldResolutionMode.Direct` to require exact matches only.
 
 ## Validation with Field Mapping
 
@@ -77,10 +79,10 @@ validationOptions.AllowedFields.AddRange(fieldMap.Keys);
 
 // First resolve aliases
 var result = LuceneQuery.Parse(userQuery);
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 
 // Then validate
-var validation = await QueryValidator.ValidateAsync(result.Document, validationOptions);
+var validation = QueryValidator.Validate(result.Document, validationOptions);
 ```
 
 ## Dynamic Field Mapping
@@ -130,7 +132,7 @@ Func<string, string?> customResolver = field =>
     };
 };
 
-await FieldResolverQueryVisitor.RunAsync(result.Document, customResolver);
+FieldResolverQueryVisitor.Run(result.Document, customResolver);
 ```
 
 ## Field Mapping in Parsers

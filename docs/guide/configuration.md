@@ -4,127 +4,170 @@ This guide covers configuration options for the various components of Foundatio.
 
 ## Core Parser
 
-The core parser is stateless and doesn't require configuration:
+The core parser is stateless and requires no configuration:
 
 ```csharp
 var result = LuceneQuery.Parse("title:hello AND status:active");
 ```
 
+`LuceneQuery.Parse` is resilient: it always returns a (possibly partial) AST plus any
+`ParseError`s, and bounds nesting depth (`LuceneParser.MaxDepth`, default 100) so deeply nested
+input can never overflow the stack.
+
 ## Entity Framework Parser
 
-The `EntityFrameworkQueryParser` configuration:
-
 ```csharp
-var parser = new EntityFrameworkQueryParser();
-
-// Build a filter with field mapping
-var fieldMap = new FieldMap
+var parser = new EntityFrameworkQueryParser(config =>
 {
-    { "name", "FullName" },
-    { "dept", "Department.Name" }
-};
+    config.SetDefaultFields("Name", "Email");
+    config.SetDefaultOperator(BooleanOperator.And);
+    // Controls 'now' in date math (now-7d, now/d). Defaults to TimeProvider.System.
+    config.SetTimeProvider(TimeProvider.System);
+});
 
-var filter = parser.BuildFilter<Employee>(query, fieldMap);
+var filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
+var employees = context.Employees.Where(filter).ToList();
 ```
 
-## Elasticsearch Parser
+### Field aliasing, includes and date math (per request)
 
-The `ElasticsearchQueryParser` has extensive configuration options:
+Field maps, `@include` references and date math are applied through the shared visitor pipeline,
+exactly as in the Elasticsearch integration. Supply them per request via
+`EntityFrameworkQueryOptions` (the recommended way to swap configuration per scope/tenant):
+
+```csharp
+var options = new EntityFrameworkQueryOptionsBuilder()
+    .WithFieldMap(new FieldMap { { "user", "Name" }, { "dept", "Department.Name" } })
+    .WithIncludes(new Dictionary<string, string> { ["seniors"] = "Title:Senior" })
+    .WithValidationOptions(o => o.AllowLeadingWildcards = false)
+    .Build();
+
+var filter = parser.BuildFilter<Employee>("user:john AND @include:seniors", context: null, options);
+```
+
+You can also register default options per entity type with `parser.SetOptions<Employee>(options)`.
+Per-request options take precedence over registered options, which take precedence over the
+global configuration.
+
+> SQL cannot honor fuzzy (`term~N`) or proximity/slop (`"a b"~N`) queries. Rather than silently
+> returning the wrong rows, the EF builder throws `QueryBuildException` (use `TryBuildFilter` to get
+> a `QueryResult` instead of an exception). Regex queries depend on the database provider.
+
+## Elasticsearch Parser
 
 ```csharp
 var parser = new ElasticsearchQueryParser(config =>
 {
-    // Scoring configuration
-    config.UseScoring = true;
-
-    // Default fields for unfielded terms
-    config.DefaultFields = ["title", "content", "description"];
-
-    // Default boolean operator
-    config.DefaultOperator = QueryOperator.And;
-
-    // Field aliasing
-    config.FieldMap = new FieldMap
-    {
-        { "author", "metadata.author" },
-        { "date", "metadata.publishedAt" }
-    };
-
-    // Geo field detection
-    config.IsGeoPointField = field => 
-        field == "location" || 
-        field.EndsWith("_geo");
-
-    // Date field detection
-    config.IsDateField = field =>
-        field.EndsWith("date") ||
-        field.EndsWith("At") ||
-        field.EndsWith("timestamp");
-
-    // Timezone for date queries
+    config.UseScoring = true;                         // match queries (scoring) vs term queries (filter)
+    config.DefaultFields = ["title", "content"];      // fields for unfielded terms
+    config.DefaultOperator = BooleanOperator.And;     // implicit operator
+    config.FieldMap = new FieldMap { { "author", "metadata.author" } };
+    config.IsDateField = field => field.EndsWith("At") || field.EndsWith("date");
     config.DefaultTimeZone = "America/Chicago";
-
-    // Geo location resolver (for named locations)
-    config.GeoLocationResolver = async name =>
-    {
-        var coords = await _geocodingService.ResolveAsync(name);
-        return coords != null ? $"{coords.Lat},{coords.Lon}" : null;
-    };
-
-    // Include resolver (for @include syntax)
-    config.IncludeResolver = async name =>
-    {
-        return await _savedQueryService.GetQueryAsync(name);
-    };
-
-    // Validation options
-    config.ValidationOptions = new QueryValidationOptions
-    {
-        AllowLeadingWildcards = false
-    };
+    config.ValidationOptions = new QueryValidationOptions { AllowLeadingWildcards = false };
 });
+
+var query = parser.BuildQuery("author:john AND status:active");
 ```
 
-### Configuration Properties
+### Configuration properties
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `UseScoring` | `bool` | `false` | Use match queries (scoring) vs term queries (filtering) |
 | `DefaultFields` | `string[]?` | `null` | Fields to search for unfielded terms |
-| `DefaultOperator` | `QueryOperator` | `Or` | Default boolean operator for implicit combinations |
+| `DefaultOperator` | `BooleanOperator` | `Or` | Default boolean operator for implicit combinations |
 | `FieldMap` | `FieldMap?` | `null` | Field name mappings |
-| `IsGeoPointField` | `Func<string, bool>?` | `null` | Function to detect geo_point fields |
-| `IsDateField` | `Func<string, bool>?` | `null` | Function to detect date fields |
+| `Includes` | `IReadOnlyDictionary<string,string>?` | `null` | Pre-resolved `@include` content |
+| `IsDateField` | `Func<string, bool>?` | `null` | Detects date fields for date range queries |
 | `DefaultTimeZone` | `string?` | `null` | Default timezone for date range queries |
-| `GeoLocationResolver` | `Func<string, Task<string?>>?` | `null` | Async function to resolve location names to coordinates |
-| `IncludeResolver` | `IncludeResolver?` | `null` | Function to resolve @include references |
 | `ValidationOptions` | `QueryValidationOptions?` | `null` | Query validation options |
+| `TimeProvider` | `TimeProvider` | `System` | Controls `now` in date math |
 
-## Validation Options
+### Per-request / per-scope options
 
-Configure query validation:
+Swap configuration per scope by passing a prebuilt `ElasticsearchQueryOptions` (or registering it
+per index name). Options are immutable records, so an application can cache one per tenant and reuse
+it across requests:
+
+```csharp
+var tenantOptions = new ElasticsearchQueryOptionsBuilder()
+    .WithFieldMap(new FieldMap { { "user", "tenant42.userName" } })
+    .WithDefaultFields("tenant42.title")
+    .Build();
+
+var query = parser.BuildQuery("user:john", tenantOptions);
+```
+
+The same parser instance is thread-safe and reuses its visitors across requests, so swapping
+options per request does not allocate a visitor per call.
+
+## Field Map
+
+```csharp
+var fieldMap = new FieldMap
+{
+    { "user", "account.username" },
+    { "created", "metadata.createdAt" }
+};
+```
+
+`FieldMap` is case-insensitive. By default `ResolutionMode` is `Hierarchical`, so nested paths
+resolve by longest matching prefix:
+
+```csharp
+var fieldMap = new FieldMap
+{
+    { "data", "payload" },
+    { "data.user", "payload.account.username" }
+};
+// "data.user:john"   -> "payload.account.username:john"
+// "data.status:open" -> "payload.status:open"
+```
+
+Set `ResolutionMode = FieldResolutionMode.Direct` for exact-match-only resolution,
+`ReportUnmappedFields = true` to flag unmapped fields as unresolved, or `ResultPrefix` to prefix
+every resolved name. The parsers apply the field map automatically; to run it manually:
+
+```csharp
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
+```
+
+## Includes
+
+`@include:name` references expand from a pre-resolved dictionary (resolve saved queries from your
+store before parsing):
+
+```csharp
+var includes = new Dictionary<string, string> { ["recent"] = "created:[now-7d TO now]" };
+
+var parser = new ElasticsearchQueryParser(c => c.Includes = includes);
+var query = parser.BuildQuery("@include:recent AND status:active");
+
+// Or run it manually against the AST:
+result.Document.ExpandIncludes(includes);
+```
+
+Circular references and excessive nesting (`IncludeVisitor.MaxIncludeDepth`) are detected and
+reported as validation errors.
+
+## Validation
 
 ```csharp
 var options = new QueryValidationOptions
 {
-    // Wildcard restrictions
     AllowLeadingWildcards = false,
     AllowWildcardOnlyQueries = false,
-    
-    // Field restrictions
-    AllowedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "title", "author", "status", "date"
-    },
-    
-    DisallowedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "password", "ssn", "internalId"
-    }
+    AllowedFields = { "title", "author", "status", "date" },
+    DisallowedFields = { "password", "ssn" }
 };
-```
 
-### Validation Properties
+var result = QueryValidator.ValidateQuery("title:hello", options);
+if (!result.IsValid)
+{
+    // result.ValidationErrors describe what failed
+}
+```
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -133,212 +176,31 @@ var options = new QueryValidationOptions
 | `AllowedFields` | `HashSet<string>` | empty | Whitelist of allowed fields |
 | `DisallowedFields` | `HashSet<string>` | empty | Blacklist of disallowed fields |
 
-## Field Map
+## Custom Visitors
 
-Configure field aliasing:
-
-```csharp
-var fieldMap = new FieldMap
-{
-    { "user", "account.username" },
-    { "email", "account.emailAddress" },
-    { "created", "metadata.createdAt" }
-};
-
-// Case-insensitive by default
-// "User:john" -> "account.username:john"
-// "USER:john" -> "account.username:john"
-```
-
-### Hierarchical Resolution
-
-For nested field structures:
-
-```csharp
-var fieldMap = new FieldMap
-{
-    { "data", "payload" },
-    { "data.user", "payload.account.username" }
-};
-
-var resolver = fieldMap.ToHierarchicalFieldResolver();
-await FieldResolverQueryVisitor.RunAsync(document, resolver);
-
-// "data.user:john" -> "payload.account.username:john"
-// "data.status:active" -> "payload.status:active"
-```
-
-## Include Resolver
-
-Configure @include syntax resolution:
-
-```csharp
-IncludeResolver resolver = async name =>
-{
-    // Load from database
-    var savedQuery = await _db.SavedQueries
-        .Where(q => q.Name == name)
-        .Select(q => q.QueryText)
-        .FirstOrDefaultAsync();
-    
-    return savedQuery;
-};
-
-// Use in Elasticsearch parser
-var parser = new ElasticsearchQueryParser(config =>
-{
-    config.IncludeResolver = resolver;
-});
-
-// Or with IncludeVisitor directly
-await IncludeVisitor.RunAsync(document, resolver);
-```
-
-## Visitor Configuration
-
-Configure visitor chains:
+Compose visitors with `ChainedQueryVisitor` and run them synchronously:
 
 ```csharp
 var visitors = new ChainedQueryVisitor()
     .AddVisitor(new FieldResolverQueryVisitor(fieldMap), priority: 10)
-    .AddVisitor(new IncludeVisitor(includeResolver), priority: 20)
     .AddVisitor(new DateMathEvaluatorVisitor(), priority: 30)
-    .AddVisitor(new CustomTransformVisitor(), priority: 50)
     .AddVisitor(new ValidationVisitor(), priority: 100);
 
 var context = new QueryVisitorContext();
-await visitors.AcceptAsync(document, context);
+visitors.Accept(result.Document, context);
 ```
 
 ## Dependency Injection
 
-Register parsers with DI:
-
 ```csharp
-// Program.cs or Startup.cs
 services.AddSingleton<EntityFrameworkQueryParser>();
 
 services.AddSingleton(sp => new ElasticsearchQueryParser(config =>
 {
     config.UseScoring = true;
     config.DefaultFields = ["title", "content"];
-    config.IncludeResolver = sp.GetRequiredService<ISavedQueryService>().GetQueryAsync;
-    config.GeoLocationResolver = sp.GetRequiredService<IGeocodingService>().ResolveAsync;
-    config.ValidationOptions = new QueryValidationOptions
-    {
-        AllowLeadingWildcards = false
-    };
+    config.ValidationOptions = new QueryValidationOptions { AllowLeadingWildcards = false };
 }));
-
-// In controllers/services
-public class SearchController
-{
-    private readonly ElasticsearchQueryParser _parser;
-    
-    public SearchController(ElasticsearchQueryParser parser)
-    {
-        _parser = parser;
-    }
-}
-```
-
-## Environment-Specific Configuration
-
-Use configuration files for environment-specific settings:
-
-```csharp
-// appsettings.json
-{
-    "Search": {
-        "UseScoring": true,
-        "DefaultFields": ["title", "content"],
-        "DefaultTimeZone": "America/Chicago",
-        "AllowLeadingWildcards": false
-    }
-}
-
-// Configuration
-services.AddSingleton(sp =>
-{
-    var config = sp.GetRequiredService<IConfiguration>();
-    var searchConfig = config.GetSection("Search");
-
-    return new ElasticsearchQueryParser(parserConfig =>
-    {
-        parserConfig.UseScoring = searchConfig.GetValue<bool>("UseScoring");
-        parserConfig.DefaultFields = searchConfig.GetSection("DefaultFields").Get<string[]>();
-        parserConfig.DefaultTimeZone = searchConfig.GetValue<string>("DefaultTimeZone");
-        parserConfig.ValidationOptions = new QueryValidationOptions
-        {
-            AllowLeadingWildcards = searchConfig.GetValue<bool>("AllowLeadingWildcards")
-        };
-    });
-});
-```
-
-## Best Practices
-
-### 1. Centralize Configuration
-
-```csharp
-public static class SearchConfiguration
-{
-    public static readonly FieldMap FieldMap = new()
-    {
-        { "name", "fullName" },
-        { "email", "emailAddress" }
-    };
-
-    public static readonly QueryValidationOptions ValidationOptions = new()
-    {
-        AllowLeadingWildcards = false
-    };
-
-    public static ElasticsearchQueryParser CreateParser()
-    {
-        return new ElasticsearchQueryParser(config =>
-        {
-            config.FieldMap = FieldMap;
-            config.ValidationOptions = ValidationOptions;
-        });
-    }
-}
-```
-
-### 2. Use Constants for Field Names
-
-```csharp
-public static class SearchFields
-{
-    public const string Name = "name";
-    public const string Email = "email";
-    public const string Status = "status";
-    public const string Created = "created";
-    
-    public static readonly IReadOnlySet<string> All = new HashSet<string>
-    {
-        Name, Email, Status, Created
-    };
-}
-```
-
-### 3. Document Configuration
-
-```csharp
-/// <summary>
-/// Search API configuration.
-/// </summary>
-/// <remarks>
-/// Field mappings:
-/// - name -> fullName
-/// - email -> emailAddress
-/// - created -> createdAt
-/// 
-/// Validation:
-/// - Leading wildcards disabled for performance
-/// - Only whitelisted fields allowed
-/// </remarks>
-public static class SearchConfiguration { }
 ```
 
 ## Next Steps

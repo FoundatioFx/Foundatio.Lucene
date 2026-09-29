@@ -18,7 +18,7 @@ var options = new QueryValidationOptions
 options.AllowedFields.Add("title");
 options.AllowedFields.Add("status");
 
-var validationResult = await QueryValidator.ValidateAsync(result.Document, options);
+var validationResult = QueryValidator.Validate(result.Document, options);
 
 if (!validationResult.IsValid)
 {
@@ -111,14 +111,14 @@ validationOptions.AllowedFields.AddRange(fieldMap.Keys);
 // Parse and validate
 var result = LuceneQuery.Parse(userQuery);
 
-var validation = await QueryValidator.ValidateAsync(result.Document, validationOptions);
+var validation = QueryValidator.Validate(result.Document, validationOptions);
 if (!validation.IsValid)
 {
     return BadRequest(validation.Message);
 }
 
 // Then resolve and execute
-await FieldResolverQueryVisitor.RunAsync(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(result.Document, fieldMap);
 var filter = parser.BuildFilter<Employee>(QueryStringBuilder.ToQueryString(result.Document));
 ```
 
@@ -134,7 +134,7 @@ public class CustomValidationVisitor : QueryVisitor
     public IReadOnlyList<string> Errors => _errors;
     public bool IsValid => _errors.Count == 0;
 
-    public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
         // Validate date ranges don't span more than 1 year
         if (node.Min != null && node.Max != null)
@@ -149,13 +149,13 @@ public class CustomValidationVisitor : QueryVisitor
             }
         }
 
-        return base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 
-    public override async Task<QueryNode> VisitAsync(FieldQueryNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         // Validate specific field requirements
-        if (node.Field == "email" && node.Value is TermNode term)
+        if (node.Field == "email" && node.Query is TermNode term)
         {
             if (!term.Term?.Contains("@") == true)
             {
@@ -163,13 +163,13 @@ public class CustomValidationVisitor : QueryVisitor
             }
         }
 
-        return await base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 }
 
 // Usage
 var validator = new CustomValidationVisitor();
-await validator.AcceptAsync(result.Document, new QueryVisitorContext());
+validator.Accept(result.Document, new QueryVisitorContext());
 
 if (!validator.IsValid)
 {
@@ -202,7 +202,7 @@ public async Task<IActionResult> Search([FromQuery] string q)
     }
 
     // 2. Validate the query
-    var validation = await QueryValidator.ValidateAsync(
+    var validation = QueryValidator.Validate(
         parseResult.Document,
         _validationOptions
     );
@@ -213,14 +213,14 @@ public async Task<IActionResult> Search([FromQuery] string q)
 
     // 3. Run custom validation
     var customValidator = new CustomValidationVisitor();
-    await customValidator.AcceptAsync(parseResult.Document, new QueryVisitorContext());
+    customValidator.Accept(parseResult.Document, new QueryVisitorContext());
     if (!customValidator.IsValid)
     {
         return BadRequest(new { Errors = customValidator.Errors });
     }
 
     // 4. Resolve fields and execute
-    await FieldResolverQueryVisitor.RunAsync(parseResult.Document, _fieldMap);
+    FieldResolverQueryVisitor.Run(parseResult.Document, _fieldMap);
     var filter = _parser.BuildFilter<Document>(
         QueryStringBuilder.ToQueryString(parseResult.Document)
     );
@@ -271,7 +271,7 @@ public class QueryComplexityVisitor : QueryVisitor
 {
     public int Complexity { get; private set; } = 0;
 
-    public override Task<QueryNode> VisitAsync(TermNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
     {
         Complexity += 1;
         
@@ -287,25 +287,25 @@ public class QueryComplexityVisitor : QueryVisitor
             }
         }
         
-        return base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 
-    public override Task<QueryNode> VisitAsync(RangeNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
         Complexity += 3;
-        return base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 
-    public override Task<QueryNode> VisitAsync(RegexNode node, IQueryVisitorContext context)
+    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
     {
         Complexity += 10;
-        return base.VisitAsync(node, context);
+        return base.Visit(node, context);
     }
 }
 
 // Usage
 var complexityVisitor = new QueryComplexityVisitor();
-await complexityVisitor.AcceptAsync(result.Document, new QueryVisitorContext());
+complexityVisitor.Accept(result.Document, new QueryVisitorContext());
 
 if (complexityVisitor.Complexity > 50)
 {
@@ -322,7 +322,7 @@ if (complexityVisitor.Complexity > 50)
 var parseResult = LuceneQuery.Parse(userQuery);
 if (!parseResult.IsSuccess) { /* handle error */ }
 
-var validation = await QueryValidator.ValidateAsync(parseResult.Document, options);
+var validation = QueryValidator.Validate(parseResult.Document, options);
 if (!validation.IsValid) { /* handle error */ }
 ```
 
@@ -343,7 +343,7 @@ options.DisallowedFields.Add("password");  // Easy to forget fields
 // Parse error + Standard validation + Custom validation
 var pipeline = new List<Func<QueryDocument, Task<ValidationResult>>>
 {
-    doc => QueryValidator.ValidateAsync(doc, standardOptions),
+    doc => QueryValidator.Validate(doc, standardOptions),
     doc => ValidateDateRanges(doc),
     doc => ValidateUserPermissions(doc, currentUser)
 };

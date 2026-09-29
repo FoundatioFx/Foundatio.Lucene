@@ -99,6 +99,12 @@ public class EntityFrameworkQueryParserConfiguration
     public Func<string, object?> DateOnlyParser { get; private set; } = EntityFrameworkQueryVisitorContext.DefaultDateOnlyParser;
 
     /// <summary>
+    /// Time provider controlling 'now' in date math expressions (e.g., now-7d, now/d).
+    /// Defaults to <see cref="System.TimeProvider.System"/>.
+    /// </summary>
+    public TimeProvider TimeProvider { get; private set; } = TimeProvider.System;
+
+    /// <summary>
     /// Filter to exclude specific properties from field discovery.
     /// Default includes all properties.
     /// </summary>
@@ -185,6 +191,15 @@ public class EntityFrameworkQueryParserConfiguration
     public EntityFrameworkQueryParserConfiguration SetDateOnlyParser(Func<string, object?> parser)
     {
         DateOnlyParser = parser;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the time provider controlling 'now' in date math expressions.
+    /// </summary>
+    public EntityFrameworkQueryParserConfiguration SetTimeProvider(TimeProvider timeProvider)
+    {
+        TimeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         return this;
     }
 

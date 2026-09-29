@@ -248,7 +248,7 @@ options.AllowedFields.Add("department");
 
 // Validate before executing
 var parseResult = LuceneQuery.Parse(userQuery);
-var validation = await QueryValidator.ValidateAsync(parseResult.Document, options);
+var validation = QueryValidator.Validate(parseResult.Document, options);
 
 if (!validation.IsValid)
 {
@@ -376,10 +376,10 @@ public class EmployeesController : ControllerBase
         }
 
         // Resolve field aliases
-        await FieldResolverQueryVisitor.RunAsync(parseResult.Document, FieldMap);
+        FieldResolverQueryVisitor.Run(parseResult.Document, FieldMap);
 
         // Validate the query
-        var validation = await QueryValidator.ValidateAsync(
+        var validation = QueryValidator.Validate(
             parseResult.Document, 
             ValidationOptions
         );

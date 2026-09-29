@@ -30,6 +30,8 @@ public class ElasticsearchFixture : IAsyncLifetime
             .WithEnvironment("ELASTIC_PASSWORD", Password)
             .WithEnvironment("xpack.security.enabled", "true")
             .WithEnvironment("xpack.security.http.ssl.enabled", "false")
+            // Cap the JVM heap so the integration test containers can run side by side.
+            .WithEnvironment("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
             .WithWaitStrategy(Wait.ForUnixContainer()
                 .UntilHttpRequestIsSucceeded(r => r
                     .ForPort(ElasticsearchPort)

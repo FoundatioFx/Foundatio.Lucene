@@ -162,6 +162,10 @@ public class ExpressionBuilderVisitor : QueryVisitor<IEntityFrameworkQueryVisito
     /// <inheritdoc />
     protected override QueryNode Visit(TermNode node, IEntityFrameworkQueryVisitorContext context)
     {
+        // Fail loudly rather than silently degrading: SQL cannot honor fuzzy matching.
+        if (node.FuzzyDistance.HasValue)
+            throw new QueryBuildException("Fuzzy queries (term~N) are not supported by the Entity Framework provider.", QueryErrorCode.UnsupportedQueryType);
+
         var field = context.CurrentField;
         var term = node.UnescapedTerm;
 
@@ -173,6 +177,10 @@ public class ExpressionBuilderVisitor : QueryVisitor<IEntityFrameworkQueryVisito
     /// <inheritdoc />
     protected override QueryNode Visit(PhraseNode node, IEntityFrameworkQueryVisitorContext context)
     {
+        // Fail loudly rather than silently degrading: SQL cannot honor proximity/slop matching.
+        if (node.Slop.HasValue)
+            throw new QueryBuildException("Proximity/slop queries (\"...\"~N) are not supported by the Entity Framework provider.", QueryErrorCode.UnsupportedQueryType);
+
         var field = context.CurrentField;
         var phrase = node.Phrase;
 

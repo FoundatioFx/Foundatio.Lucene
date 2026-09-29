@@ -1,3 +1,5 @@
+using Foundatio.Lucene.Ast;
+
 namespace Foundatio.Lucene.Elasticsearch;
 
 /// <summary>
@@ -20,14 +22,14 @@ public static class ElasticsearchQueryVisitorContextExtensions
     public static T UseSearchMode<T>(this T context) where T : IElasticsearchQueryVisitorContext
     {
         context.UseScoring = true;
-        context.DefaultOperator = QueryOperator.Or;
+        context.DefaultOperator = BooleanOperator.Or;
         return context;
     }
 
     /// <summary>
     /// Sets the default boolean operator.
     /// </summary>
-    public static T SetDefaultOperator<T>(this T context, QueryOperator op) where T : IElasticsearchQueryVisitorContext
+    public static T SetDefaultOperator<T>(this T context, BooleanOperator op) where T : IElasticsearchQueryVisitorContext
     {
         context.DefaultOperator = op;
         return context;
@@ -48,24 +50,6 @@ public static class ElasticsearchQueryVisitorContextExtensions
     public static T SetTimeZone<T>(this T context, string timeZone) where T : IElasticsearchQueryVisitorContext
     {
         context.DefaultTimeZone = timeZone;
-        return context;
-    }
-
-    /// <summary>
-    /// Sets the function to resolve location strings to coordinates.
-    /// </summary>
-    public static T SetGeoLocationResolver<T>(this T context, Func<string, Task<string?>> resolver) where T : IElasticsearchQueryVisitorContext
-    {
-        context.GeoLocationResolver = resolver;
-        return context;
-    }
-
-    /// <summary>
-    /// Sets the function to determine if a field is a geo_point field.
-    /// </summary>
-    public static T SetGeoPointFieldResolver<T>(this T context, Func<string, bool> resolver) where T : IElasticsearchQueryVisitorContext
-    {
-        context.IsGeoPointField = resolver;
         return context;
     }
 

@@ -15,12 +15,12 @@ public class LuceneParseResult
     /// <summary>
     /// The parsed query document. Always non-null after parsing, even if errors occurred.
     /// </summary>
-    public QueryDocument Document { get; set; }
+    public QueryDocument Document { get; init; }
 
     /// <summary>
     /// List of errors encountered during parsing. Empty list means successful parse.
     /// </summary>
-    public List<ParseError> Errors { get; set; }
+    public List<ParseError> Errors { get; init; }
 
     /// <summary>
     /// Indicates whether the parsing was successful (no errors).
