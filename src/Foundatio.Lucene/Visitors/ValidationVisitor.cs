@@ -212,20 +212,20 @@ public class ValidationVisitor : QueryVisitor
                 result.AddError($"Query uses field(s) ({string.Join(", ", notAllowed)}) that are not allowed to be used.", code: QueryErrorCode.FieldNotAllowed);
         }
 
-        if (!options.AllowUnresolvedFields && result.UnresolvedFields.Count > 0)
+        if (!options.AllowUnresolvedFields && result.HasUnresolvedFields)
             result.AddError($"Query uses field(s) ({string.Join(", ", result.UnresolvedFields)}) that can't be resolved.", code: QueryErrorCode.UnresolvedField);
 
-        if (!options.AllowUnresolvedIncludes && result.UnresolvedIncludes.Count > 0)
+        if (!options.AllowUnresolvedIncludes && result.HasUnresolvedIncludes)
             result.AddError($"Query uses include(s) ({string.Join(", ", result.UnresolvedIncludes)}) that can't be resolved.", code: QueryErrorCode.UnresolvedInclude);
 
-        if (options.AllowedOperations.Count > 0)
+        if (options.AllowedOperations.Count > 0 && result.HasOperations)
         {
             var notAllowed = result.Operations.Keys.Where(op => !options.AllowedOperations.Contains(op)).ToList();
             if (notAllowed.Count > 0)
                 result.AddError($"Query uses operation(s) ({string.Join(", ", notAllowed)}) that are not allowed to be used.", code: QueryErrorCode.OperationNotAllowed);
         }
 
-        if (options.RestrictedOperations.Count > 0)
+        if (options.RestrictedOperations.Count > 0 && result.HasOperations)
         {
             var restricted = result.Operations.Keys.Where(options.RestrictedOperations.Contains).ToList();
             if (restricted.Count > 0)

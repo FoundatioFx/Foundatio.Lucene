@@ -112,6 +112,13 @@ public static class QueryOperations
 public class QueryValidationResult
 {
     private int _currentNodeDepth = 1;
+    private List<QueryValidationError>? _validationErrors;
+    private HashSet<string>? _referencedFields;
+    private HashSet<string>? _resolvedFields;
+    private HashSet<string>? _referencedIncludes;
+    private HashSet<string>? _unresolvedFields;
+    private HashSet<string>? _unresolvedIncludes;
+    private Dictionary<string, ISet<string>>? _operations;
 
     /// <summary>
     /// The kind of expression that was validated.
@@ -121,17 +128,17 @@ public class QueryValidationResult
     /// <summary>
     /// Whether no validation errors were found.
     /// </summary>
-    public bool IsValid => ValidationErrors.Count == 0;
+    public bool IsValid => _validationErrors is not { Count: > 0 };
 
     /// <summary>
     /// The validation errors.
     /// </summary>
-    public List<QueryValidationError> ValidationErrors { get; } = [];
+    public List<QueryValidationError> ValidationErrors => _validationErrors ??= [];
 
     /// <summary>
     /// A description of the errors, or an empty string when valid.
     /// </summary>
-    public string Message => ValidationErrors.Count switch
+    public string Message => (_validationErrors?.Count ?? 0) switch
     {
         0 => string.Empty,
         1 => ValidationErrors[0].Message,
@@ -142,32 +149,38 @@ public class QueryValidationResult
     /// Fields referenced by the query, as written (before alias resolution). Terms without a field reference
     /// the default fields.
     /// </summary>
-    public ISet<string> ReferencedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> ReferencedFields => _referencedFields ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Fields referenced by the query after alias resolution.
     /// </summary>
-    public ISet<string> ResolvedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> ResolvedFields => _resolvedFields ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Names of the <c>@include</c> references used by the query.
     /// </summary>
-    public ISet<string> ReferencedIncludes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> ReferencedIncludes => _referencedIncludes ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Fields that a field resolver could not resolve.
     /// </summary>
-    public ISet<string> UnresolvedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> UnresolvedFields => _unresolvedFields ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// <c>@include</c> references that could not be resolved.
     /// </summary>
-    public ISet<string> UnresolvedIncludes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> UnresolvedIncludes => _unresolvedIncludes ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The operations used, each with the set of fields it was used on.
     /// </summary>
-    public IDictionary<string, ISet<string>> Operations { get; } = new Dictionary<string, ISet<string>>(StringComparer.OrdinalIgnoreCase);
+    public IDictionary<string, ISet<string>> Operations => _operations ??= new Dictionary<string, ISet<string>>(StringComparer.OrdinalIgnoreCase);
+
+    internal bool HasUnresolvedFields => _unresolvedFields is { Count: > 0 };
+
+    internal bool HasUnresolvedIncludes => _unresolvedIncludes is { Count: > 0 };
+
+    internal bool HasOperations => _operations is { Count: > 0 };
 
     /// <summary>
     /// The deepest nesting of parenthesized groups (1 when there are none).
