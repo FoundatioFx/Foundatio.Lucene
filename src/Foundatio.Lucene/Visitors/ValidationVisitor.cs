@@ -137,7 +137,26 @@ public class ValidationVisitor : QueryVisitor
         if (field is { Length: > 0 } && field[0] == '@')
             return;
 
+        if (field is null && operation != QueryOperations.MatchAll)
+            RecordDefaultFields(context);
+
         context.ValidationResult.AddOperation(operation, field);
+    }
+
+    private static void RecordDefaultFields(IQueryVisitorContext context)
+    {
+        if (context.DefaultFields is not { Length: > 0 } defaultFields)
+            return;
+
+        var result = context.ValidationResult;
+        foreach (string defaultField in defaultFields)
+        {
+            if (string.IsNullOrEmpty(defaultField) || !result.ReferencedFields.Add(defaultField))
+                continue;
+
+            FieldResolverQueryVisitor.TryResolveField(defaultField, context, out string resolved);
+            result.ResolvedFields.Add(resolved);
+        }
     }
 
     private static Stack<string> GetFieldStack(IQueryVisitorContext context)

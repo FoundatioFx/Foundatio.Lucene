@@ -139,7 +139,6 @@ public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
     private readonly object _lock = new();
     private readonly List<Entry> _entries = [];
     private Entry[] _snapshot = [];
-    private long _sequence;
 
     /// <summary>
     /// The visitors in the order they run.
@@ -154,7 +153,7 @@ public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
         ArgumentNullException.ThrowIfNull(visitor);
         lock (_lock)
         {
-            _entries.Add(new Entry(visitor, priority, _sequence++));
+            InsertByPriority(new Entry(visitor, priority));
             Publish();
         }
 
@@ -177,8 +176,8 @@ public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
 
     /// <summary>
     /// Replaces the visitors of type <typeparamref name="T"/> with <paramref name="visitor"/>, keeping the
-    /// priority of the first one replaced unless <paramref name="newPriority"/> is specified. When there is no
-    /// visitor of type <typeparamref name="T"/>, <paramref name="visitor"/> is added.
+    /// position and priority of the first one replaced unless a different <paramref name="newPriority"/> is
+    /// specified. When there is no visitor of type <typeparamref name="T"/>, <paramref name="visitor"/> is added.
     /// </summary>
     public ChainedQueryVisitor<TContext> ReplaceVisitor<T>(IQueryVisitor<TContext> visitor, int? newPriority = null) where T : IQueryVisitor<TContext>
     {
@@ -186,10 +185,20 @@ public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
         lock (_lock)
         {
             int index = _entries.FindIndex(e => e.Visitor is T);
-            int priority = newPriority ?? (index >= 0 ? _entries[index].Priority : 0);
-            long sequence = index >= 0 ? _entries[index].Sequence : _sequence++;
-            _entries.RemoveAll(e => e.Visitor is T);
-            _entries.Add(new Entry(visitor, priority, sequence));
+            if (index < 0)
+            {
+                InsertByPriority(new Entry(visitor, newPriority ?? 0));
+            }
+            else
+            {
+                int priority = _entries[index].Priority;
+                _entries.RemoveAll(e => e.Visitor is T);
+                if (newPriority is null || newPriority == priority)
+                    _entries.Insert(index, new Entry(visitor, priority));
+                else
+                    InsertByPriority(new Entry(visitor, newPriority.Value));
+            }
+
             Publish();
         }
 
@@ -219,37 +228,26 @@ public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
         ArgumentNullException.ThrowIfNull(visitor);
         lock (_lock)
         {
-            var ordered = Volatile.Read(ref _snapshot);
-            int index = before ? Array.FindIndex(ordered, e => e.Visitor is T) : Array.FindLastIndex(ordered, e => e.Visitor is T);
+            int index = before ? _entries.FindIndex(e => e.Visitor is T) : _entries.FindLastIndex(e => e.Visitor is T);
             if (index < 0)
                 throw new InvalidOperationException($"The chain does not contain a visitor of type {typeof(T).Name}.");
 
-            var reference = ordered[index];
-            _entries.Add(before
-                ? new Entry(visitor, reference.Priority, reference.Sequence, BeforeReference: true)
-                : new Entry(visitor, reference.Priority, reference.Sequence, AfterReference: true));
+            _entries.Insert(before ? index : index + 1, new Entry(visitor, _entries[index].Priority));
             Publish();
         }
 
         return this;
     }
 
+    private void InsertByPriority(Entry entry)
+    {
+        int index = _entries.FindLastIndex(e => e.Priority <= entry.Priority);
+        _entries.Insert(index + 1, entry);
+    }
+
     private void Publish()
     {
-        var ordered = _entries.ToArray();
-        Array.Sort(ordered, static (a, b) =>
-        {
-            int result = a.Priority.CompareTo(b.Priority);
-            if (result != 0)
-                return result;
-
-            result = a.Sequence.CompareTo(b.Sequence);
-            if (result != 0)
-                return result;
-
-            return a.Order.CompareTo(b.Order);
-        });
-        Volatile.Write(ref _snapshot, ordered);
+        Volatile.Write(ref _snapshot, _entries.ToArray());
     }
 
     /// <summary>
@@ -263,10 +261,7 @@ public class ChainedQueryVisitor<TContext> : IQueryVisitor<TContext>
         return node;
     }
 
-    private sealed record Entry(IQueryVisitor<TContext> Visitor, int Priority, long Sequence, bool BeforeReference = false, bool AfterReference = false)
-    {
-        public int Order => BeforeReference ? -1 : AfterReference ? 1 : 0;
-    }
+    private sealed record Entry(IQueryVisitor<TContext> Visitor, int Priority);
 }
 
 /// <summary>

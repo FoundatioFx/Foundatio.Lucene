@@ -67,8 +67,8 @@ public static class QueryValidator
             foreach (var field in fields)
                 RecordField(field.OriginalField, context);
 
-            if (options is { AllowedMaxSortFields: > 0 } && fields.Count > options.AllowedMaxSortFields)
-                result.AddError($"Sort has {fields.Count} fields which exceeds the allowed maximum of {options.AllowedMaxSortFields}.");
+            if (context.ValidationOptions is { AllowedMaxSortFields: > 0 } sortOptions && fields.Count > sortOptions.AllowedMaxSortFields)
+                result.AddError($"Sort has {fields.Count} fields which exceeds the allowed maximum of {sortOptions.AllowedMaxSortFields}.");
 
             ValidationVisitor.ApplyRestrictions(context);
         }
@@ -89,7 +89,7 @@ public static class QueryValidator
         AddParseErrors(parsed, context);
         if (result.IsValid)
         {
-            var document = (QueryDocument)IncludeVisitor.TopLevelInstance.Accept(parsed.Document, context);
+            var document = (QueryDocument)IncludeVisitor.Instance.Accept(parsed.Document, context);
             RecordAggregations(AggregationExpressionParser.FromDocument(document, result), context);
             ValidationVisitor.ApplyRestrictions(context);
         }

@@ -7,6 +7,8 @@ namespace Foundatio.Lucene.Visitors;
 /// Each expansion is wrapped in a group so it keeps its meaning, and it takes the place of the reference, so a
 /// prefix such as <c>-@include:name</c> applies to the whole expansion. Includes may reference other includes;
 /// recursion, depth, and the total number of expansions are bounded by <see cref="QueryValidationOptions"/>.
+/// In aggregation expressions only references outside of aggregations are expanded: inside an aggregation, such as
+/// <c>terms:(status @include:active)</c>, <c>@include</c> is an aggregation modifier.
 /// </summary>
 public class IncludeVisitor : QueryVisitor
 {
@@ -22,33 +24,16 @@ public class IncludeVisitor : QueryVisitor
 
     private const string StateKey = "@IncludeState";
 
-    private readonly bool _expandInsideFields;
-
     /// <summary>
-    /// Creates the visitor.
-    /// </summary>
-    /// <param name="expandInsideFields">Whether references inside field groups (<c>field:(@include:x)</c>) are
-    /// expanded. Aggregation expressions pass false because <c>@include</c> inside an aggregation is a modifier.</param>
-    public IncludeVisitor(bool expandInsideFields = true)
-    {
-        _expandInsideFields = expandInsideFields;
-    }
-
-    /// <summary>
-    /// A shared instance that expands references everywhere. The visitor is stateless.
+    /// A shared instance. The visitor is stateless.
     /// </summary>
     public static IncludeVisitor Instance { get; } = new();
-
-    /// <summary>
-    /// A shared instance that only expands references outside field groups, for aggregation expressions.
-    /// </summary>
-    public static IncludeVisitor TopLevelInstance { get; } = new(expandInsideFields: false);
 
     /// <inheritdoc/>
     protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         if (!IsInclude(node))
-            return _expandInsideFields ? base.Visit(node, context) : node;
+            return context.QueryType == QueryType.Aggregation ? node : base.Visit(node, context);
 
         string? name = GetIncludeName(node);
         var result = context.ValidationResult;
