@@ -1,17 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    The mapping sources are linked rather than referenced because the rest of Foundatio.Lucene.Elasticsearch is being
-    rewritten against the 1.0 core and does not compile yet. Replace this with a ProjectReference to
-    src/Foundatio.Lucene.Elasticsearch once it does; the tests only use the public API.
-  -->
   <ItemGroup>
-    <Compile Include="..\..\src\Foundatio.Lucene.Elasticsearch\Mapping\**\*.cs" Link="Mapping\%(RecursiveDir)%(Filename)%(Extension)" />
+    <ProjectReference Include="..\..\src\Foundatio.Lucene.Elasticsearch\Foundatio.Lucene.Elasticsearch.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.5.2" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageReference Include="Testcontainers" Version="4.15.0" />
   </ItemGroup>
