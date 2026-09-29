@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using Elastic.Clients.Elasticsearch.Mapping;
 using Foundatio.Lucene.Ast;
-using Foundatio.Lucene.Extensions;
 using Foundatio.Lucene.Elasticsearch.Tests.Utility;
+using Foundatio.Lucene.Extensions;
 
 namespace Foundatio.Lucene.Elasticsearch.Tests.Unit;
 
