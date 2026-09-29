@@ -20,6 +20,9 @@ public class NavigationTests : IDisposable
     [InlineData("manager.name:\"John Doe\"", new[] { "Alice Brown" })]
     [InlineData("_exists_:manager", new[] { "Alice Brown" })]
     [InlineData("_missing_:manager", new[] { "Bob Wilson", "Jane Smith", "John Doe" })]
+    [InlineData("manager:(*)", new[] { "Alice Brown" })]
+    [InlineData("-department.budget:(*)", new[] { "Bob Wilson" })]
+    [InlineData("manager.name:(*)", new[] { "Alice Brown" })]
     [InlineData("company.name:(Acme* OR Tech*)", new[] { "Alice Brown", "Bob Wilson", "Jane Smith", "John Doe" })]
     [InlineData("company.name:(name:\"John Doe\")", new[] { "John Doe" })]
     public void BuildFilter_WithReferenceNavigationPath_AccessesRelatedEntity(string query, string[] expected)

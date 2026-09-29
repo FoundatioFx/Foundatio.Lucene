@@ -59,6 +59,9 @@ internal sealed class FilterExpressionBuilder
                 return negated is null ? null : ExpressionHelpers.Not(negated);
             case FieldQueryNode field:
                 return VisitField(field);
+            case MatchAllNode when scope is { } fieldScope:
+                // In a field group (name:(*)) a bare * means the field exists, as in Lucene.
+                return BuildExists(node, fieldScope, missing: false);
             case MatchAllNode:
                 return ExpressionHelpers.True;
             case ExistsNode exists:

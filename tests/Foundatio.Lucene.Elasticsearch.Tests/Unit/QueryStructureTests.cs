@@ -37,6 +37,9 @@ public class QueryStructureTests
     [InlineData("keyword:a AND (keyword:b OR keyword:c)", "{'bool':{'must':[{'term':{'keyword':{'value':'a'}}},{'bool':{'minimum_should_match':1,'should':[{'term':{'keyword':{'value':'b'}}},{'term':{'keyword':{'value':'c'}}}]}}]}}")]
     [InlineData("_exists_:keyword", "{'exists':{'field':'keyword'}}")]
     [InlineData("_missing_:keyword", "{'bool':{'must_not':{'exists':{'field':'keyword'}}}}")]
+    [InlineData("keyword:(*)", "{'exists':{'field':'keyword'}}")]
+    [InlineData("-keyword:(*)", "{'bool':{'must_not':{'exists':{'field':'keyword'}}}}")]
+    [InlineData("keyword:(a OR *)", "{'bool':{'minimum_should_match':1,'should':[{'term':{'keyword':{'value':'a'}}},{'exists':{'field':'keyword'}}]}}")]
     [InlineData("(keyword:a)", "{'term':{'keyword':{'value':'a'}}}")]
     [InlineData("((keyword:a))", "{'term':{'keyword':{'value':'a'}}}")]
     public void BuildQuery_InScoringContext_ReturnsQueryUnwrapped(string query, string expected)

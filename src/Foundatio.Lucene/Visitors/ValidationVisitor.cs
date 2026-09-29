@@ -99,7 +99,9 @@ public class ValidationVisitor : QueryVisitor
     /// <inheritdoc/>
     protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context)
     {
-        AddOperation(QueryOperations.MatchAll, context);
+        // In a field group (title:(*)) a bare * is an exists query on the group's field.
+        bool inField = context.GetValue<Stack<string>>(FieldStackKey) is { Count: > 0 };
+        AddOperation(inField ? QueryOperations.Exists : QueryOperations.MatchAll, context);
         return node;
     }
 

@@ -119,7 +119,10 @@ internal static class ElasticsearchAggregationBuilder
             }
 
             string field = GetAggregationField(expression.Field);
-            string? fieldType = GetMapping(expression.Field)?.Property?.Type ?? context.GetRuntimeField(expression.Field)?.Type.ToString().ToLowerInvariant();
+            // The type of the field that is aggregated: the keyword sub-field of a text field is a keyword.
+            string? fieldType = (field != expression.Field ? GetMapping(field)?.Property?.Type : null)
+                ?? GetMapping(expression.Field)?.Property?.Type
+                ?? context.GetRuntimeField(expression.Field)?.Type.ToString().ToLowerInvariant();
 
             switch (expression.Type)
             {
@@ -251,8 +254,8 @@ internal static class ElasticsearchAggregationBuilder
             }
 
             Aggregation aggregation = histogram;
-            if (expression.BoostText is not null)
-                aggregation.Meta = new Dictionary<string, object> { [TimeZoneMeta] = expression.BoostText };
+            if ((expression.BoostText ?? context.DefaultTimeZone) is { } timeZone)
+                aggregation.Meta = new Dictionary<string, object> { [TimeZoneMeta] = timeZone };
 
             return aggregation;
         }

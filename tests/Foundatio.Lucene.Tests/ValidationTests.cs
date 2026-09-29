@@ -18,6 +18,7 @@ public class ValidationTests
     [InlineData("f:*", QueryOperations.Exists, "f")]
     [InlineData("_missing_:f", QueryOperations.Missing, "f")]
     [InlineData("*:*", QueryOperations.MatchAll, "")]
+    [InlineData("f:(*)", QueryOperations.Exists, "f")]
     [InlineData("f:(a OR b)", QueryOperations.Term, "f")]
     public void Run_Query_RecordsOperationWithField(string query, string operation, string field)
     {

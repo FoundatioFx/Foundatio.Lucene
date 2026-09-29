@@ -41,7 +41,7 @@ public class BuildSearchTests
         var search = parser.BuildSearch("user:x", "terms:user", "user", options);
 
         ElasticAssert.Json("{'match':{'text':{'query':'x'}}}", search.Query);
-        ElasticAssert.Json("{'terms_user':{'terms':{'field':'text.keyword'},'meta':{'@field_type':'text'}}}", search.Aggregations);
+        ElasticAssert.Json("{'terms_user':{'terms':{'field':'text.keyword'},'meta':{'@field_type':'keyword'}}}", search.Aggregations);
         ElasticAssert.Json("[{'text.keyword':{'order':'asc','unmapped_type':'keyword'}}]", search.Sort);
     }
 

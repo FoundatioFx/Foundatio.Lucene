@@ -97,6 +97,8 @@ changes from Foundatio.Parsers.
 - `node.SetSort(...)` and `node.SetAggregation(...)` let visitors supply custom sorts and aggregations, including
   aggregation types the provider doesn't know.
 - `ValidateSortAsync` and `ValidateAggregationsAsync` for parsers with asynchronous resolvers.
+- A bare `*` in a field group (`title:(*)`) is an `exists` query on the field, and date histograms report the time
+  zone they use (explicit or default) in `@timezone` meta; terms aggregations report the aggregated field's type.
 - `BuildSearch`/`BuildSearchAsync` build a query, aggregations, and sort together and apply them to a search request.
 - `node.SetQuery(query)` lets visitors supply custom queries.
 

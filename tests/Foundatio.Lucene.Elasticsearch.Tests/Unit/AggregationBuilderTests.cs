@@ -71,7 +71,7 @@ public class AggregationBuilderTests
               "date_date":{"date_histogram":{"calendar_interval":"day","field":"date","format":"date_optional_time","min_doc_count":0}},
               "histogram_number":{"histogram":{"field":"number","interval":50,"min_doc_count":0}},
               "geogrid_geo":{"geohash_grid":{"field":"geo","precision":1},"aggregations":{"avg_lat":{"avg":{"script":{"source":"doc['geo'].lat"}}},"avg_lon":{"avg":{"script":{"source":"doc['geo'].lon"}}}}},
-              "terms_text":{"terms":{"field":"text.keyword"},"meta":{"@field_type":"text"}}
+              "terms_text":{"terms":{"field":"text.keyword"},"meta":{"@field_type":"keyword"}}
             }
             """, result);
         Assert.Equal(["min_number", "max_number", "avg_number", "sum_number", "percentiles_number", "cardinality_number", "missing_keyword", "date_date", "histogram_number", "geogrid_geo", "terms_text"], result.Keys);
@@ -80,13 +80,13 @@ public class AggregationBuilderTests
     [Theory]
     [InlineData("terms:text")]
     [InlineData("terms:(text)")]
-    public void BuildAggregations_WithAnalyzedField_UsesKeywordSubFieldAndFieldOwnType(string expression)
+    public void BuildAggregations_WithAnalyzedField_UsesKeywordSubFieldAndItsType(string expression)
     {
         var parser = TestMapping.CreateParser();
 
         var result = parser.BuildAggregations(expression);
 
-        ElasticAssert.Json("{'terms_text':{'terms':{'field':'text.keyword'},'meta':{'@field_type':'text'}}}", result);
+        ElasticAssert.Json("{'terms_text':{'terms':{'field':'text.keyword'},'meta':{'@field_type':'keyword'}}}", result);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class AggregationBuilderTests
 
         var result = parser.BuildAggregations("terms:text2");
 
-        ElasticAssert.Json("{'terms_text2':{'terms':{'field':'text2.keyword'},'meta':{'@field_type':'text'}}}", result);
+        ElasticAssert.Json("{'terms_text2':{'terms':{'field':'text2.keyword'},'meta':{'@field_type':'keyword'}}}", result);
     }
 
     [Fact]
@@ -251,13 +251,13 @@ public class AggregationBuilderTests
     [Theory]
     [InlineData("date:date")]
     [InlineData("date:(date)")]
-    public void BuildAggregations_WithDefaultTimeZone_AppliesItToTermAndGroupForms(string expression)
+    public void BuildAggregations_WithDefaultTimeZone_AppliesItAndReportsItInMetaForTermAndGroupForms(string expression)
     {
         var parser = TestMapping.CreateParser(c => c.DefaultTimeZone = "America/Chicago");
 
         var result = parser.BuildAggregations(expression);
 
-        ElasticAssert.Json("{'date_date':{'date_histogram':{'calendar_interval':'day','field':'date','format':'date_optional_time','min_doc_count':0,'time_zone':'America/Chicago'}}}", result);
+        ElasticAssert.Json("{'date_date':{'date_histogram':{'calendar_interval':'day','field':'date','format':'date_optional_time','min_doc_count':0,'time_zone':'America/Chicago'},'meta':{'@timezone':'America/Chicago'}}}", result);
     }
 
     [Theory]
@@ -462,7 +462,7 @@ public class AggregationBuilderTests
     }
 
     [Theory]
-    [InlineData("terms:(heynow cardinality:user)", "{'terms_heynow':{'terms':{'field':'text.keyword'},'aggregations':{'cardinality_user':{'cardinality':{'field':'obj.name'}}},'meta':{'@field_type':'text'}}}")]
+    [InlineData("terms:(heynow cardinality:user)", "{'terms_heynow':{'terms':{'field':'text.keyword'},'aggregations':{'cardinality_user':{'cardinality':{'field':'obj.name'}}},'meta':{'@field_type':'keyword'}}}")]
     [InlineData("min:count", "{'min_count':{'min':{'field':'number'},'meta':{'@field_type':'integer'}}}")]
     [InlineData("missing:user", "{'missing_user':{'missing':{'field':'obj.name'}}}")]
     [InlineData("geogrid:location~3", null)]

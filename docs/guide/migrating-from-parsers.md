@@ -53,6 +53,7 @@ Settings that Foundatio.Parsers kept on the visitor context move to options. Con
 | `c.UseNestedFilter(...)` | `c.NestedFilterResolver = ...` |
 | `c.UseRuntimeFieldResolver(...)` | `c.RuntimeFieldResolver = ...`; read `context.RuntimeFields` after building |
 | `c.UseOptInRuntimeFieldResolver(...)` | set `RuntimeFieldResolver` only in the `ElasticsearchQueryOptions` of the requests that opt in |
+| runtime fields added to `context.RuntimeFields` before building | `var context = parser.CreateContext(); context.AddRuntimeField(...)`, then build with that context |
 | `c.SetValidationOptions(...)` | `c.ValidationOptions = ...` |
 | `c.SetDefaultFields(...)` | `c.DefaultFields = [...]` |
 | `c.AddVisitor(visitor, priority)` | `c.AddVisitor(visitor, priority)`: runs on queries, sorts, and aggregations as before (query priorities: includes 0, field resolution 10, validation 30) |
@@ -98,7 +99,7 @@ public class LowercaseTermsVisitor : QueryVisitor
 
 `GenerateQueryVisitor` becomes `QueryStringBuilder.ToQueryString`, `DebugQueryVisitor` becomes `node.ToDebugString()`, and `InvertQueryVisitor`, `RemoveFieldsQueryVisitor`, `CleanupQueryVisitor`, and `GetReferencedFields()` are available with the same purpose.
 
-To override the Elasticsearch query for a node, call `node.SetQuery(query)` from a visitor, as before.
+To override the Elasticsearch query for a node, call `node.SetQuery(query)` from a visitor, as before (on a group it replaces the whole group; see the table below).
 
 ## Behavior changes
 
@@ -121,15 +122,19 @@ Most queries behave exactly as before. These are the intentional differences, mo
 | Date terms (`created:2024-01-01`) | a `term` query on the value, without a time zone | a `range` over the whole period (`gte`/`lte` `2024-01-01\|\|/d`) in the default time zone, so it matches every time that day |
 | Partial dates in ranges (`created:[2024-01 TO 2024-02]`) | passed through, and Elasticsearch filled missing parts with `01` | rounded to the whole period (`2024-01\|\|/M`), like Lucene |
 | Default fields a term can't apply to (`hello` with a numeric default field) | sent to Elasticsearch, which rejected or ignored the clause | that default field is skipped |
-| Sort `field:value` on a field that isn't a `geo_point` | sorted on the field, ignoring the value | validation error (geo distance sorts such as `location:"51.5,-0.12"` work as before, and a visitor can handle other values with `SetSort`) |
+| Sort `field:value` | the value replaced the field, so `created:desc` sorted on a field named `desc`, and geo distance sorts only worked when built in code | `:asc` and `:desc` set the direction, a value on a `geo_point` field sorts by distance (`location:"51.5,-0.12"`), and other values are validation errors (a visitor can handle them with `SetSort`) |
 | Sort `_score`, `_doc` | field sorts on fields named `_score` and `_doc` | score and index-order sorts |
 | Date histogram `@missing:date` | parsed in local time | parsed as UTC |
 | Date histogram written as a term (`date:created`) | no time zone | the default time zone, like the group form |
 | Unknown terms modifiers, invalid intervals and offsets, out-of-range percentiles | ignored or passed through | validation errors |
+| `_missing_` on a nested field (`_missing_:children.name`) | some nested document lacks the field, so documents without nested documents didn't match | no nested document has the field, like the Entity Framework provider and the SQL provider in Foundatio.Parsers |
+| A bare `*` with default fields | `exists` on a single default field, or `query_string` over several | match all (`field:(*)` is an `exists` query on the field, as before) |
+| `node.SetQuery(...)` on a group | the custom query was combined with the group's children | the custom query replaces the group's query |
+| Terms aggregation `@field_type` meta on a text field | `text` for `terms:title`, `keyword` for `terms:(title)` | the type of the field that's aggregated (`keyword` for the keyword sub-field) in both forms |
 | Syntax errors in provider methods | `QueryValidationException` | `QueryValidationException`, as before, with each syntax error's position and parse error code |
 | A `null` query, sort, or aggregation string | treated as empty | `ArgumentNullException` (the EF `Where(query, parser)` extension still treats null or blank as no filter) |
 
-The syntax itself is a superset: everything Foundatio.Parsers accepted is accepted, and a few things it rejected now work, such as unquoted times in values (`time:10:30:00`) and escaping any character.
+The syntax itself is a superset, except for boosts on `*` (`title:*^2`, which is a syntax error): everything else Foundatio.Parsers accepted is accepted, and a few things it rejected now work, such as unquoted times in values (`time:10:30:00`) and escaping any character.
 
 ## SqlQueries to Entity Framework
 

@@ -68,6 +68,8 @@ internal static partial class ElasticsearchQueryBuilder
                 RangeNode range => BuildRange(range, scopeField),
                 ExistsNode exists => BuildExists(exists.Field, missing: false, exists),
                 MissingNode missing => BuildExists(missing.Field, missing: true, missing),
+                // In a field group (title:(*)) a bare * means the field exists, as in Lucene.
+                MatchAllNode when scopeField is not null => BuildExists(scopeField, missing: false, node),
                 MatchAllNode => new Part(new MatchAllQuery()),
                 _ => Error($"Unsupported query node type '{node.GetType().Name}'.", node)
             };
