@@ -302,15 +302,19 @@ public class TermTranslationTests
     [InlineData("date", "2026~AUTO")]
     [InlineData("bool", "true~AUTO")]
     [InlineData("double", "1.5~1")]
-    public void BuildQuery_WithStringModifierOnScalarField_ThrowsValidationException(string field, string term)
+    public void BuildQuery_WithStringModifierOnScalarField_ThrowsForExplicitFieldAndSkipsDefaultField(string field, string term)
     {
-        var parser = TestMapping.CreateParser(c => c.DefaultFields = ["text", field]);
+        var parser = TestMapping.CreateParser(c =>
+        {
+            c.DefaultFields = ["text", field];
+            c.UseScoring = true;
+        });
 
         var explicitError = Assert.Throws<QueryValidationException>(() => parser.BuildQuery($"{field}:{term}"));
-        var defaultFieldError = Assert.Throws<QueryValidationException>(() => parser.BuildQuery(term));
+        var defaultFieldQuery = ElasticAssert.Serialize(parser.BuildQuery(term));
 
         Assert.Contains($"field '{field}'", explicitError.Message);
-        Assert.Contains($"field '{field}'", defaultFieldError.Message);
+        Assert.DoesNotContain($"\"{field}\"", defaultFieldQuery);
     }
 
     [Theory]
@@ -323,7 +327,7 @@ public class TermTranslationTests
     [InlineData("bool:true", "{'term':{'bool':{'value':true}}}")]
     [InlineData("bool:TRUE", "{'term':{'bool':{'value':true}}}")]
     [InlineData("bool:false", "{'term':{'bool':{'value':false}}}")]
-    [InlineData("date:2024-01-01", "{'term':{'date':{'value':'2024-01-01'}}}")]
+    [InlineData("date:2024-01-01", "{'range':{'date':{'gte':'2024-01-01||/d','lte':'2024-01-01||/d'}}}")]
     [InlineData("keyword:5", "{'term':{'keyword':{'value':'5'}}}")]
     [InlineData("number:\"5\"", "{'term':{'number':{'value':5}}}")]
     public void BuildQuery_WithTypedField_EmitsTypedTermValue(string query, string? expected)
@@ -485,13 +489,13 @@ public class TermTranslationTests
     }
 
     [Fact]
-    public void BuildQuery_WithTextOnNumericDefaultField_ThrowsValidationException()
+    public void BuildQuery_WithTextOnNumericDefaultField_SkipsTheNumericField()
     {
         var parser = TestMapping.CreateParser(c => c.DefaultFields = ["keyword", "long"]);
 
-        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildQuery("hello"));
+        var result = parser.BuildQuery("hello");
 
-        Assert.Contains("field 'long'", exception.Message);
+        ElasticAssert.Json("{'bool':{'filter':{'term':{'keyword':{'value':'hello'}}}}}", result);
     }
 
     [Theory]

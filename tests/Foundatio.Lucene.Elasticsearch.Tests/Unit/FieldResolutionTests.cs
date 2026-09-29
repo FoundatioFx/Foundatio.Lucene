@@ -115,7 +115,7 @@ public class FieldResolutionTests
         var result = await parser.BuildQueryAsync("who:x when:>2024-01-01 keyword:y", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(["keyword", "when", "who"], requested.Order(StringComparer.Ordinal));
-        ElasticAssert.Json("{'bool':{'must':[{'term':{'keyword':{'value':'x'}}},{'range':{'date':{'gt':'2024-01-01'}}},{'term':{'keyword':{'value':'y'}}}]}}", result);
+        ElasticAssert.Json("{'bool':{'must':[{'term':{'keyword':{'value':'x'}}},{'range':{'date':{'gt':'2024-01-01||/d'}}},{'term':{'keyword':{'value':'y'}}}]}}", result);
     }
 
     [Fact]

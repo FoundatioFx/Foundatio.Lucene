@@ -101,7 +101,7 @@ public class ParserBehaviorTests
             (new ElasticsearchQueryOptions { DefaultFields = ["text"], UseScoring = true }, "hello", "{'match':{'text':{'query':'hello'}}}"),
             (new ElasticsearchQueryOptions { DefaultFields = ["keyword"] }, "hello", "{'bool':{'filter':{'term':{'keyword':{'value':'hello'}}}}}"),
             (new ElasticsearchQueryOptions { DefaultOperator = BooleanOperator.Or, UseScoring = true }, "keyword:a keyword:b", "{'bool':{'minimum_should_match':1,'should':[{'term':{'keyword':{'value':'a'}}},{'term':{'keyword':{'value':'b'}}}]}}"),
-            (new ElasticsearchQueryOptions { DefaultTimeZone = "Europe/London", UseScoring = true }, "date:>2024-01-01", "{'range':{'date':{'gt':'2024-01-01','time_zone':'Europe/London'}}}"),
+            (new ElasticsearchQueryOptions { DefaultTimeZone = "Europe/London", UseScoring = true }, "date:>2024-01-01", "{'range':{'date':{'gt':'2024-01-01||/d','time_zone':'Europe/London'}}}"),
             (new ElasticsearchQueryOptions { Includes = new Dictionary<string, string> { ["saved"] = "keyword:other" }, UseScoring = true }, "@include:saved", "{'term':{'keyword':{'value':'other'}}}"),
             (new ElasticsearchQueryOptions(), "@include:saved", "{'bool':{'filter':{'term':{'keyword':{'value':'saved'}}}}}")
         };

@@ -66,18 +66,18 @@ public class RangeQueryTests
     }
 
     [Theory]
-    [InlineData("date:[2024-01-01 TO 2024-02-01]", "{'range':{'date':{'gte':'2024-01-01','lte':'2024-02-01'}}}")]
-    [InlineData("date:{2024-01-01 TO 2024-02-01}", "{'range':{'date':{'gt':'2024-01-01','lt':'2024-02-01'}}}")]
-    [InlineData("date:[* TO 2017-01-31}", "{'range':{'date':{'lt':'2017-01-31'}}}")]
-    [InlineData("date:[2017-01-31 TO   *  }", "{'range':{'date':{'gte':'2017-01-31'}}}")]
+    [InlineData("date:[2024-01-01 TO 2024-02-01]", "{'range':{'date':{'gte':'2024-01-01||/d','lte':'2024-02-01||/d'}}}")]
+    [InlineData("date:{2024-01-01 TO 2024-02-01}", "{'range':{'date':{'gt':'2024-01-01||/d','lt':'2024-02-01||/d'}}}")]
+    [InlineData("date:[* TO 2017-01-31}", "{'range':{'date':{'lt':'2017-01-31||/d'}}}")]
+    [InlineData("date:[2017-01-31 TO   *  }", "{'range':{'date':{'gte':'2017-01-31||/d'}}}")]
     [InlineData("date:[now-1d/d TO now/d]", "{'range':{'date':{'gte':'now-1d/d','lte':'now/d'}}}")]
     [InlineData("date:>=now-1d", "{'range':{'date':{'gte':'now-1d'}}}")]
     [InlineData("date:<now/d", "{'range':{'date':{'lt':'now/d'}}}")]
     [InlineData("date:[2024-02-28||+1d/d TO 2024-03-01||/d}", "{'range':{'date':{'gte':'2024-02-28||+1d/d','lt':'2024-03-01||/d'}}}")]
-    [InlineData("date:[2017-01-01T00\\:00\\:00Z TO 2017-01-31}", "{'range':{'date':{'gte':'2017-01-01T00:00:00Z','lt':'2017-01-31'}}}")]
+    [InlineData("date:[2017-01-01T00\\:00\\:00Z TO 2017-01-31}", "{'range':{'date':{'gte':'2017-01-01T00:00:00Z','lt':'2017-01-31||/d'}}}")]
     [InlineData("date:[\"2024-01-01T00:00:00Z\" TO \"2024-02-01T00:00:00Z\"}", "{'range':{'date':{'gte':'2024-01-01T00:00:00Z','lt':'2024-02-01T00:00:00Z'}}}")]
     [InlineData("date:>2024-01-15T12:30:00Z||/h", "{'range':{'date':{'gt':'2024-01-15T12:30:00Z||/h'}}}")]
-    [InlineData("dateNanos:[2024-01-01 TO *]", "{'range':{'dateNanos':{'gte':'2024-01-01'}}}")]
+    [InlineData("dateNanos:[2024-01-01 TO *]", "{'range':{'dateNanos':{'gte':'2024-01-01||/d'}}}")]
     public void BuildQuery_WithDateRange_PassesDateMathThroughToElasticsearch(string query, string expected)
     {
         var parser = TestMapping.CreateScoringParser();
@@ -104,7 +104,7 @@ public class RangeQueryTests
 
         var result = parser.BuildQuery(query);
 
-        ElasticAssert.Json($"{{'range':{{'{query[..query.IndexOf(':')]}':{{'gte':'2024-01-01','time_zone':'{timeZone}'}}}}}}", result);
+        ElasticAssert.Json($"{{'range':{{'{query[..query.IndexOf(':')]}':{{'gte':'2024-01-01||/d','time_zone':'{timeZone}'}}}}}}", result);
     }
 
     [Theory]
@@ -121,12 +121,12 @@ public class RangeQueryTests
     }
 
     [Theory]
-    [InlineData("date:[2024-01-01 TO now]", "{'range':{'date':{'gte':'2024-01-01','lte':'now','time_zone':'America/Chicago'}}}")]
-    [InlineData("date:>2024-01-01", "{'range':{'date':{'gt':'2024-01-01','time_zone':'America/Chicago'}}}")]
-    [InlineData("date:[2024-01-01 TO *]^UTC", "{'range':{'date':{'gte':'2024-01-01','time_zone':'UTC'}}}")]
-    [InlineData("date:[2024-01-01 TO *]^-5h", "{'range':{'date':{'gte':'2024-01-01','time_zone':'-05:00'}}}")]
+    [InlineData("date:[2024-01-01 TO now]", "{'range':{'date':{'gte':'2024-01-01||/d','lte':'now','time_zone':'America/Chicago'}}}")]
+    [InlineData("date:>2024-01-01", "{'range':{'date':{'gt':'2024-01-01||/d','time_zone':'America/Chicago'}}}")]
+    [InlineData("date:[2024-01-01 TO *]^UTC", "{'range':{'date':{'gte':'2024-01-01||/d','time_zone':'UTC'}}}")]
+    [InlineData("date:[2024-01-01 TO *]^-5h", "{'range':{'date':{'gte':'2024-01-01||/d','time_zone':'-05:00'}}}")]
     [InlineData("number:[1 TO 5]", "{'range':{'number':{'gte':'1','lte':'5'}}}")]
-    [InlineData("date:2024-01-01", "{'term':{'date':{'value':'2024-01-01'}}}")]
+    [InlineData("date:2024-01-01", "{'range':{'date':{'gte':'2024-01-01||/d','lte':'2024-01-01||/d','time_zone':'America/Chicago'}}}")]
     public void BuildQuery_WithDefaultTimeZone_AppliesItToDateRangesWithoutCaret(string query, string expected)
     {
         var parser = TestMapping.CreateScoringParser(c => c.DefaultTimeZone = "America/Chicago");
@@ -143,7 +143,7 @@ public class RangeQueryTests
 
         var result = parser.BuildQuery("date:>2024-01-01", new ElasticsearchQueryOptions { DefaultTimeZone = "Europe/London" });
 
-        ElasticAssert.Json("{'range':{'date':{'gt':'2024-01-01','time_zone':'Europe/London'}}}", result);
+        ElasticAssert.Json("{'range':{'date':{'gt':'2024-01-01||/d','time_zone':'Europe/London'}}}", result);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class RangeQueryTests
 
         var result = parser.BuildQuery("date:[2017-01-01T00\\:00\\:00Z TO 2017-01-31} OR text:value1");
 
-        ElasticAssert.Json("{'bool':{'minimum_should_match':1,'should':[{'range':{'date':{'gte':'2017-01-01T00:00:00Z','lt':'2017-01-31','time_zone':'America/Chicago'}}},{'match':{'text':{'query':'value1'}}}]}}", result);
+        ElasticAssert.Json("{'bool':{'minimum_should_match':1,'should':[{'range':{'date':{'gte':'2017-01-01T00:00:00Z','lt':'2017-01-31||/d','time_zone':'America/Chicago'}}},{'match':{'text':{'query':'value1'}}}]}}", result);
     }
 
     [Fact]
@@ -163,6 +163,6 @@ public class RangeQueryTests
 
         var result = parser.BuildQuery("dateAlias:[2024-01-01 TO *]^\"America/Chicago\"");
 
-        ElasticAssert.Json("{'range':{'dateAlias':{'gte':'2024-01-01','time_zone':'America/Chicago'}}}", result);
+        ElasticAssert.Json("{'range':{'dateAlias':{'gte':'2024-01-01||/d','time_zone':'America/Chicago'}}}", result);
     }
 }
