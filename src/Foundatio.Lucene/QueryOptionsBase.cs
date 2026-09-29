@@ -1,29 +1,51 @@
+using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Visitors;
+
 namespace Foundatio.Lucene;
 
 /// <summary>
-/// Base record for per-request query options.
-/// These options are merged with the global parser configuration and can be cached by consuming applications (e.g., per-tenant).
+/// Per-request (or per-scope, such as per-tenant) settings that override the parser configuration. Instances are
+/// immutable and can be cached and shared.
 /// </summary>
 public abstract record QueryOptionsBase
 {
     /// <summary>
-    /// Field alias mappings to apply for this request. Overrides global FieldMap if provided.
+    /// Overrides the operator used between juxtaposed clauses.
+    /// </summary>
+    public BooleanOperator? DefaultOperator { get; init; }
+
+    /// <summary>
+    /// Overrides the fields searched by terms that have no field.
+    /// </summary>
+    public string[]? DefaultFields { get; init; }
+
+    /// <summary>
+    /// Overrides the field aliases.
     /// </summary>
     public FieldMap? FieldMap { get; init; }
 
     /// <summary>
-    /// Pre-resolved includes dictionary mapping include names to their query content.
-    /// Overrides global Includes if provided.
+    /// Overrides the synchronous field resolver.
+    /// </summary>
+    public QueryFieldResolver? FieldResolver { get; init; }
+
+    /// <summary>
+    /// Overrides the asynchronous field resolver.
+    /// </summary>
+    public AsyncQueryFieldResolver? AsyncFieldResolver { get; init; }
+
+    /// <summary>
+    /// Overrides the query text for <c>@include:name</c> references.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Includes { get; init; }
 
     /// <summary>
-    /// Validation options for this request. Overrides global ValidationOptions if provided.
+    /// Overrides the asynchronous include resolver.
     /// </summary>
-    public QueryValidationOptions? ValidationOptions { get; init; }
+    public IncludeResolver? IncludeResolver { get; init; }
 
     /// <summary>
-    /// Default fields to search when no field is specified. Overrides global DefaultFields if provided.
+    /// Overrides the validation rules.
     /// </summary>
-    public string[]? DefaultFields { get; init; }
+    public QueryValidationOptions? ValidationOptions { get; init; }
 }

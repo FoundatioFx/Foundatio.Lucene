@@ -3,502 +3,496 @@ using System.Runtime.CompilerServices;
 namespace Foundatio.Lucene;
 
 /// <summary>
-/// Lexical analyzer for Lucene query language with Elasticsearch extensions.
-/// Uses zero-copy memory slices for token values.
+/// Lexical analyzer for the Lucene query language with Elasticsearch extensions.
+/// Token values are zero-copy slices of the source text; escape sequences are left in place
+/// so they are processed exactly once, by the consumer that needs the unescaped value.
 /// </summary>
-public class LuceneLexer
+internal sealed class LuceneLexer
 {
-    private readonly ReadOnlyMemory<char> _sourceMemory;
+    private readonly ReadOnlyMemory<char> _source;
     private int _position;
-    private int _line;
-    private int _column;
+    private int _line = 1;
+    private int _lineStart;
     private List<ParseError>? _errors;
 
-    // Cached span for hot path access
-    private ReadOnlySpan<char> Source => _sourceMemory.Span;
-
-    public LuceneLexer(string source)
-        : this((source ?? throw new ArgumentNullException(nameof(source))).AsMemory())
-    {
-    }
+    private bool _inRange;
+    private bool _inValue;
+    private bool _expectModifierValue;
+    private bool _expectComparisonValue;
 
     public LuceneLexer(ReadOnlyMemory<char> source)
     {
-        _sourceMemory = source;
-        _position = 0;
-        _line = 1;
-        _column = 1;
+        _source = source;
     }
 
-    /// <summary>
-    /// Gets the list of errors encountered during tokenization.
-    /// </summary>
+    private ReadOnlySpan<char> Source => _source.Span;
+
     public List<ParseError> Errors => _errors ??= [];
 
+    public bool HasErrors => _errors is { Count: > 0 };
+
     /// <summary>
-    /// Tokenizes the entire source and returns all tokens.
+    /// Tokenizes the entire source. The last token is always <see cref="TokenType.EndOfFile"/>.
     /// </summary>
     public List<Token> Tokenize()
     {
-        var tokens = new List<Token>(Math.Max(8, _sourceMemory.Length / 4));
+        var tokens = new List<Token>(Math.Max(8, _source.Length / 3));
         Token token;
-
-        while ((token = NextToken()).Type != TokenType.EndOfFile)
+        do
         {
+            token = NextToken();
             tokens.Add(token);
-        }
+        } while (token.Type != TokenType.EndOfFile);
 
-        tokens.Add(token);
         return tokens;
     }
 
-    /// <summary>
-    /// Gets the next token from the source.
-    /// </summary>
     public Token NextToken()
     {
-        if (_position < _sourceMemory.Length && char.IsWhiteSpace(Source[_position]))
+        bool leadingWhitespace = SkipWhitespace();
+        var flags = leadingWhitespace ? TokenFlags.LeadingWhitespace : TokenFlags.None;
+
+        if (_position >= Source.Length)
+            return new Token(TokenType.EndOfFile, ReadOnlyMemory<char>.Empty, _line, Column, _position, 0, flags);
+
+        if (_expectModifierValue)
         {
-            return ConsumeWhitespace();
+            _expectModifierValue = false;
+            if (!leadingWhitespace && IsModifierValueStart(Source[_position]))
+                return ConsumeModifierValue(flags);
         }
 
-        if (_position >= _sourceMemory.Length)
+        if (_expectComparisonValue)
         {
-            return new Token(TokenType.EndOfFile, ReadOnlyMemory<char>.Empty, _line, _column, _position, 0);
+            _expectComparisonValue = false;
+            _inValue = true;
+            if (IsComparisonTermChar(Source[_position], _position))
+                return ConsumeTerm(flags, TermMode.Comparison);
         }
 
+        return _inRange ? NextRangeToken(flags) : NextQueryToken(flags);
+    }
+
+    private Token NextQueryToken(TokenFlags flags)
+    {
         char current = Source[_position];
-
-        if (current == '/')
-            return ConsumeRegex();
-
-        if (current == '"')
-            return ConsumeQuotedString();
-
-        if (current == '>' || current == '<')
-            return ConsumeComparisonOperator();
-
         switch (current)
         {
+            case '"':
+                return ConsumeQuotedString(flags);
+            case '/':
+                return ConsumeRegex(flags);
             case ':':
-                return ConsumeSingleChar(TokenType.Colon);
+                _inValue = true;
+                return ConsumeSingleChar(TokenType.Colon, flags);
             case '(':
-                return ConsumeSingleChar(TokenType.LeftParen);
+                _inValue = false;
+                return ConsumeSingleChar(TokenType.LeftParen, flags);
             case ')':
-                return ConsumeSingleChar(TokenType.RightParen);
+                _inValue = false;
+                return ConsumeSingleChar(TokenType.RightParen, flags);
             case '[':
-                return ConsumeSingleChar(TokenType.LeftBracket);
-            case ']':
-                return ConsumeSingleChar(TokenType.RightBracket);
+                _inRange = true;
+                return ConsumeSingleChar(TokenType.LeftBracket, flags);
             case '{':
-                return ConsumeSingleChar(TokenType.LeftBrace);
+                _inRange = true;
+                return ConsumeSingleChar(TokenType.LeftBrace, flags);
+            case ']':
+                return ConsumeSingleChar(TokenType.RightBracket, flags);
             case '}':
-                return ConsumeSingleChar(TokenType.RightBrace);
-            case '+':
-                return ConsumeSingleChar(TokenType.Plus);
-            case '-':
-                return ConsumeSingleChar(TokenType.Minus);
-            case '~':
-                return ConsumeSingleChar(TokenType.Tilde);
+                return ConsumeSingleChar(TokenType.RightBrace, flags);
             case '^':
-                return ConsumeSingleChar(TokenType.Caret);
+                _expectModifierValue = true;
+                return ConsumeSingleChar(TokenType.Caret, flags);
+            case '~':
+                _expectModifierValue = true;
+                return ConsumeSingleChar(TokenType.Tilde, flags);
+            case '>':
+            case '<':
+                return ConsumeComparisonOperator(flags);
         }
 
-        if (current == '&' && Peek() == '&')
-            return ConsumeTwoChars(TokenType.And);
-        if (current == '|' && Peek() == '|')
-            return ConsumeTwoChars(TokenType.Or);
-        if (current == '!')
-            return ConsumeSingleChar(TokenType.Not);
+        if (current is '+' or '-' or '!' && IsOperatorPrefix(_position + 1))
+        {
+            _inValue = false;
+            return ConsumeSingleChar(current switch
+            {
+                '+' => TokenType.Plus,
+                '-' => TokenType.Minus,
+                _ => TokenType.Not
+            }, flags);
+        }
 
-        if (IsTermStartChar(current))
-            return ConsumeTermOrKeyword();
+        if (current is '&' or '|' && Peek(1) == current && IsBoundary(_position + 2))
+        {
+            _inValue = false;
+            return ConsumeChars(current == '&' ? TokenType.And : TokenType.Or, 2, flags);
+        }
 
-        AddError(current);
-        return ConsumeSingleChar(TokenType.Invalid);
+        return ConsumeTerm(flags, _inValue ? TermMode.Value : TermMode.Query);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)] // Keep error path out of hot path
-    private void AddError(char c)
+    private Token NextRangeToken(TokenFlags flags)
     {
-        _errors ??= new List<ParseError>(4);
-        _errors.Add(new ParseError(string.Concat("Unexpected character: '", c.ToString(), "'"), _position, 1, _line, _column, QueryErrorCode.UnexpectedToken));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ReadOnlyMemory<char> Slice(int start, int length) => _sourceMemory.Slice(start, length);
-
-    private Token ConsumeWhitespace()
-    {
-        int start = _position;
-        int startColumn = _column;
-
-        while (_position < _sourceMemory.Length && char.IsWhiteSpace(Source[_position]))
-        {
-            if (Source[_position] == '\n')
-            {
-                _line++;
-                _column = 1;
-            }
-            else
-            {
-                _column++;
-            }
-            _position++;
-        }
-
-        int length = _position - start;
-
-        return new Token(TokenType.Whitespace, Slice(start, length), _line, startColumn, start, length);
-    }
-
-    // Buffer for processing escaped strings - reused to avoid allocations
-    [ThreadStatic]
-    private static char[]? _escapeBuffer;
-
-    private Token ConsumeQuotedString()
-    {
-        int start = _position;
-        int startColumn = _column;
-        int startLine = _line;
-
-        _position++;
-        _column++;
-
-        int contentStart = _position;
-        bool hasEscapes = false;
-
-        while (_position < _sourceMemory.Length)
-        {
-            char c = Source[_position];
-            if (c == '\\')
-            {
-                hasEscapes = true;
-                // Guard against a trailing backslash running past the end of the buffer.
-                if (_position + 1 < _sourceMemory.Length)
-                {
-                    _position += 2;
-                    _column += 2;
-                }
-                else
-                {
-                    _position++;
-                    _column++;
-                }
-            }
-            else if (c == '"')
-            {
-                break;
-            }
-            else
-            {
-                if (c == '\n')
-                {
-                    _line++;
-                    _column = 1;
-                }
-                else
-                {
-                    _column++;
-                }
-                _position++;
-            }
-        }
-
-        int contentLength = _position - contentStart;
-        ReadOnlyMemory<char> content;
-
-        if (!hasEscapes)
-        {
-            // Zero-copy slice
-            content = Slice(contentStart, contentLength);
-        }
-        else
-        {
-            // Must process escapes - allocates a new string
-            content = ProcessEscapes(Source.Slice(contentStart, contentLength)).AsMemory();
-        }
-
-        if (_position < _sourceMemory.Length && Source[_position] == '"')
-        {
-            _position++;
-            _column++;
-        }
-
-        int fullLength = _position - start;
-        return new Token(TokenType.QuotedString, content, startLine, startColumn, start, fullLength);
-    }
-
-    private static string ProcessEscapes(ReadOnlySpan<char> input)
-    {
-        // Ensure buffer is large enough
-        _escapeBuffer ??= new char[256];
-        if (_escapeBuffer.Length < input.Length)
-        {
-            _escapeBuffer = new char[input.Length];
-        }
-
-        int writePos = 0;
-        bool escaped = false;
-
-        foreach (char c in input)
-        {
-            if (escaped)
-            {
-                _escapeBuffer[writePos++] = c;
-                escaped = false;
-            }
-            else if (c == '\\')
-            {
-                escaped = true;
-            }
-            else
-            {
-                _escapeBuffer[writePos++] = c;
-            }
-        }
-
-        return new string(_escapeBuffer, 0, writePos);
-    }
-
-    private Token ConsumeRegex()
-    {
-        int start = _position;
-        int startColumn = _column;
-        int startLine = _line;
-
-        _position++;
-        _column++;
-
-        int contentStart = _position;
-
-        while (_position < _sourceMemory.Length)
-        {
-            char c = Source[_position];
-            if (c == '\\')
-            {
-                // Guard against a trailing backslash running past the end of the buffer.
-                if (_position + 1 < _sourceMemory.Length)
-                {
-                    _position += 2;
-                    _column += 2;
-                }
-                else
-                {
-                    _position++;
-                    _column++;
-                }
-            }
-            else if (c == '/')
-            {
-                break;
-            }
-            else
-            {
-                if (c == '\n')
-                {
-                    _line++;
-                    _column = 1;
-                }
-                else
-                {
-                    _column++;
-                }
-                _position++;
-            }
-        }
-
-        int contentLength = _position - contentStart;
-        var content = Slice(contentStart, contentLength);
-
-        if (_position < _sourceMemory.Length && Source[_position] == '/')
-        {
-            _position++;
-            _column++;
-        }
-
-        int fullLength = _position - start;
-        return new Token(TokenType.Regex, content, startLine, startColumn, start, fullLength);
-    }
-
-    private Token ConsumeComparisonOperator()
-    {
-        int start = _position;
-        int startColumn = _column;
         char current = Source[_position];
-
-        if (_position + 1 < _sourceMemory.Length && Source[_position + 1] == '=')
+        switch (current)
         {
-            _position += 2;
-            _column += 2;
-            return new Token(
-                current == '>' ? TokenType.GreaterThanOrEqual : TokenType.LessThanOrEqual,
-                Slice(start, 2),
-                _line, startColumn, start, 2);
+            case '"':
+                return ConsumeQuotedString(flags);
+            case ']':
+                _inRange = false;
+                _inValue = false;
+                return ConsumeSingleChar(TokenType.RightBracket, flags);
+            case '}':
+                _inRange = false;
+                _inValue = false;
+                return ConsumeSingleChar(TokenType.RightBrace, flags);
+            case '[':
+                return ConsumeSingleChar(TokenType.LeftBracket, flags);
+            case '{':
+                return ConsumeSingleChar(TokenType.LeftBrace, flags);
+            case '.' when Peek(1) == '.':
+                return ConsumeChars(TokenType.RangeDots, 2, flags);
+            case '(':
+                _inRange = false;
+                return ConsumeSingleChar(TokenType.LeftParen, flags);
+            case ')':
+                // An unclosed range must not swallow the rest of the query.
+                _inRange = false;
+                _inValue = false;
+                return ConsumeSingleChar(TokenType.RightParen, flags);
         }
 
-        _position++;
-        _column++;
-        return new Token(
-            current == '>' ? TokenType.GreaterThan : TokenType.LessThan,
-            Slice(start, 1),
-            _line, startColumn, start, 1);
+        var token = ConsumeTerm(flags, TermMode.Range);
+        if (token.Span.SequenceEqual("TO") && !token.HasEscapes)
+            return token with { Type = TokenType.To };
+
+        return token;
     }
 
-    private Token ConsumeTermOrKeyword()
+    private enum TermMode
+    {
+        Query,
+        Value,
+        Range,
+        Comparison
+    }
+
+    private Token ConsumeTerm(TokenFlags flags, TermMode mode)
     {
         int start = _position;
-        int startColumn = _column;
+        int line = _line;
+        int column = Column;
+        var source = Source;
 
-        bool hasWildcard = false;
-        bool hasEscapes = false;
-        bool escaped = false;
-
-        while (_position < _sourceMemory.Length)
+        while (_position < source.Length)
         {
-            char c = Source[_position];
-
-            if (escaped)
-            {
-                escaped = false;
-                _position++;
-                _column++;
-                continue;
-            }
+            char c = source[_position];
 
             if (c == '\\')
             {
-                hasEscapes = true;
-                escaped = true;
-                _position++;
-                _column++;
+                flags |= TokenFlags.HasEscapes;
+                if (_position + 1 >= source.Length)
+                {
+                    AddError("Dangling escape character '\\' at end of input", _position, 1, QueryErrorCode.UnexpectedToken);
+                    _position++;
+                    break;
+                }
+
+                if (source[_position + 1] == '\n')
+                    NewLine(_position + 1);
+
+                _position += 2;
                 continue;
             }
 
-            if (c == '*' || c == '?')
+            if (c is '*' or '?')
             {
-                hasWildcard = true;
+                flags |= TokenFlags.HasWildcard;
                 _position++;
-                _column++;
                 continue;
             }
 
-            // Special case: allow colon in time values (e.g., 12:30:00)
-            if (c == ':' && IsTimeColon(_position))
+            bool isTermChar = mode switch
             {
-                _position++;
-                _column++;
-                continue;
-            }
+                TermMode.Range => IsRangeTermChar(c, _position),
+                TermMode.Comparison => IsComparisonTermChar(c, _position),
+                TermMode.Value => IsTermChar(c) || c == ':' && IsTimeColon(_position),
+                _ => IsTermChar(c)
+            };
 
-            if (!IsTermChar(c))
+            if (!isTermChar)
                 break;
 
             _position++;
-            _column++;
+        }
+
+        if (_position == start)
+        {
+            // Not a term character; consume it so the parser can report it without looping.
+            _position++;
+            AddError($"Unexpected character '{source[start]}'", start, 1, QueryErrorCode.UnexpectedToken);
+            return new Token(TokenType.Invalid, _source.Slice(start, 1), line, column, start, 1, flags);
         }
 
         int length = _position - start;
-        var valueSpan = Source.Slice(start, length);
+        var value = _source.Slice(start, length);
 
-        ReadOnlyMemory<char> valueMemory;
-        if (hasEscapes)
+        if (mode is TermMode.Query or TermMode.Value && (flags & TokenFlags.HasEscapes) == 0)
         {
-            // Must process escapes - allocates a new string
-            valueMemory = ProcessEscapes(valueSpan).AsMemory();
+            var span = value.Span;
+            if (span.SequenceEqual("AND"))
+                return MakeOperator(TokenType.And);
+            if (span.SequenceEqual("OR"))
+                return MakeOperator(TokenType.Or);
+            if (span.SequenceEqual("NOT"))
+                return MakeOperator(TokenType.Not);
         }
-        else
+
+        if (mode != TermMode.Range)
+            _inValue = false;
+
+        return new Token(TokenType.Term, value, line, column, start, length, flags);
+
+        Token MakeOperator(TokenType type)
         {
-            // Zero-copy slice
-            valueMemory = Slice(start, length);
+            _inValue = false;
+            return new Token(type, value, line, column, start, length, flags);
         }
-
-        TokenType type;
-
-        if (valueSpan.SequenceEqual("AND"))
-            type = TokenType.And;
-        else if (valueSpan.SequenceEqual("OR"))
-            type = TokenType.Or;
-        else if (valueSpan.SequenceEqual("NOT"))
-            type = TokenType.Not;
-        else if (valueSpan.SequenceEqual("TO"))
-            type = TokenType.To;
-        else if (hasWildcard && valueSpan.EndsWith("*") && !valueSpan.Contains('?') && CountChar(valueSpan, '*') == 1)
-            type = TokenType.Prefix;
-        else if (hasWildcard)
-            type = TokenType.Wildcard;
-        else
-            type = TokenType.Term;
-
-        return new Token(type, valueMemory, _line, startColumn, start, length);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CountChar(ReadOnlySpan<char> span, char c)
-    {
-        int count = 0;
-        foreach (char ch in span)
-            if (ch == c) count++;
-        return count;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Token ConsumeSingleChar(TokenType type)
+    private Token ConsumeQuotedString(TokenFlags flags)
     {
         int start = _position;
-        int startColumn = _column;
+        int line = _line;
+        int column = Column;
+        var source = Source;
+
         _position++;
-        _column++;
-        return new Token(type, Slice(start, 1), _line, startColumn, start, 1);
+        int contentStart = _position;
+
+        while (_position < source.Length)
+        {
+            char c = source[_position];
+            if (c == '\\' && _position + 1 < source.Length)
+            {
+                flags |= TokenFlags.HasEscapes;
+                if (source[_position + 1] == '\n')
+                    NewLine(_position + 1);
+                _position += 2;
+                continue;
+            }
+
+            if (c == '"')
+                break;
+
+            if (c == '\n')
+                NewLine(_position);
+
+            _position++;
+        }
+
+        int contentEnd = Math.Min(_position, source.Length);
+        if (_position < source.Length)
+        {
+            _position++;
+        }
+        else
+        {
+            flags |= TokenFlags.Unterminated;
+            AddError("Unterminated quoted string", start, source.Length - start, QueryErrorCode.UnmatchedBracket, line, column);
+        }
+
+        if (!_inRange)
+            _inValue = false;
+
+        return new Token(TokenType.QuotedString, _source.Slice(contentStart, contentEnd - contentStart), line, column, start, _position - start, flags);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Token ConsumeTwoChars(TokenType type)
+    private Token ConsumeRegex(TokenFlags flags)
     {
         int start = _position;
-        int startColumn = _column;
-        _position += 2;
-        _column += 2;
-        return new Token(type, Slice(start, 2), _line, startColumn, start, 2);
+        int line = _line;
+        int column = Column;
+        var source = Source;
+
+        _position++;
+        int contentStart = _position;
+
+        while (_position < source.Length)
+        {
+            char c = source[_position];
+            if (c == '\\' && _position + 1 < source.Length)
+            {
+                _position += 2;
+                continue;
+            }
+
+            if (c == '/')
+                break;
+
+            if (c == '\n')
+                NewLine(_position);
+
+            _position++;
+        }
+
+        int contentEnd = Math.Min(_position, source.Length);
+        if (_position < source.Length)
+        {
+            _position++;
+        }
+        else
+        {
+            flags |= TokenFlags.Unterminated;
+            AddError("Unterminated regular expression", start, source.Length - start, QueryErrorCode.UnmatchedBracket, line, column);
+        }
+
+        _inValue = false;
+        return new Token(TokenType.Regex, _source.Slice(contentStart, contentEnd - contentStart), line, column, start, _position - start, flags);
+    }
+
+    private Token ConsumeModifierValue(TokenFlags flags)
+    {
+        if (Source[_position] == '"')
+        {
+            var quoted = ConsumeQuotedString(flags);
+            return quoted with { Type = TokenType.ModifierValue };
+        }
+
+        int start = _position;
+        int column = Column;
+        var source = Source;
+        while (_position < source.Length && IsModifierValueChar(source[_position]))
+            _position++;
+
+        return new Token(TokenType.ModifierValue, _source.Slice(start, _position - start), _line, column, start, _position - start, flags);
+    }
+
+    private Token ConsumeComparisonOperator(TokenFlags flags)
+    {
+        char current = Source[_position];
+        bool orEqual = Peek(1) == '=';
+        var type = current == '>'
+            ? orEqual ? TokenType.GreaterThanOrEqual : TokenType.GreaterThan
+            : orEqual ? TokenType.LessThanOrEqual : TokenType.LessThan;
+
+        _expectComparisonValue = true;
+        return ConsumeChars(type, orEqual ? 2 : 1, flags);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private char Peek(int offset = 1)
+    private Token ConsumeSingleChar(TokenType type, TokenFlags flags) => ConsumeChars(type, 1, flags);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Token ConsumeChars(TokenType type, int count, TokenFlags flags)
+    {
+        int start = _position;
+        int column = Column;
+        _position += count;
+        return new Token(type, _source.Slice(start, count), _line, column, start, count, flags);
+    }
+
+    private bool SkipWhitespace()
+    {
+        int start = _position;
+        var source = Source;
+        while (_position < source.Length && char.IsWhiteSpace(source[_position]))
+        {
+            if (source[_position] == '\n')
+                NewLine(_position);
+            _position++;
+        }
+
+        return _position > start;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void NewLine(int newLinePosition)
+    {
+        _line++;
+        _lineStart = newLinePosition + 1;
+    }
+
+    private int Column => _position - _lineStart + 1;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private char Peek(int offset)
     {
         int pos = _position + offset;
-        return pos < _sourceMemory.Length ? Source[pos] : '\0';
+        return pos < Source.Length ? Source[pos] : '\0';
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsTermStartChar(char c)
+    /// <summary>
+    /// A +, -, or ! is an operator only when it is immediately followed by the clause it modifies.
+    /// Followed by whitespace (or nothing) it is literal term text, matching Foundatio.Parsers.
+    /// </summary>
+    private bool IsOperatorPrefix(int nextPosition)
     {
-        return char.IsLetterOrDigit(c) || c == '_' || c == '*' || c == '?' || c == '\\' || c == '@';
+        return nextPosition < Source.Length && !char.IsWhiteSpace(Source[nextPosition]);
+    }
+
+    private bool IsBoundary(int position)
+    {
+        return position >= Source.Length || char.IsWhiteSpace(Source[position]) || Source[position] is '(' or ')';
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsTermChar(char c)
     {
-        if (char.IsWhiteSpace(c)) return false;
         return c switch
         {
-            ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' or '>' or '<' or '=' => false,
-            _ => true
+            ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' => false,
+            _ => !char.IsWhiteSpace(c)
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsRangeTermChar(char c, int position)
+    {
+        return c switch
+        {
+            '[' or ']' or '{' or '}' or '(' or ')' or '"' or '^' or '~' => false,
+            '.' => position + 1 >= Source.Length || Source[position + 1] != '.',
+            _ => !char.IsWhiteSpace(c)
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsComparisonTermChar(char c, int position)
+    {
+        return c == ':' ? IsTimeColon(position) : IsRangeTermChar(c, position);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsModifierValueStart(char c)
+    {
+        return c == '"' || IsModifierValueChar(c);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsModifierValueChar(char c)
+    {
+        return c switch
+        {
+            ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' => false,
+            _ => !char.IsWhiteSpace(c)
         };
     }
 
     /// <summary>
-    /// Checks if a colon at the current position is part of a time value (e.g., 12:30:00)
-    /// rather than a field separator.
+    /// A colon between two digits inside a value (e.g., 2024-01-01T12:30:00) belongs to the value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsTimeColon(int pos)
+    private bool IsTimeColon(int position)
     {
-        // A colon is part of a time if:
-        // 1. Previous char is a digit
-        // 2. Next char is a digit
-        if (pos <= 0 || pos + 1 >= _sourceMemory.Length)
-            return false;
+        return position > 0 && position + 1 < Source.Length
+            && char.IsAsciiDigit(Source[position - 1]) && char.IsAsciiDigit(Source[position + 1]);
+    }
 
-        return char.IsDigit(Source[pos - 1]) && char.IsDigit(Source[pos + 1]);
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void AddError(string message, int position, int length, QueryErrorCode code, int? line = null, int? column = null)
+    {
+        Errors.Add(new ParseError(message, position, length, line ?? _line, column ?? position - _lineStart + 1, code));
     }
 }

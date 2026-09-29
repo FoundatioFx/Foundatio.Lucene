@@ -1,32 +1,35 @@
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Represents an exists query (field:* or _exists_:field).
+/// Represents an exists query (<c>_exists_:field</c> or <c>field:*</c>).
 /// </summary>
-public class ExistsNode : QueryNode
+public class ExistsNode : QueryNode, IFieldNode
 {
-    private ReadOnlyMemory<char> _field;
+    private TextValue _field;
 
     /// <summary>
-    /// The field that must exist as a memory slice (zero allocation).
+    /// The field that must exist as a memory slice.
     /// </summary>
     public ReadOnlyMemory<char> FieldMemory
     {
-        get => _field;
-        set => _field = value;
+        get => _field.Memory;
+        set => _field.Memory = value;
     }
 
     /// <summary>
-    /// The field that must exist as a string. Use FieldMemory for zero-allocation access.
+    /// The field that must exist.
     /// </summary>
     public string Field
     {
-        get => _field.Span.ToString();
-        set => _field = value.AsMemory();
+        get => _field.GetString();
+        set => _field.SetString(value);
     }
 
     /// <summary>
-    /// Whether this was parsed from _exists_:field syntax (true) or field:* syntax (false).
+    /// Whether this was parsed from <c>_exists_:field</c> syntax (true) or <c>field:*</c> syntax (false).
     /// </summary>
     public bool IsExistsSyntax { get; set; }
+
+    /// <inheritdoc/>
+    public override QueryNode Clone() => CopyCommonTo(new ExistsNode { FieldMemory = FieldMemory, IsExistsSyntax = IsExistsSyntax });
 }

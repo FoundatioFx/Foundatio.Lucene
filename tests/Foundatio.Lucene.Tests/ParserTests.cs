@@ -1,470 +1,208 @@
 using System.Globalization;
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 
 namespace Foundatio.Lucene.Tests;
 
 public class ParserTests
 {
-    [Fact]
-    public void Parse_SimpleTerm_ReturnsSingleTermNode()
+    private static readonly LuceneParserOptions OrOptions = new() { DefaultOperator = BooleanOperator.Or };
+
+    [Theory]
+    [InlineData("hello", "hello")]
+    [InlineData("a b", "(bool +a +b)")]
+    [InlineData("a AND b", "(bool +a +b)")]
+    [InlineData("a && b", "(bool +a +b)")]
+    [InlineData("a OR b", "(bool ?a ?b)")]
+    [InlineData("a || b", "(bool ?a ?b)")]
+    [InlineData("a OR b AND c", "(bool ?a ?(bool +b +c))")]
+    [InlineData("a AND b OR c", "(bool ?(bool +a +b) ?c)")]
+    [InlineData("a b OR c", "(bool ?(bool +a +b) ?c)")]
+    [InlineData("a NOT b", "(bool +a -b)")]
+    [InlineData("a AND NOT b", "(bool +a -b)")]
+    [InlineData("a -b", "(bool +a -b)")]
+    [InlineData("a !b", "(bool +a -b)")]
+    [InlineData("a OR NOT b", "(bool ?a ?(not b))")]
+    [InlineData("NOT a OR b", "(bool ?(not a) ?b)")]
+    [InlineData("a OR -b", "(bool ?a -b)")]
+    [InlineData("a OR +b", "(bool ?a +b)")]
+    [InlineData("-a", "(bool -a)")]
+    [InlineData("NOT a", "(bool -a)")]
+    [InlineData("!a", "(bool -a)")]
+    [InlineData("+a", "(bool +a)")]
+    [InlineData("(a OR b) AND (c OR d)", "(bool +(group (bool ?a ?b)) +(group (bool ?c ?d)))")]
+    [InlineData("((a))", "(group (group a))")]
+    [InlineData("a b c d", "(bool +a +b +c +d)")]
+    public void Parse_BooleanExpressions_DefaultAnd(string query, string expected)
     {
-        var result = LuceneQuery.Parse("hello");
-
-        Assert.True(result.IsSuccess);
-        Assert.IsType<QueryDocument>(result.Document);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("hello", term.Term);
-    }
-
-    [Fact]
-    public void Parse_QuotedPhrase_ReturnsPhraseNode()
-    {
-        var result = LuceneQuery.Parse("\"hello world\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-        var phrase = (PhraseNode)doc.Query;
-        Assert.Equal("hello world", phrase.Phrase);
-    }
-
-    [Fact]
-    public void Parse_FieldQuery_ReturnsFieldQueryNode()
-    {
-        var result = LuceneQuery.Parse("title:test");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("title", field.Field);
-        Assert.IsType<TermNode>(field.Query);
-    }
-
-    [Fact]
-    public void Parse_NestedField_ReturnsFieldQueryNode()
-    {
-        var result = LuceneQuery.Parse("user.address.city:london");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("user.address.city", field.Field);
-    }
-
-    [Fact]
-    public void Parse_AndQuery_ReturnsBooleanQueryNode()
-    {
-        var result = LuceneQuery.Parse("hello AND world");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Equal(2, boolean.Clauses.Count);
-        Assert.Equal(BooleanOperator.And, boolean.Clauses[1].Operator);
-    }
-
-    [Fact]
-    public void Parse_OrQuery_ReturnsBooleanQueryNode()
-    {
-        var result = LuceneQuery.Parse("hello OR world");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Equal(2, boolean.Clauses.Count);
-        Assert.Equal(BooleanOperator.Or, boolean.Clauses[1].Operator);
-    }
-
-    [Fact]
-    public void Parse_NotQuery_ReturnsNotNode()
-    {
-        var result = LuceneQuery.Parse("NOT test");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<NotNode>(doc.Query);
-        var not = (NotNode)doc.Query;
-        Assert.IsType<TermNode>(not.Query);
-    }
-
-    [Fact]
-    public void Parse_RequiredTerm_ReturnsBooleanClauseWithMust()
-    {
-        var result = LuceneQuery.Parse("+required");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Single(boolean.Clauses);
-        Assert.Equal(Occur.Must, boolean.Clauses[0].Occur);
-    }
-
-    [Fact]
-    public void Parse_ProhibitedTerm_ReturnsBooleanClauseWithMustNot()
-    {
-        var result = LuceneQuery.Parse("-excluded");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Single(boolean.Clauses);
-        Assert.Equal(Occur.MustNot, boolean.Clauses[0].Occur);
-    }
-
-    [Fact]
-    public void Parse_InclusiveRange_ReturnsRangeNode()
-    {
-        var result = LuceneQuery.Parse("[10 TO 20]");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.Equal("10", range.Min);
-        Assert.Equal("20", range.Max);
-        Assert.True(range.MinInclusive);
-        Assert.True(range.MaxInclusive);
-    }
-
-    [Fact]
-    public void Parse_ExclusiveRange_ReturnsRangeNode()
-    {
-        var result = LuceneQuery.Parse("{10 TO 20}");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.Equal("10", range.Min);
-        Assert.Equal("20", range.Max);
-        Assert.False(range.MinInclusive);
-        Assert.False(range.MaxInclusive);
+        AssertParses(query, expected);
     }
 
     [Theory]
-    [InlineData("[* TO 100]", null, "100", true, true)]
-    [InlineData("[100 TO *]", "100", null, true, true)]
-    [InlineData("{* TO *}", null, null, false, false)]
-    public void Parse_OpenRange_ReturnsRangeNodeWithWildcards(
-        string query, string? expectedLower, string? expectedUpper, bool lowerInclusive, bool upperInclusive)
+    [InlineData("a b", "(bool ?a ?b)")]
+    [InlineData("a b AND c", "(bool ?a ?(bool +b +c))")]
+    [InlineData("a NOT b", "(bool ?a -b)")]
+    [InlineData("NOT a b", "(bool -a ?b)")]
+    [InlineData("+a b", "(bool +a ?b)")]
+    [InlineData("-a b", "(bool -a ?b)")]
+    [InlineData("a OR NOT b", "(bool ?a ?(not b))")]
+    [InlineData("a NOT b OR c", "(bool ?a ?(not b) ?c)")]
+    public void Parse_BooleanExpressions_DefaultOr(string query, string expected)
+    {
+        AssertParses(query, expected, OrOptions);
+    }
+
+    [Theory]
+    [InlineData("title:hello", "title:hello")]
+    [InlineData("title:\"hello world\"", "title:\"hello world\"")]
+    [InlineData("title:(a OR b)", "title:(group (bool ?a ?b))")]
+    [InlineData("-title:(a OR b)", "(bool -title:(group (bool ?a ?b)))")]
+    [InlineData("user.name:john", "user.name:john")]
+    [InlineData("user-name:x", "user-name:x")]
+    [InlineData("field1:2", "field1:2")]
+    [InlineData("my\\ field:x", "my field:x")]
+    [InlineData("book.*:quick", "book.*:quick")]
+    [InlineData("date:2024-01-01T10:30:00", "date:2024-01-01T10:30:00")]
+    [InlineData("time:12:30", "time:12:30")]
+    [InlineData("title:/ab\\/c/", "title:/ab\\/c/")]
+    [InlineData("@include:saved", "@include:saved")]
+    [InlineData("@include:\"saved query\"", "@include:\"saved query\"")]
+    [InlineData("title : hello", "title:hello")]
+    public void Parse_FieldQueries(string query, string expected)
+    {
+        AssertParses(query, expected);
+    }
+
+    [Theory]
+    [InlineData("foo*", "foo*(prefix)")]
+    [InlineData("f*o", "f*o(wildcard)")]
+    [InlineData("f?o", "f?o(wildcard)")]
+    [InlineData("fo?*", "fo?*(wildcard)")]
+    [InlineData("*foo", "*foo(wildcard)")]
+    [InlineData("foo\\*", "foo*")]
+    [InlineData("foo\\:bar", "foo:bar")]
+    [InlineData("c\\\\temp", "c\\temp")]
+    [InlineData("foo~", "foo~")]
+    [InlineData("foo~1", "foo~1")]
+    [InlineData("foo~0.8", "foo~0.8")]
+    [InlineData("foo^2", "foo^2")]
+    [InlineData("foo^2.5", "foo^2.5")]
+    [InlineData("foo~1^2", "foo~1^2")]
+    [InlineData("\"hello world\"~2^3", "\"hello world\"~2^3")]
+    [InlineData("\"say \\\"hi\\\"\"", "\"say \"hi\"\"")]
+    [InlineData("/ab[c]+/", "/ab[c]+/")]
+    [InlineData("*", "(all)")]
+    [InlineData("*:*", "(all)")]
+    [InlineData("#hashtag", "#hashtag")]
+    [InlineData("price:$100", "price:$100")]
+    [InlineData(".net", ".net")]
+    [InlineData("'hello'", "'hello'")]
+    [InlineData("a=b", "a=b")]
+    [InlineData("a>b", "a>b")]
+    [InlineData("a&&b", "a&&b")]
+    [InlineData("🚀", "🚀")]
+    [InlineData("go TO school", "(bool +go +TO +school)")]
+    [InlineData("! a", "(bool +! +a)")]
+    [InlineData("- a", "(bool +- +a)")]
+    public void Parse_Terms(string query, string expected)
+    {
+        AssertParses(query, expected);
+    }
+
+    [Theory]
+    [InlineData("title:*", "(exists title)")]
+    [InlineData("_exists_:title", "(exists title)")]
+    [InlineData("_missing_:title", "(missing title)")]
+    [InlineData("NOT _exists_:title", "(bool -(exists title))")]
+    public void Parse_ExistsAndMissing(string query, string expected)
+    {
+        AssertParses(query, expected);
+    }
+
+    [Theory]
+    [InlineData("price:[1 TO 5]", "price:[1 TO 5]")]
+    [InlineData("price:{1 TO 5]", "price:{1 TO 5]")]
+    [InlineData("price:[1 TO 5}", "price:[1 TO 5}")]
+    [InlineData("price:[* TO 5]", "price:[* TO 5]")]
+    [InlineData("price:[1 TO *]", "price:[1 TO *]")]
+    [InlineData("price:[-10 TO -5]", "price:[-10 TO -5]")]
+    [InlineData("price:[1.5 TO 2.5]", "price:[1.5 TO 2.5]")]
+    [InlineData("price:[1..5]", "price:[1 TO 5]")]
+    [InlineData("price:[1 .. 5]", "price:[1 TO 5]")]
+    [InlineData("name:[\"a b\" TO \"c d\"]", "name:[a b TO c d]")]
+    [InlineData("time:[10:00 TO 12:00]", "time:[10:00 TO 12:00]")]
+    [InlineData("date:[now-1d/d TO now]", "date:[now-1d/d TO now]")]
+    [InlineData("date:[2024-01-01 TO *]^\"America/Chicago\"", "date:[2024-01-01 TO *]^America/Chicago")]
+    [InlineData("price:>5", "price:{5 TO *]")]
+    [InlineData("price:>=5", "price:[5 TO *]")]
+    [InlineData("price:<5", "price:[* TO 5}")]
+    [InlineData("price:<=5", "price:[* TO 5]")]
+    [InlineData("price:<-5", "price:[* TO -5}")]
+    [InlineData("price:>= 5", "price:[5 TO *]")]
+    [InlineData("date:>=2024-01-01T10:30:00", "date:[2024-01-01T10:30:00 TO *]")]
+    [InlineData(">5", "{5 TO *]")]
+    [InlineData("(price:>5)", "(group price:{5 TO *]})")]
+    public void Parse_Ranges(string query, string expected)
+    {
+        AssertParses(query, expected.Replace("]})", "])"));
+    }
+
+    [Theory]
+    [InlineData("terms:(status @missing:none min:created~5)", "terms:(group (bool +status +@missing:none +min:created~5))")]
+    [InlineData("date:created~1d^-5h", "date:created~1d^-5h")]
+    [InlineData("geo:75044~75mi", "geo:75044~75mi")]
+    [InlineData("-created +name", "(bool -created +name)")]
+    public void Parse_AggregationSortAndGeoSyntax(string query, string expected)
+    {
+        AssertParses(query, expected);
+    }
+
+    [Theory]
+    [InlineData("()", "Empty group")]
+    [InlineData("(a", "Missing closing ')'")]
+    [InlineData("a)", "Unexpected ')'")]
+    [InlineData("a AND", "Expected a query after 'AND'")]
+    [InlineData("a OR", "Expected a query after 'OR'")]
+    [InlineData("AND a", "Unexpected 'AND'")]
+    [InlineData("a AND OR b", "Expected a query after 'AND'")]
+    [InlineData("\"unterminated", "Unterminated quoted string")]
+    [InlineData("/unterminated", "Unterminated regular expression")]
+    [InlineData("trailing\\", "Dangling escape")]
+    [InlineData("title:-a", "before the field name")]
+    [InlineData("title:NOT a", "before the field name")]
+    [InlineData("title:", "Expected a value after 'title:'")]
+    [InlineData("a:b:c", "Unexpected ':'")]
+    [InlineData("NOT NOT a", "Unexpected operator 'NOT'")]
+    [InlineData("price:[1 5]", "Expected 'TO'")]
+    [InlineData("price:[1 TO 5", "Missing closing ']' or '}'")]
+    [InlineData("price:[TO 5]", "Expected a lower bound")]
+    [InlineData("price:>", "Expected a value after '>'")]
+    [InlineData("foo^", "Expected a value after '^'")]
+    [InlineData("/re/~2", "'~' is not supported")]
+    [InlineData("foo~1~2", "Duplicate '~'")]
+    [InlineData("_exists_:", "Expected a field name")]
+    public void Parse_InvalidQuery_ReportsError(string query, string expectedMessage)
     {
         var result = LuceneQuery.Parse(query);
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.Equal(expectedLower, range.Min);
-        Assert.Equal(expectedUpper, range.Max);
-        Assert.Equal(lowerInclusive, range.MinInclusive);
-        Assert.Equal(upperInclusive, range.MaxInclusive);
+        Assert.False(result.IsSuccess);
+        Assert.Contains(result.Errors, e => e.Message.Contains(expectedMessage, StringComparison.Ordinal));
+        Assert.NotNull(result.Document);
     }
 
     [Fact]
-    public void Parse_FieldRange_ReturnsFieldQueryWithRangeNode()
+    public void Parse_InvalidQuery_KeepsWhatCouldBeParsed()
     {
-        var result = LuceneQuery.Parse("age:[18 TO 65]");
+        var result = LuceneQuery.Parse("a:b:c OR d");
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("age", field.Field);
-        Assert.IsType<RangeNode>(field.Query);
+        Assert.False(result.IsSuccess);
+        Assert.Equal("(bool +a:b +(bool ?c ?d))", result.Document.ToDebugString());
     }
 
     [Fact]
-    public void Parse_FuzzyTerm_ReturnsTermNodeWithFuzzy()
+    public void Parse_DeeplyNestedGroups_ReportsErrorInsteadOfOverflowingStack()
     {
-        var result = LuceneQuery.Parse("roam~2");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("roam", term.Term);
-        Assert.Equal(2, term.FuzzyDistance); // Explicitly specified as 2
-        Assert.Equal(2, term.GetEffectiveFuzzyDistance());
-    }
-
-    [Fact]
-    public void Parse_DefaultFuzzy_ReturnsTermNodeWithDefaultFuzziness()
-    {
-        var result = LuceneQuery.Parse("roam~");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("roam", term.Term);
-        Assert.Equal(TermNode.DefaultFuzzyDistance, term.FuzzyDistance); // Sentinel value (-1)
-        Assert.Equal(2, term.GetEffectiveFuzzyDistance()); // Effective value is 2
-    }
-
-    [Fact]
-    public void Parse_DefaultFuzzy_DifferentFromExplicitTwo()
-    {
-        var defaultResult = LuceneQuery.Parse("roam~");
-        var explicitResult = LuceneQuery.Parse("roam~2");
-
-        var defaultTerm = (TermNode)defaultResult.Document.Query!;
-        var explicitTerm = (TermNode)explicitResult.Document.Query!;
-
-        // The raw FuzzyDistance values are different
-        Assert.Equal(TermNode.DefaultFuzzyDistance, defaultTerm.FuzzyDistance);
-        Assert.Equal(2, explicitTerm.FuzzyDistance);
-        Assert.NotEqual(defaultTerm.FuzzyDistance, explicitTerm.FuzzyDistance);
-
-        // But the effective values are the same
-        Assert.Equal(2, defaultTerm.GetEffectiveFuzzyDistance());
-        Assert.Equal(2, explicitTerm.GetEffectiveFuzzyDistance());
-    }
-
-    [Fact]
-    public void Parse_ProximityPhrase_ReturnsPhraseNodeWithProximity()
-    {
-        var result = LuceneQuery.Parse("\"hello world\"~5");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-        var phrase = (PhraseNode)doc.Query;
-        Assert.Equal("hello world", phrase.Phrase);
-        Assert.Equal(5, phrase.Slop);
-    }
-
-    [Fact]
-    public void Parse_BoostedTerm_ReturnsTermNodeWithBoost()
-    {
-        var result = LuceneQuery.Parse("important^2.5");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("important", term.Term);
-        Assert.Equal(2.5f, term.Boost);
-    }
-
-    [Fact]
-    public void Parse_WildcardTerm_ReturnsTermNodeWithWildcard()
-    {
-        var result = LuceneQuery.Parse("te?t");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("te?t", term.Term);
-        Assert.True(term.IsWildcard);
-    }
-
-    [Fact]
-    public void Parse_PrefixTerm_ReturnsTermNodeWithPrefix()
-    {
-        var result = LuceneQuery.Parse("test*");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("test", term.Term);
-        Assert.True(term.IsPrefix);
-    }
-
-    [Fact]
-    public void Parse_RegexQuery_ReturnsRegexNode()
-    {
-        var result = LuceneQuery.Parse("/test\\.regex/");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RegexNode>(doc.Query);
-        var regex = (RegexNode)doc.Query;
-        Assert.Equal("test\\.regex", regex.Pattern);
-    }
-
-    [Fact]
-    public void Parse_RegexWithFlags_ReturnsRegexNode()
-    {
-        var result = LuceneQuery.Parse("/pattern/");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RegexNode>(doc.Query);
-        var regex = (RegexNode)doc.Query;
-        Assert.Equal("pattern", regex.Pattern);
-    }
-
-    [Fact]
-    public void Parse_ExistsQuery_ReturnsExistsNode()
-    {
-        var result = LuceneQuery.Parse("_exists_:field_name");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<ExistsNode>(doc.Query);
-        var existsNode = (ExistsNode)doc.Query;
-        Assert.Equal("field_name", existsNode.Field);
-        Assert.True(existsNode.IsExistsSyntax);
-    }
-
-    [Fact]
-    public void Parse_MissingQuery_ReturnsMissingNode()
-    {
-        var result = LuceneQuery.Parse("_missing_:field_name");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<MissingNode>(doc.Query);
-        var missingNode = (MissingNode)doc.Query;
-        Assert.Equal("field_name", missingNode.Field);
-    }
-
-    [Fact]
-    public void Parse_FieldStarExists_ReturnsExistsNode()
-    {
-        var result = LuceneQuery.Parse("field_name:*");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<ExistsNode>(doc.Query);
-        var existsNode = (ExistsNode)doc.Query;
-        Assert.Equal("field_name", existsNode.Field);
-        Assert.False(existsNode.IsExistsSyntax);
-    }
-
-    [Fact]
-    public void Parse_GroupedQuery_ReturnsGroupNode()
-    {
-        var result = LuceneQuery.Parse("(hello OR world)");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<GroupNode>(doc.Query);
-        var group = (GroupNode)doc.Query;
-        Assert.IsType<BooleanQueryNode>(group.Query);
-    }
-
-    [Fact]
-    public void Parse_FieldWithGroup_ReturnsFieldQueryWithGroup()
-    {
-        var result = LuceneQuery.Parse("title:(quick OR brown)");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("title", field.Field);
-        Assert.IsType<GroupNode>(field.Query);
-    }
-
-    [Fact]
-    public void Parse_ComplexQuery_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("title:(quick OR brown) AND status:published^2 AND date:[2020-01-01 TO 2023-12-31]");
-
-        Assert.True(result.IsSuccess);
-        Assert.False(result.HasErrors);
-    }
-
-    [Fact]
-    public void Parse_MatchAll_ReturnsMatchAllNode()
-    {
-        var result = LuceneQuery.Parse("*:*");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<MatchAllNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_ImplicitOr_ReturnsTermsWithImplicitOperator()
-    {
-        var result = LuceneQuery.Parse("hello world");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Equal(2, boolean.Clauses.Count);
-    }
-
-    [Fact]
-    public void Parse_EmptyQuery_ReturnsEmptyDocument()
-    {
-        var result = LuceneQuery.Parse("");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.Null(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_WhitespaceOnly_ReturnsEmptyDocument()
-    {
-        var result = LuceneQuery.Parse("   ");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.Null(doc.Query);
-    }
-
-    [Fact]
-    public void TryParse_ValidQuery_ReturnsTrue()
-    {
-        bool success = LuceneQuery.TryParse("test", out var result);
-
-        Assert.True(success);
-        Assert.NotNull(result);
-        Assert.True(result.IsSuccess);
-    }
-
-    [Fact]
-    public void Parse_UnbalancedParenthesis_ReturnsErrors()
-    {
-        var result = LuceneQuery.Parse("(hello world");
-
-        Assert.True(result.HasErrors);
-    }
-
-    [Fact]
-    public void Parse_NestingBeyondMaxDepth_ReturnsDepthErrorInsteadOfRecursing()
-    {
-        // 200 nested groups exceeds the default max depth (100) but is shallow
-        // enough to parse without crashing if the bound is missing.
-        var query = new string('(', 200) + "x" + new string(')', 200);
-
-        var result = LuceneQuery.Parse(query);
-
-        Assert.True(result.HasErrors);
-        Assert.Contains(result.Errors, e => e.Message.Contains("depth", StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
-    public void Parse_ExtremelyDeepNesting_DoesNotStackOverflow()
-    {
-        // Without a parse-time depth bound this throws an uncatchable StackOverflowException.
-        var query = new string('(', 50_000) + "x" + new string(')', 50_000);
-
-        var result = LuceneQuery.Parse(query);
-
-        Assert.NotNull(result);
-        Assert.True(result.HasErrors);
-    }
-
-    [Fact]
-    public void Parse_NestingBeyondMaxDepth_ErrorIsClassifiedAsMaxDepthExceeded()
-    {
-        var query = new string('(', 200) + "x" + new string(')', 200);
+        string query = new string('(', 100_000) + "a" + new string(')', 100_000);
 
         var result = LuceneQuery.Parse(query);
 
@@ -472,40 +210,74 @@ public class ParserTests
     }
 
     [Fact]
-    public void Parse_UnterminatedPhraseWithTrailingBackslash_DoesNotThrow()
+    public void Parse_DeeplyNestedFieldGroups_ReportsErrorInsteadOfOverflowingStack()
     {
-        // A trailing backslash must not advance the lexer past the end of the buffer.
-        var result = LuceneQuery.Parse("\"ab\\");
+        string query = string.Concat(Enumerable.Repeat("a:(", 50_000)) + "b" + new string(')', 50_000);
 
-        Assert.NotNull(result.Document);
-        Assert.IsType<PhraseNode>(result.Document.Query);
-        Assert.Equal("ab", ((PhraseNode)result.Document.Query!).Phrase);
+        var result = LuceneQuery.Parse(query);
+
+        Assert.Contains(result.Errors, e => e.Code == QueryErrorCode.MaxDepthExceeded);
     }
 
     [Fact]
-    public void Parse_UnterminatedRegexWithTrailingBackslash_DoesNotThrow()
+    public void Parse_WithinMaxDepth_Succeeds()
     {
-        var result = LuceneQuery.Parse("/ab\\");
+        string query = new string('(', 100) + "a" + new string(')', 100);
 
-        Assert.NotNull(result.Document);
-        Assert.IsType<RegexNode>(result.Document.Query);
+        var result = LuceneQuery.Parse(query);
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
-    public void Parse_BoostedTerm_WithCommaDecimalCulture_ParsesInvariant()
+    public void Parse_CustomMaxDepth_IsEnforced()
+    {
+        var result = LuceneQuery.Parse("((a))", new LuceneParserOptions { MaxDepth = 1 });
+
+        Assert.Contains(result.Errors, e => e.Code == QueryErrorCode.MaxDepthExceeded);
+    }
+
+    [Fact]
+    public void Parse_LongFlatQuery_IsLinear()
+    {
+        string query = string.Join(" AND ", Enumerable.Range(0, 50_000).Select(i => $"f{i}:v{i}"));
+
+        var result = LuceneQuery.Parse(query);
+
+        Assert.True(result.IsSuccess);
+        var boolean = Assert.IsType<BooleanQueryNode>(result.Document.Query);
+        Assert.Equal(50_000, boolean.Clauses.Count);
+    }
+
+    [Fact]
+    public void Parse_ErrorsAreNotShared()
+    {
+        var first = LuceneQuery.Parse("a");
+        var second = LuceneQuery.Parse("b");
+
+        Assert.Empty(first.Errors);
+        Assert.Empty(second.Errors);
+        Assert.IsNotType<List<ParseError>>(first.Errors, exactMatch: true);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("fi-FI")]
+    [InlineData("ar-SA")]
+    [InlineData("th-TH")]
+    public void Parse_Modifiers_AreCultureInvariant(string culture)
     {
         var original = CultureInfo.CurrentCulture;
         try
         {
-            // de-DE uses ',' as the decimal separator and '.' as the group separator,
-            // so a current-culture parse of "2.5" would yield 25.
-            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
 
-            var result = LuceneQuery.Parse("important^2.5");
+            var result = LuceneQuery.Parse("foo^2.5 bar~1");
 
-            Assert.True(result.IsSuccess);
-            var term = (TermNode)result.Document.Query!;
-            Assert.Equal(2.5f, term.Boost);
+            var boolean = Assert.IsType<BooleanQueryNode>(result.Document.Query);
+            Assert.Equal(2.5f, Assert.IsType<TermNode>(boolean.Clauses[0].Query).Boost);
+            Assert.Equal(1, Assert.IsType<TermNode>(boolean.Clauses[1].Query).FuzzyDistance);
+            Assert.Equal("foo^2.5 bar~1", QueryStringBuilder.ToQueryString(result.Document));
         }
         finally
         {
@@ -514,774 +286,172 @@ public class ParserTests
     }
 
     [Fact]
-    public void Parse_OperatorPrecedence_AndBindsTighterThanOr()
+    public void Parse_TermNode_ExposesRawAndUnescapedValues()
     {
-        // "a OR b AND c" should be parsed as "a OR (b AND c)"
-        var result = LuceneQuery.Parse("a OR b AND c");
+        var result = LuceneQuery.Parse("path:c\\\\temp\\*");
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var or = (BooleanQueryNode)doc.Query;
-        Assert.Equal(BooleanOperator.Or, or.Clauses[1].Operator);
+        var field = Assert.IsType<FieldQueryNode>(result.Document.Query);
+        var term = Assert.IsType<TermNode>(field.Query);
+        Assert.Equal("c\\\\temp\\*", term.Term);
+        Assert.Equal("c\\temp*", term.UnescapedTerm);
+        Assert.False(term.IsPrefix);
+        Assert.False(term.IsWildcard);
     }
 
     [Fact]
-    public void Parse_FieldGroupWithBoost_ReturnsFieldQueryWithBoostedGroup()
+    public void Parse_Positions_AreTracked()
     {
-        // Elasticsearch field group syntax: title:(full text search)^2
-        // With SplitOnWhitespace=true (default), terms are parsed separately
-        var result = LuceneQuery.Parse("title:(full text search)^2");
+        var result = LuceneQuery.Parse("a AND\n  title:\"x y\"");
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("title", field.Field);
-        Assert.IsType<GroupNode>(field.Query);
-        var group = (GroupNode)field.Query;
-        Assert.Equal(2.0f, group.Boost);
-        // The group should contain the terms with implicit OR
-        Assert.IsType<BooleanQueryNode>(group.Query);
-        var boolean = (BooleanQueryNode)group.Query;
-        Assert.Equal(3, boolean.Clauses.Count);
+        var boolean = Assert.IsType<BooleanQueryNode>(result.Document.Query);
+        var field = Assert.IsType<FieldQueryNode>(boolean.Clauses[1].Query);
+        Assert.Equal(8, field.StartPosition);
+        Assert.Equal(19, field.EndPosition);
+        Assert.Equal(2, field.StartLine);
+        Assert.Equal(3, field.StartColumn);
     }
 
     [Fact]
-    public void Parse_FieldGroupWithMultiTerm_ReturnsMultiTermNode()
+    public void Parse_ErrorPositions_AreTracked()
     {
-        // When SplitOnWhitespace=false, consecutive terms in a group become MultiTermNode
-        var result = LuceneQuery.Parse("title:(full text search)^2", splitOnWhitespace: false);
+        var result = LuceneQuery.Parse("a AND\n  b)");
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("title", field.Field);
-        Assert.IsType<GroupNode>(field.Query);
-        var group = (GroupNode)field.Query;
-        Assert.Equal(2.0f, group.Boost);
-        // The group should contain a MultiTermNode
-        Assert.IsType<MultiTermNode>(group.Query);
-        var multiTerm = (MultiTermNode)group.Query;
-        Assert.Equal(3, multiTerm.Terms.Count);
-        Assert.Equal("full", multiTerm.Terms[0]);
-        Assert.Equal("text", multiTerm.Terms[1]);
-        Assert.Equal("search", multiTerm.Terms[2]);
-        Assert.Equal("full text search", multiTerm.CombinedText);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(9, error.Position);
+        Assert.Equal(2, error.Line);
+        Assert.Equal(4, error.Column);
     }
 
     [Fact]
-    public void Parse_GroupWithOperators_NotMultiTerm()
+    public void Parse_EmptyAndWhitespace_ReturnsEmptyDocument()
     {
-        // When group contains operators, it should NOT be parsed as MultiTerm
-        var result = LuceneQuery.Parse("title:(quick OR brown)", splitOnWhitespace: false);
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.IsType<GroupNode>(field.Query);
-        var group = (GroupNode)field.Query;
-        // Should fall back to BooleanQueryNode because of OR operator
-        Assert.IsType<BooleanQueryNode>(group.Query);
+        Assert.Null(LuceneQuery.Parse("").Document.Query);
+        Assert.Null(LuceneQuery.Parse("  \t\n ").Document.Query);
+        Assert.True(LuceneQuery.Parse("  ").IsSuccess);
     }
 
     [Fact]
-    public void Parse_MultipleFieldGroups_ReturnsCorrectStructure()
+    public void Parse_NullQuery_Throws()
     {
-        // Elasticsearch example: status:(active OR pending) title:(full text search)^2
-        var result = LuceneQuery.Parse("status:(active OR pending) title:(full text search)^2");
-
-        Assert.True(result.IsSuccess);
-        Assert.False(result.HasErrors);
-        var doc = result.Document!;
-        // Should have two field queries with implicit OR
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query!;
-        Assert.Equal(2, boolean.Clauses.Count);
-
-        // First clause: status:(active OR pending)
-        Assert.IsType<FieldQueryNode>(boolean.Clauses[0].Query);
-        var statusField = (FieldQueryNode)boolean.Clauses[0].Query!;
-        Assert.Equal("status", statusField.Field);
-
-        // Second clause: title:(full text search)^2
-        Assert.IsType<FieldQueryNode>(boolean.Clauses[1].Query);
-        var titleField = (FieldQueryNode)boolean.Clauses[1].Query!;
-        Assert.Equal("title", titleField.Field);
-        Assert.IsType<GroupNode>(titleField.Query);
-        var group = (GroupNode)titleField.Query!;
-        Assert.Equal(2.0f, group.Boost);
+        Assert.Throws<ArgumentNullException>(() => LuceneQuery.Parse((string)null!));
     }
 
     [Fact]
-    public void Parse_RootLevelMultiTerm_ReturnsMultiTermNode()
+    public void TryParse_ReturnsFalseWhenThereAreErrors()
     {
-        // When SplitOnWhitespace=false, consecutive terms at root level become MultiTermNode
-        var result = LuceneQuery.Parse("full text search", splitOnWhitespace: false);
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<MultiTermNode>(doc.Query);
-        var multiTerm = (MultiTermNode)doc.Query;
-        Assert.Equal(3, multiTerm.Terms.Count);
-        Assert.Equal("full", multiTerm.Terms[0]);
-        Assert.Equal("text", multiTerm.Terms[1]);
-        Assert.Equal("search", multiTerm.Terms[2]);
-        Assert.Equal("full text search", multiTerm.CombinedText);
+        Assert.True(LuceneQuery.TryParse("a AND b", out _));
+        Assert.False(LuceneQuery.TryParse("a AND", out var result));
+        Assert.NotEmpty(result.Errors);
     }
 
     [Fact]
-    public void Parse_RootLevelMultiTerm_WithBoost_NotMultiTerm()
+    public void Clone_CreatesIndependentDeepCopy()
     {
-        // When a term has boost, it should NOT be parsed as MultiTerm
-        // The boost applies only to that term, not the whole phrase
-        var result = LuceneQuery.Parse("full text search^2", splitOnWhitespace: false);
+        var document = LuceneQuery.Parse("title:(a OR b^2) AND price:[1 TO 5] -c").Document;
+        document.Query!.SetData("key", "value");
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // Should be BooleanQueryNode because boost applies to individual term
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Equal(3, boolean.Clauses.Count);
-        // The last term should have the boost
-        var lastClause = boolean.Clauses[2];
-        Assert.IsType<TermNode>(lastClause.Query);
-        var boostedTerm = (TermNode)lastClause.Query;
-        Assert.Equal("search", boostedTerm.Term);
-        Assert.Equal(2.0f, boostedTerm.Boost);
+        var clone = document.CloneDocument();
+        var cloneField = (FieldQueryNode)((BooleanQueryNode)clone.Query!).Clauses[0].Query!;
+        cloneField.Field = "changed";
+
+        Assert.Equal(document.ToDebugString().Replace("title:", "changed:"), clone.ToDebugString());
+        Assert.Equal("title", ((FieldQueryNode)((BooleanQueryNode)document.Query).Clauses[0].Query!).Field);
+        Assert.Equal("value", clone.Query!.GetData<string>("key"));
+        Assert.NotSame(document.Query, clone.Query);
     }
 
-    [Fact]
-    public void Parse_RootLevelWithOperator_NotMultiTerm()
+    public static IEnumerable<object[]> RoundTripQueries()
     {
-        // When root level contains explicit operators, it should NOT be parsed as MultiTerm
-        var result = LuceneQuery.Parse("quick OR brown", splitOnWhitespace: false);
+        string[] queries =
+        [
+            "a", "a b", "a AND b", "a OR b", "a OR b AND c", "(a OR b) AND c", "a -b", "a NOT b", "a OR NOT b",
+            "NOT a OR b", "+a OR b", "-(a OR b)", "title:(a OR b)", "title:\"hello world\"~2^3", "foo~", "foo~1^2",
+            "foo*", "f?o*", "foo\\*", "\\-foo", "\\AND", "foo\\:bar:baz", "my\\ field:x", "\"say \\\"hi\\\"\"",
+            "price:[1 TO 5]", "price:{* TO 5]", "name:[\"a b\" TO \"c d\"]", "price:>=5", "price:<-5",
+            "date:<=2024-01-01T10:30:00", "date:[2024-01-01 TO *]^\"America/Chicago\"", "_exists_:a", "_missing_:a",
+            "a:*", "*:*", "/re[g]ex/^2", "@include:\"a b\"", "(a)^2", "a:(b c)^3", "\"a\"~", "foo^0.125",
+            "terms:(status @missing:none min:created~5)"
+        ];
 
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // Should be BooleanQueryNode because of OR operator
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_RootLevelWithAND_NotMultiTerm()
-    {
-        // When root level contains AND operator, it should NOT be parsed as MultiTerm
-        var result = LuceneQuery.Parse("quick AND brown", splitOnWhitespace: false);
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // Should be BooleanQueryNode because of AND operator
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_RootLevelWithPrefix_NotMultiTerm()
-    {
-        // When term has prefix modifier (+/-), it should NOT be parsed as MultiTerm
-        var result = LuceneQuery.Parse("+quick brown", splitOnWhitespace: false);
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // Should be BooleanQueryNode because of + prefix
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_SplitOnWhitespaceTrue_NoMultiTerm()
-    {
-        // When SplitOnWhitespace=true (default), consecutive terms are separate
-        var result = LuceneQuery.Parse("full text search", splitOnWhitespace: true);
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // Should be BooleanQueryNode with implicit clauses
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Equal(3, boolean.Clauses.Count);
-    }
-
-    #region Error Handling Tests
-
-    [Fact]
-    public void Parse_UnterminatedParens_ReturnsError()
-    {
-        var result = LuceneQuery.Parse("(hello world");
-
-        Assert.True(result.HasErrors);
-    }
-
-    [Fact]
-    public void Parse_FieldWithoutValue_ReturnsError()
-    {
-        // field:* is actually valid as prefix, but field: alone should error
-        var result = LuceneQuery.Parse("field:");
-
-        Assert.True(result.HasErrors);
-    }
-
-    #endregion
-
-    #region Range Tests
-
-    [Fact]
-    public void Parse_MixedBracketsLeftExclusive_ReturnsRangeNode()
-    {
-        var result = LuceneQuery.Parse("{1 TO 2]");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.False(range.MinInclusive);
-        Assert.True(range.MaxInclusive);
-    }
-
-    [Fact]
-    public void Parse_MixedBracketsRightExclusive_ReturnsRangeNode()
-    {
-        var result = LuceneQuery.Parse("[1 TO 2}");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.True(range.MinInclusive);
-        Assert.False(range.MaxInclusive);
-    }
-
-    [Fact]
-    public void Parse_QuotedValuesInRange_ReturnsRangeNode()
-    {
-        var result = LuceneQuery.Parse("[\"1\" TO \"2\"]");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.Equal("1", range.Min);
-        Assert.Equal("2", range.Max);
+        foreach (string query in queries)
+        {
+            yield return [query, BooleanOperator.And];
+            yield return [query, BooleanOperator.Or];
+        }
     }
 
     [Theory]
-    [InlineData(">10", "10", null, false, true)]
-    [InlineData(">=10", "10", null, true, true)]
-    [InlineData("<10", null, "10", true, false)]
-    [InlineData("<=10", null, "10", true, true)]
-    public void Parse_ComparisonOperators_ReturnsRangeNode(
-        string query, string? expectedMin, string? expectedMax, bool minInclusive, bool maxInclusive)
+    [MemberData(nameof(RoundTripQueries))]
+    public void RoundTrip_PreservesMeaning(string query, BooleanOperator defaultOperator)
     {
-        var result = LuceneQuery.Parse(query);
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<RangeNode>(doc.Query);
-        var range = (RangeNode)doc.Query;
-        Assert.Equal(expectedMin, range.Min);
-        Assert.Equal(expectedMax, range.Max);
-        Assert.Equal(minInclusive, range.MinInclusive);
-        Assert.Equal(maxInclusive, range.MaxInclusive);
-    }
-
-    [Fact]
-    public void Parse_FieldWithComparisonOperator_ReturnsFieldQueryWithRange()
-    {
-        var result = LuceneQuery.Parse("age:>18");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("age", field.Field);
-        Assert.IsType<RangeNode>(field.Query);
-        var range = (RangeNode)field.Query;
-        Assert.Equal("18", range.Min);
-        Assert.False(range.MinInclusive);
-    }
-
-    [Fact]
-    public void Parse_DateRange_ReturnsRangeNode()
-    {
-        var result = LuceneQuery.Parse("date:[2012-01-01 TO 2012-12-31]");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("date", field.Field);
-        Assert.IsType<RangeNode>(field.Query);
-        var range = (RangeNode)field.Query;
-        Assert.Equal("2012-01-01", range.Min);
-        Assert.Equal("2012-12-31", range.Max);
-    }
-
-    #endregion
-
-    #region Prefix and Negation Tests
-
-    [Fact]
-    public void Parse_NegatedPhrase_ReturnsBooleanWithMustNot()
-    {
-        var result = LuceneQuery.Parse("-\"Apache Lucene\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Single(boolean.Clauses);
-        Assert.Equal(Occur.MustNot, boolean.Clauses[0].Occur);
-        Assert.IsType<PhraseNode>(boolean.Clauses[0].Query);
-    }
-
-    [Fact]
-    public void Parse_ExclamationNegatedPhrase_ReturnsNotNode()
-    {
-        // ! is treated like NOT, which creates a NotNode
-        var result = LuceneQuery.Parse("!\"Apache Lucene\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<NotNode>(doc.Query);
-        var not = (NotNode)doc.Query;
-        Assert.IsType<PhraseNode>(not.Query);
-    }
-
-    [Fact]
-    public void Parse_MixedPhrases_ReturnsBooleanNode()
-    {
-        var result = LuceneQuery.Parse("\"jakarta apache\" -\"Apache Lucene\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document!;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query!;
-        Assert.Equal(2, boolean.Clauses.Count);
-        // First phrase should be normal
-        Assert.IsType<PhraseNode>(boolean.Clauses[0].Query);
-        // Second clause - the -"phrase" creates a nested BooleanQueryNode with MustNot
-        Assert.IsType<BooleanQueryNode>(boolean.Clauses[1].Query);
-        var nested = (BooleanQueryNode)boolean.Clauses[1].Query!;
-        Assert.Single(nested.Clauses);
-        Assert.Equal(Occur.MustNot, nested.Clauses[0].Occur);
-        Assert.IsType<PhraseNode>(nested.Clauses[0].Query);
-    }
-
-    [Fact]
-    public void Parse_NotBeforeParens_ReturnsNegatedGroup()
-    {
-        var result = LuceneQuery.Parse("NOT (dog parrot)");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<NotNode>(doc.Query);
-        var not = (NotNode)doc.Query;
-        Assert.IsType<GroupNode>(not.Query);
-    }
-
-    [Fact]
-    public void Parse_NotBeforeFieldQuery_ReturnsNotNode()
-    {
-        var result = LuceneQuery.Parse("NOT status:fixed");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<NotNode>(doc.Query);
-    }
-
-    #endregion
-
-    #region Special Characters and Escaping Tests
-
-    [Fact]
-    public void Parse_ForwardSlashInTerm_ReturnsTerm()
-    {
-        var result = LuceneQuery.Parse("hey/now");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("hey/now", term.Term);
-    }
-
-    [Fact]
-    public void Parse_EmptyQuotedString_ReturnsEmptyPhrase()
-    {
-        var result = LuceneQuery.Parse("\"\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-        var phrase = (PhraseNode)doc.Query;
-        Assert.Equal("", phrase.Phrase);
-    }
-
-    [Fact]
-    public void Parse_QuotedColon_ReturnsPhraseNode()
-    {
-        var result = LuceneQuery.Parse("\":\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-    }
-
-    #endregion
-
-    #region Complex Query Tests
-
-    [Fact]
-    public void Parse_AndNotCombination_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("something AND NOT otherthing");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_CriteriaWithNot_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("criteria1 NOT criteria2");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_NestedBooleanExpressions_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("criteria1 OR (criteria2 AND criteria3)");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_MultipleOrClauses_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("criteria1 OR criteria2 OR criteria3");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        // Should have 3 clauses with OR operators
-        Assert.Equal(3, boolean.Clauses.Count);
-    }
-
-    [Fact]
-    public void Parse_RequiredTermsInGroup_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("title:(+return +\"pink panther\")");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("title", field.Field);
-        Assert.IsType<GroupNode>(field.Query);
-    }
-
-    [Fact]
-    public void Parse_BoostedPhrase_ReturnsPhraseWithBoost()
-    {
-        var result = LuceneQuery.Parse("\"jakarta apache\"^4");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-        var phrase = (PhraseNode)doc.Query;
-        Assert.Equal("jakarta apache", phrase.Phrase);
-        Assert.Equal(4.0f, phrase.Boost);
-    }
-
-    [Fact]
-    public void Parse_NotPhrase_ReturnsNotNode()
-    {
-        var result = LuceneQuery.Parse("NOT \"jakarta apache\"");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<NotNode>(doc.Query);
-        var not = (NotNode)doc.Query;
-        Assert.IsType<PhraseNode>(not.Query);
-    }
-
-    #endregion
-
-    #region Field Tests
-
-    [Fact]
-    public void Parse_MissingField_ReturnsMissingNode()
-    {
-        var result = LuceneQuery.Parse("_missing_:title");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<MissingNode>(doc.Query);
-        var missingNode = (MissingNode)doc.Query;
-        Assert.Equal("title", missingNode.Field);
-    }
-
-    [Fact]
-    public void Parse_FieldWithHyphen_ReturnsFieldQuery()
-    {
-        var result = LuceneQuery.Parse("data.Windows-identity:ejsmith");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("data.Windows-identity", field.Field);
-    }
-
-    [Fact]
-    public void Parse_FieldGroupWithRangeOperators_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("data.age:(>30 AND <=40)");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("data.age", field.Field);
-        Assert.IsType<GroupNode>(field.Query);
-    }
-
-    [Fact]
-    public void Parse_RequiredRangeOperator_ReturnsCorrectStructure()
-    {
-        var result = LuceneQuery.Parse("+>=10");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolean = (BooleanQueryNode)doc.Query;
-        Assert.Single(boolean.Clauses);
-        Assert.Equal(Occur.Must, boolean.Clauses[0].Occur);
-    }
-
-    #endregion
-
-    #region Fuzzy and Proximity Tests
-
-    [Fact]
-    public void Parse_FuzzyWithEditDistance1_ReturnsTermWithFuzzy()
-    {
-        var result = LuceneQuery.Parse("roam~1");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("roam", term.Term);
-        Assert.Equal(1, term.FuzzyDistance);
-    }
-
-    [Fact]
-    public void Parse_FuzzyWithEditDistance0_ReturnsTermWithFuzzy()
-    {
-        var result = LuceneQuery.Parse("exact~0");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("exact", term.Term);
-        Assert.Equal(0, term.FuzzyDistance);
-    }
-
-    [Fact]
-    public void Parse_FuzzyFieldQuery_ReturnsFieldNodeWithFuzzyTerm()
-    {
-        var result = LuceneQuery.Parse("title:hello~2");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.Equal("title", field.Field);
-        Assert.IsType<TermNode>(field.Query);
-        var term = (TermNode)field.Query;
-        Assert.Equal("hello", term.Term);
-        Assert.Equal(2, term.FuzzyDistance);
-    }
-
-    [Fact]
-    public void Parse_FuzzyWithBoost_ReturnsTermWithBothModifiers()
-    {
-        var result = LuceneQuery.Parse("term~2^3");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("term", term.Term);
-        Assert.Equal(2, term.FuzzyDistance);
-        Assert.Equal(3.0f, term.Boost);
-    }
-
-    [Fact]
-    public void Parse_FuzzyInBooleanQuery_ReturnsBooleanWithFuzzyTerm()
-    {
-        var result = LuceneQuery.Parse("hello~1 AND world~2");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-        var boolQuery = (BooleanQueryNode)doc.Query;
-        Assert.Equal(2, boolQuery.Clauses.Count);
-
-        var firstTerm = (TermNode)boolQuery.Clauses[0].Query!;
-        Assert.Equal("hello", firstTerm.Term);
-        Assert.Equal(1, firstTerm.FuzzyDistance);
-
-        var secondTerm = (TermNode)boolQuery.Clauses[1].Query!;
-        Assert.Equal("world", secondTerm.Term);
-        Assert.Equal(2, secondTerm.FuzzyDistance);
-    }
-
-    [Fact]
-    public void Parse_FuzzyDecimal_ReturnsTermWithFuzzy()
-    {
-        // Note: roam~0.8 is parsed as "roam~0" followed by ".8" as separate terms
-        // This is because our lexer doesn't handle decimal fuzzy values as a single token
-        var result = LuceneQuery.Parse("roam~0.8");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // Parser creates boolean with roam~0 and .8 as separate terms
-        Assert.IsType<BooleanQueryNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_ProximitySearchWithQuotes_ReturnsPhraseWithSlop()
-    {
-        var result = LuceneQuery.Parse("\"blah criter\"~1");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-        var phrase = (PhraseNode)doc.Query;
-        Assert.Equal("blah criter", phrase.Phrase);
-        Assert.Equal(1, phrase.Slop);
-    }
-
-    [Fact]
-    public void Parse_ProximityWithLargeDistance_ReturnsPhraseWithSlop()
-    {
-        var result = LuceneQuery.Parse("\"hello world\"~10");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<PhraseNode>(doc.Query);
-        var phrase = (PhraseNode)doc.Query;
-        Assert.Equal("hello world", phrase.Phrase);
-        Assert.Equal(10, phrase.Slop);
-    }
-
-    #endregion
-
-    #region Wildcard Tests
-
-    [Fact]
-    public void Parse_WildcardOnly_ReturnsMatchAllNode()
-    {
-        var result = LuceneQuery.Parse("*");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        // A single * is parsed as MatchAll in our parser
-        Assert.IsType<MatchAllNode>(doc.Query);
-    }
-
-    [Fact]
-    public void Parse_LeadingWildcard_ReturnsWildcardTerm()
-    {
-        var result = LuceneQuery.Parse("*test");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("*test", term.Term);
-        Assert.True(term.IsWildcard);
-    }
-
-    [Fact]
-    public void Parse_MiddleWildcard_ReturnsWildcardTerm()
-    {
-        var result = LuceneQuery.Parse("te*st");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<TermNode>(doc.Query);
-        var term = (TermNode)doc.Query;
-        Assert.Equal("te*st", term.Term);
-        Assert.True(term.IsWildcard);
-    }
-
-    [Fact]
-    public void Parse_SingleCharWildcard_ReturnsWildcardTerm()
-    {
-        var result = LuceneQuery.Parse("type:test?s");
-
-        Assert.True(result.IsSuccess);
-        var doc = result.Document;
-        Assert.IsType<FieldQueryNode>(doc.Query);
-        var field = (FieldQueryNode)doc.Query;
-        Assert.IsType<TermNode>(field.Query);
-        var term = (TermNode)field.Query;
-        Assert.Equal("test?s", term.Term);
-        Assert.True(term.IsWildcard);
-    }
-
-    #endregion
-
-    #region Theory-Based Valid Query Tests
-
-    [Theory]
-    [InlineData("criteria")]
-    [InlineData("(criteria)")]
-    [InlineData("field:criteria")]
-    [InlineData("-criteria")]
-    [InlineData("+criteria")]
-    [InlineData("criteria1 AND NOT criteria2")]
-    [InlineData("criteria1 OR criteria2")]
-    [InlineData("field:[1 TO 2]")]
-    [InlineData("field:{1 TO 2}")]
-    [InlineData("field:[1 TO 2}")]
-    [InlineData("field:(criteria1 criteria2)")]
-    [InlineData("field:(criteria1 OR criteria2)")]
-    [InlineData("date:>now")]
-    [InlineData("date:<now")]
-    [InlineData("_exists_:title")]
-    [InlineData("hidden:true")]
-    [InlineData("something AND otherthing")]
-    [InlineData("something OR otherthing")]
-    [InlineData("NOT Test")]
-    [InlineData("!Test")]
-    public void Parse_ValidQueries_Succeeds(string query)
-    {
-        var result = LuceneQuery.Parse(query);
-
-        Assert.True(result.IsSuccess, $"Query '{query}' should be valid");
+        var options = new LuceneParserOptions { DefaultOperator = defaultOperator };
+        var original = LuceneQuery.Parse(query, options);
+        Assert.True(original.IsSuccess, string.Join("; ", original.Errors));
+
+        string text = QueryStringBuilder.ToQueryString(original.Document, defaultOperator);
+        var reparsed = LuceneQuery.Parse(text, options);
+
+        Assert.True(reparsed.IsSuccess, $"'{text}': {string.Join("; ", reparsed.Errors)}");
+        Assert.Equal(original.Document.ToDebugString(), reparsed.Document.ToDebugString());
     }
 
     [Theory]
-    [InlineData("Hello (world")]  // unterminated group
-    public void Parse_InvalidQueries_HasErrors(string query)
+    [InlineData("a AND b OR c")]
+    [InlineData("title:(a OR b) -c")]
+    [InlineData("price:[1 TO 5] AND date:>=2024-01-01")]
+    [InlineData("\"a b\"~2^3 foo~1 bar^2")]
+    [InlineData("a OR NOT b")]
+    public void RoundTrip_PreservesText(string query)
     {
         var result = LuceneQuery.Parse(query);
 
-        Assert.True(result.HasErrors, $"Query '{query}' should have errors");
+        Assert.Equal(query, QueryStringBuilder.ToQueryString(result.Document));
     }
 
-    #endregion
+    [Fact]
+    public void RoundTrip_AcrossDefaultOperators_PreservesMeaning()
+    {
+        var andDocument = LuceneQuery.Parse("a b OR c").Document;
+
+        string text = QueryStringBuilder.ToQueryString(andDocument, BooleanOperator.Or);
+        var orDocument = LuceneQuery.Parse(text, OrOptions).Document;
+
+        Assert.Equal(andDocument.ToDebugString(), orDocument.ToDebugString());
+    }
+
+    [Fact]
+    public void Parse_RandomInput_NeverThrowsAndRoundTripsWhenValid()
+    {
+        const string alphabet = "ab AND OR NOT:()[]{}\"\\/^~*?+-!<>=.TO 01 _exists_ @@&&|| \t\n";
+        var random = new Random(12345);
+        for (int i = 0; i < 20_000; i++)
+        {
+            int length = random.Next(1, 30);
+            var chars = new char[length];
+            for (int j = 0; j < length; j++)
+                chars[j] = alphabet[random.Next(alphabet.Length)];
+
+            string query = new(chars);
+            foreach (var options in new[] { LuceneParserOptions.Default, OrOptions })
+            {
+                var result = LuceneQuery.Parse(query, options);
+                Assert.NotNull(result.Document);
+                if (!result.IsSuccess)
+                    continue;
+
+                string text = QueryStringBuilder.ToQueryString(result.Document, options.DefaultOperator);
+                var reparsed = LuceneQuery.Parse(text, options);
+                Assert.True(reparsed.IsSuccess, $"'{query}' -> '{text}': {string.Join("; ", reparsed.Errors)}");
+                Assert.Equal(result.Document.ToDebugString(), reparsed.Document.ToDebugString());
+            }
+        }
+    }
+
+    private static void AssertParses(string query, string expected, LuceneParserOptions? options = null)
+    {
+        var result = LuceneQuery.Parse(query, options);
+
+        Assert.True(result.IsSuccess, string.Join("; ", result.Errors));
+        Assert.Equal(expected, result.Document.ToDebugString());
+    }
 }

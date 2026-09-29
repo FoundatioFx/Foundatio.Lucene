@@ -1,114 +1,179 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
+using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene;
 
 /// <summary>
-/// Options for query validation.
+/// Rules that restrict what a query, sort, or aggregation expression may use.
+/// Configure an instance once and share it; do not modify it while it is in use.
 /// </summary>
 public class QueryValidationOptions
 {
     /// <summary>
-    /// Whether to throw an exception when validation fails.
+    /// Whether the <c>Validate</c> APIs throw a <see cref="QueryValidationException"/> for invalid input.
+    /// Building a query always throws for invalid input.
     /// </summary>
     public bool ShouldThrow { get; set; }
 
     /// <summary>
-    /// Fields that are allowed in the query. If empty, all fields are allowed.
+    /// Field names (as written in queries, before alias resolution) that may be used. Empty allows all fields.
+    /// A name also allows its sub-fields, so <c>data</c> allows <c>data.age</c>.
     /// </summary>
     public ICollection<string> AllowedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Fields that are restricted from use in the query.
+    /// Field names that may not be used, checked against both the name as written and the resolved name.
+    /// A name also restricts its sub-fields, so <c>secret</c> restricts <c>secret.keyword</c>.
     /// </summary>
     public ICollection<string> RestrictedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Whether to allow leading wildcards (e.g., *value or ?value).
-    /// Default is true.
+    /// Whether terms may start with a wildcard (<c>*foo</c>, <c>?oo</c>). Leading wildcards can be expensive.
+    /// Defaults to true.
     /// </summary>
     public bool AllowLeadingWildcards { get; set; } = true;
 
     /// <summary>
-    /// Maximum allowed nesting depth for groups. 0 means unlimited.
+    /// Whether fields that a field resolver could not resolve are allowed. Defaults to true.
     /// </summary>
-    public int AllowedMaxNodeDepth { get; set; }
+    public bool AllowUnresolvedFields { get; set; } = true;
 
     /// <summary>
-    /// Operations that are allowed. If empty, all operations are allowed.
+    /// Whether <c>@include</c> references that could not be resolved are allowed. Defaults to false.
+    /// </summary>
+    public bool AllowUnresolvedIncludes { get; set; }
+
+    /// <summary>
+    /// Operations that may be used. Empty allows all operations. Query operations are
+    /// <see cref="QueryOperations"/> names; aggregation operations are aggregation types such as <c>terms</c>.
     /// </summary>
     public ICollection<string> AllowedOperations { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Operations that are restricted from use.
+    /// Operations that may not be used.
     /// </summary>
     public ICollection<string> RestrictedOperations { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The maximum nesting depth of parenthesized groups, or 0 for no limit.
+    /// </summary>
+    public int AllowedMaxNodeDepth { get; set; }
+
+    /// <summary>
+    /// The maximum number of fields a sort expression may contain, or 0 for no limit.
+    /// </summary>
+    public int AllowedMaxSortFields { get; set; }
+
+    /// <summary>
+    /// The maximum depth of nested <c>@include</c> references. Defaults to 10.
+    /// </summary>
+    public int MaxIncludeDepth { get; set; } = 10;
+
+    /// <summary>
+    /// The maximum number of <c>@include</c> expansions in one query. Bounds the size of the expanded query.
+    /// Defaults to 100.
+    /// </summary>
+    public int MaxIncludeExpansions { get; set; } = 100;
+
+    internal static QueryValidationOptions Default { get; } = new();
 }
 
 /// <summary>
-/// Result of query validation.
+/// Names of the operations recorded for query expressions.
+/// </summary>
+public static class QueryOperations
+{
+    /// <summary>A term match.</summary>
+    public const string Term = "term";
+    /// <summary>A quoted phrase.</summary>
+    public const string Phrase = "phrase";
+    /// <summary>A prefix match (<c>foo*</c>).</summary>
+    public const string Prefix = "prefix";
+    /// <summary>A wildcard match (<c>f?o*bar</c>).</summary>
+    public const string Wildcard = "wildcard";
+    /// <summary>A fuzzy match (<c>foo~</c>).</summary>
+    public const string Fuzzy = "fuzzy";
+    /// <summary>A regular expression (<c>/re/</c>).</summary>
+    public const string Regex = "regex";
+    /// <summary>A range.</summary>
+    public const string Range = "range";
+    /// <summary>A field-exists check.</summary>
+    public const string Exists = "exists";
+    /// <summary>A field-missing check.</summary>
+    public const string Missing = "missing";
+    /// <summary>Match all documents.</summary>
+    public const string MatchAll = "match_all";
+}
+
+/// <summary>
+/// The outcome of validating a query along with statistics about what it uses.
 /// </summary>
 [DebuggerDisplay("IsValid: {IsValid} Message: {Message}")]
 public class QueryValidationResult
 {
-    private readonly ConcurrentDictionary<string, ICollection<string>> _operations = new(StringComparer.OrdinalIgnoreCase);
     private int _currentNodeDepth = 1;
 
     /// <summary>
-    /// Whether the query is valid.
+    /// The kind of expression that was validated.
+    /// </summary>
+    public QueryType QueryType { get; set; }
+
+    /// <summary>
+    /// Whether no validation errors were found.
     /// </summary>
     public bool IsValid => ValidationErrors.Count == 0;
 
     /// <summary>
-    /// Collection of validation errors.
+    /// The validation errors.
     /// </summary>
-    public ICollection<QueryValidationError> ValidationErrors { get; } = new List<QueryValidationError>();
+    public List<QueryValidationError> ValidationErrors { get; } = [];
 
     /// <summary>
-    /// Combined message of all validation errors.
+    /// A description of the errors, or an empty string when valid.
     /// </summary>
-    public string Message
+    public string Message => ValidationErrors.Count switch
     {
-        get
-        {
-            if (ValidationErrors.Count == 0)
-                return string.Empty;
-
-            if (ValidationErrors.Count > 1)
-                return string.Join("\r\n", ValidationErrors.Select(e => e.ToString()));
-
-            return ValidationErrors.First().Message;
-        }
-    }
+        0 => string.Empty,
+        1 => ValidationErrors[0].Message,
+        _ => string.Join(Environment.NewLine, ValidationErrors.Select(e => e.ToString()))
+    };
 
     /// <summary>
-    /// All fields referenced in the query.
+    /// Fields referenced by the query, as written (before alias resolution). Terms without a field reference
+    /// the default fields.
     /// </summary>
-    public ICollection<string> ReferencedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> ReferencedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// All includes referenced in the query (@include:name).
+    /// Fields referenced by the query after alias resolution.
     /// </summary>
-    public ICollection<string> ReferencedIncludes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> ResolvedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Includes that could not be resolved.
+    /// Names of the <c>@include</c> references used by the query.
     /// </summary>
-    public ICollection<string> UnresolvedIncludes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> ReferencedIncludes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Fields that could not be resolved by the field resolver.
+    /// Fields that a field resolver could not resolve.
     /// </summary>
-    public ICollection<string> UnresolvedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public ISet<string> UnresolvedFields { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The maximum nesting depth found in the query.
+    /// <c>@include</c> references that could not be resolved.
+    /// </summary>
+    public ISet<string> UnresolvedIncludes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The operations used, each with the set of fields it was used on.
+    /// </summary>
+    public IDictionary<string, ISet<string>> Operations { get; } = new Dictionary<string, ISet<string>>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The deepest nesting of parenthesized groups (1 when there are none).
     /// </summary>
     public int MaxNodeDepth { get; set; } = 1;
 
-    /// <summary>
-    /// Current node depth during traversal (internal use).
-    /// </summary>
     internal int CurrentNodeDepth
     {
         get => _currentNodeDepth;
@@ -121,61 +186,51 @@ public class QueryValidationResult
     }
 
     /// <summary>
-    /// Operations used in the query, mapped to the fields they operate on.
+    /// Records that an operation was used on a field.
     /// </summary>
-    public IDictionary<string, ICollection<string>> Operations => _operations;
-
-    /// <summary>
-    /// Adds an operation to the result.
-    /// </summary>
-    internal void AddOperation(string operation, string? field)
+    public void AddOperation(string operation, string? field)
     {
-        if (string.IsNullOrEmpty(operation))
-            return;
+        ArgumentException.ThrowIfNullOrEmpty(operation);
+        if (!Operations.TryGetValue(operation, out var fields))
+        {
+            fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Operations[operation] = fields;
+        }
 
-        _operations.AddOrUpdate(operation,
-            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { field ?? string.Empty },
-            (_, collection) =>
-            {
-                collection.Add(field ?? string.Empty);
-                return collection;
-            }
-        );
+        fields.Add(field ?? string.Empty);
     }
 
     /// <summary>
-    /// Implicit conversion to bool based on IsValid.
+    /// Adds a validation error.
+    /// </summary>
+    public void AddError(string message, int position = -1, QueryErrorCode code = QueryErrorCode.ValidationError)
+    {
+        ValidationErrors.Add(new QueryValidationError(message, position, code));
+    }
+
+    /// <summary>
+    /// Throws a <see cref="QueryValidationException"/> when there are validation errors.
+    /// </summary>
+    public void ThrowIfInvalid()
+    {
+        if (!IsValid)
+            throw new QueryValidationException($"Invalid {QueryType.ToString().ToLowerInvariant()}: {Message}", this);
+    }
+
+    /// <summary>
+    /// Converts the result to a boolean indicating validity.
     /// </summary>
     public static implicit operator bool(QueryValidationResult result) => result.IsValid;
 }
 
 /// <summary>
-/// Represents a single validation error.
+/// A single validation error.
 /// </summary>
-public class QueryValidationError
+/// <param name="Message">A description of the problem.</param>
+/// <param name="Position">The 0-based position in the source text, or -1 when unknown.</param>
+/// <param name="Code">The error classification.</param>
+public sealed record QueryValidationError(string Message, int Position = -1, QueryErrorCode Code = QueryErrorCode.ValidationError)
 {
-    public QueryValidationError(string message, int index = -1)
-    {
-        Message = message;
-        Index = index;
-    }
-
-    /// <summary>
-    /// The validation error message.
-    /// </summary>
-    public string Message { get; }
-
-    /// <summary>
-    /// Index where the validation error occurs in the query string.
-    /// </summary>
-    public int Index { get; } = -1;
-
-    public override string ToString()
-    {
-        if (Index > 0)
-            return $"[{Index}] {Message}";
-
-        return Message;
-    }
+    /// <inheritdoc/>
+    public override string ToString() => Position >= 0 ? $"[{Position}] {Message}" : Message;
 }
-
