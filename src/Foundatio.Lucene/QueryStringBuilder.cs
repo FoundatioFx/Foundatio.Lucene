@@ -337,7 +337,7 @@ public sealed class QueryStringBuilder
         bool needsQuotes = value.Length == 0;
         foreach (char c in value)
         {
-            if (char.IsWhiteSpace(c) || c is ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~')
+            if (char.IsWhiteSpace(c) || c is ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' or '\\')
             {
                 needsQuotes = true;
                 break;

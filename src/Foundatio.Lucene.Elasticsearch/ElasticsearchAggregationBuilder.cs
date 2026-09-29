@@ -72,7 +72,7 @@ internal static class ElasticsearchAggregationBuilder
                 if (parentTerms is not null && expression.Order is { } order)
                 {
                     parentTerms.Order ??= new List<KeyValuePair<Field, SortOrder>>();
-                    parentTerms.Order.Add(new KeyValuePair<Field, SortOrder>(bucketPath + expression.Name, order == SortDirection.Descending ? SortOrder.Desc : SortOrder.Asc));
+                    parentTerms.Order.Add(new KeyValuePair<Field, SortOrder>(bucketPath + GetOrderTarget(expression), order == SortDirection.Descending ? SortOrder.Desc : SortOrder.Asc));
                 }
 
                 if (expression.Aggregations.Count > 0)
@@ -81,6 +81,18 @@ internal static class ElasticsearchAggregationBuilder
                     AddAll(aggregation.Aggregations, aggregation.Terms, expression.Aggregations, nestedPath ?? currentNestedPath);
                 }
             }
+        }
+
+        /// <summary>
+        /// Gets the last element of a terms order path. Elasticsearch reads a dot in that element as the start of a
+        /// metric key (<c>stats.max</c>), so a single-value metric whose name contains a dot is addressed with an
+        /// explicit <c>[value]</c> key.
+        /// </summary>
+        private static string GetOrderTarget(AggregationExpression expression)
+        {
+            bool isSingleValueMetric = expression.Type is AggregationTypes.Min or AggregationTypes.Max or AggregationTypes.Avg
+                or AggregationTypes.Sum or AggregationTypes.Cardinality;
+            return isSingleValueMetric && expression.Name.Contains('.') ? expression.Name + "[value]" : expression.Name;
         }
 
         private IEnumerable<string> GetNestedChain(string field, string? currentNestedPath)
@@ -97,6 +109,12 @@ internal static class ElasticsearchAggregationBuilder
 
         private Aggregation? Create(AggregationExpression expression)
         {
+            if (expression.Field.Contains('^'))
+            {
+                _result.AddError($"Field names cannot contain '^': {expression.Field}", expression.Position);
+                return null;
+            }
+
             string field = GetAggregationField(expression.Field);
             string? fieldType = GetMapping(expression.Field)?.Property?.Type ?? context.GetRuntimeField(expression.Field)?.Type.ToString().ToLowerInvariant();
 
@@ -345,11 +363,13 @@ internal static class ElasticsearchAggregationBuilder
             var excludes = expression.GetModifiers("exclude").Select(m => m.Value).ToList();
             if (includes.Count > 0 || excludes.Count > 0)
             {
-                topHits.Source = new SourceFilter
-                {
-                    Includes = includes.Count > 0 ? includes.ToArray() : null,
-                    Excludes = excludes.Count > 0 ? excludes.ToArray() : null
-                };
+                var source = new SourceFilter();
+                if (includes.Count > 0)
+                    source.Includes = includes.ToArray();
+                if (excludes.Count > 0)
+                    source.Excludes = excludes.ToArray();
+
+                topHits.Source = source;
             }
 
             return topHits;
@@ -407,7 +427,7 @@ internal static class ElasticsearchAggregationBuilder
             if (field is "_" or "")
                 return null;
 
-            return context.MappingResolver?.GetMapping(field);
+            return context.MappingResolver?.GetMapping(field, followAlias: true);
         }
     }
 }

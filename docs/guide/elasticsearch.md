@@ -98,7 +98,7 @@ children.name:x AND children.age:>5
 → nested(children, bool.must: [children.name:x, children.age:>5])
 ```
 
-Deeper paths are folded into their ancestor's nested query, and `children:(name:x age:>5)` writes a nested group explicitly. Sorts and aggregations on nested fields get nested sorts and `nested_{path}` aggregations. Set `UseNested = false` to query nested fields as ordinary fields.
+Deeper paths are folded into their ancestor's nested query, clauses on sibling paths (`parent.a.x` and `parent.b.y`) are combined under their shared parent, and `children:(children.name:x children.age:>5)` writes a nested group explicitly (fields inside the group keep their full paths). A `-` or `NOT` clause on a nested field excludes documents that have any matching nested document; put it inside a nested group to exclude it from the matched nested document only. Sorts and aggregations on nested fields get nested sorts and `nested_{path}` aggregations. Set `UseNested = false` to query nested fields as ordinary fields.
 
 A `NestedFilterResolver` adds a filter inside every nested query, sort, and aggregation — for example to restrict nested documents to the current tenant:
 
