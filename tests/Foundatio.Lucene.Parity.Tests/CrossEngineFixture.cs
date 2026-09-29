@@ -27,23 +27,38 @@ public class CrossEngineFixture : IAsyncLifetime
     private ElasticsearchClient _esClient = null!;
     private string _connectionString = null!;
 
-    // Names and categories are deliberately distinct, non-substring values so SQL Contains and ES
-    // keyword term matching agree (true result-set parity for equality queries). Dates sit well
-    // inside the test range boundaries so inclusive/exclusive day rounding never flips a result.
+    // Names and categories are distinct, non-substring values so SQL equality and Elasticsearch keyword terms agree.
+    // Two documents share a creation day and an age so ties and whole-day date rounding are exercised.
     private static readonly Doc[] SeedDocs =
     [
-        new() { Id = 1, Name = "alpha",   Category = "engineering", Age = 30, Salary = 80000,  Active = true,  Created = new DateTime(2020, 6, 15), Notes = "note-one" },
-        new() { Id = 2, Name = "bravo",   Category = "sales",       Age = 35, Salary = 95000,  Active = true,  Created = new DateTime(2019, 3, 10), Notes = null },
-        new() { Id = 3, Name = "charlie", Category = "research",    Age = 40, Salary = 110000, Active = true,  Created = new DateTime(2018, 9, 20), Notes = "note-three" },
-        new() { Id = 4, Name = "delta",   Category = "engineering", Age = 25, Salary = 55000,  Active = false, Created = new DateTime(2022, 11, 5), Notes = null },
-        new() { Id = 5, Name = "echo",    Category = "research",    Age = 50, Salary = 130000, Active = false, Created = new DateTime(2021, 1, 25), Notes = "note-five" },
+        new() { Id = 1, Name = "alpha",   Category = "engineering", Age = 30, Salary = 80000,  Balance = 100,  Active = true,  Created = new DateTime(2020, 6, 15), Notes = "note-one" },
+        new() { Id = 2, Name = "bravo",   Category = "sales",       Age = 35, Salary = 95000,  Balance = 50,   Active = true,  Created = new DateTime(2019, 3, 10), Notes = null },
+        new() { Id = 3, Name = "charlie", Category = "research",    Age = 40, Salary = 110000, Balance = 10,   Active = true,  Created = new DateTime(2018, 9, 20), Notes = "note-three" },
+        new() { Id = 4, Name = "delta",   Category = "engineering", Age = 25, Salary = 55000,  Balance = -50,  Active = false, Created = new DateTime(2022, 11, 5), Notes = null },
+        new() { Id = 5, Name = "echo",    Category = "research",    Age = 50, Salary = 130000, Balance = 200,  Active = false, Created = new DateTime(2021, 1, 25), Notes = "note-five" },
+        new() { Id = 6, Name = "foxtrot", Category = "sales",       Age = 30, Salary = 100000, Balance = 0,    Active = false, Created = new DateTime(2020, 6, 15), Notes = "note-six" },
+        new() { Id = 7, Name = "gamma",   Category = "engineering", Age = 22, Salary = 60000,  Balance = -100, Active = true,  Created = new DateTime(2023, 2, 1),  Notes = null },
+        new() { Id = 8, Name = "hotel",   Category = "research",    Age = 45, Salary = 150000, Balance = 300,  Active = false, Created = new DateTime(2017, 12, 31), Notes = null },
     ];
 
-    public EntityFrameworkQueryParser EfParser { get; } = new();
+    private static readonly Dictionary<string, string> Includes = new() { ["seniors"] = "age:>=40" };
+
+    private static readonly FieldMap Aliases = new() { { "dept", "category" } };
+
+    public EntityFrameworkQueryParser EfParser { get; } = new(c =>
+    {
+        c.Includes = Includes;
+        c.FieldMap = Aliases;
+    });
 
     // Filter context (term/range) with the index mapping, so keyword fields use exact term matching like SQL
     // equality and date fields produce real date range queries.
-    public ElasticsearchQueryParser EsParser { get; } = new(c => c.UseMappings(CreateMapping()));
+    public ElasticsearchQueryParser EsParser { get; } = new(c =>
+    {
+        c.UseMappings(CreateMapping());
+        c.Includes = Includes;
+        c.FieldMap = Aliases;
+    });
 
     public CrossEngineFixture()
     {
@@ -110,6 +125,28 @@ public class CrossEngineFixture : IAsyncLifetime
         return response.Documents.Select(d => d.Id).ToList();
     }
 
+    /// <summary>Sorts all documents through the EF parser against SQL Server and returns the ids in order.</summary>
+    public List<int> SortSql(string sort)
+    {
+        using var db = CreateDb();
+        return db.Docs.OrderBy(sort, EfParser).Select(d => d.Id).ToList();
+    }
+
+    /// <summary>Sorts all documents through the ES parser against Elasticsearch and returns the ids in order.</summary>
+    public async Task<List<int>> SortElasticsearchAsync(string sort)
+    {
+        var sortOptions = EsParser.BuildSort(sort);
+        var response = await _esClient.SearchAsync<Doc>(s => s
+            .Indices(IndexName)
+            .Size(100)
+            .Sort(sortOptions));
+
+        if (!response.IsValidResponse)
+            throw new InvalidOperationException($"Elasticsearch sort failed: {response.DebugInformation}");
+
+        return response.Documents.Select(d => d.Id).ToList();
+    }
+
     private static TypeMapping CreateMapping() => new()
     {
         Properties = new Properties
@@ -119,6 +156,7 @@ public class CrossEngineFixture : IAsyncLifetime
             { "category", new KeywordProperty() },
             { "age", new IntegerNumberProperty() },
             { "salary", new DoubleNumberProperty() },
+            { "balance", new IntegerNumberProperty() },
             { "active", new BooleanProperty() },
             { "created", new DateProperty() },
             { "notes", new KeywordProperty() }
@@ -161,6 +199,7 @@ public class Doc
     public string Category { get; set; } = "";
     public int Age { get; set; }
     public double Salary { get; set; }
+    public int Balance { get; set; }
     public bool Active { get; set; }
     public DateTime Created { get; set; }
     public string? Notes { get; set; }

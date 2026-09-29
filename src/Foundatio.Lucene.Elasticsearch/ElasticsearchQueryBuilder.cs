@@ -10,7 +10,7 @@ namespace Foundatio.Lucene.Elasticsearch;
 /// <summary>
 /// Converts a processed query tree into Elasticsearch Query DSL. Stateless; all per-query state is in the context.
 /// </summary>
-internal static class ElasticsearchQueryBuilder
+internal static partial class ElasticsearchQueryBuilder
 {
     private const string QueryStringSpecialCharacters = "+-=!(){}[]^\"~*?:\\/|&<>";
 
@@ -379,17 +379,17 @@ internal static class ElasticsearchQueryBuilder
                 if (node.Min is { } min)
                 {
                     if (node.MinInclusive)
-                        dateRange.Gte = min;
+                        dateRange.Gte = RoundToPeriod(min);
                     else
-                        dateRange.Gt = min;
+                        dateRange.Gt = RoundToPeriod(min);
                 }
 
                 if (node.Max is { } max)
                 {
                     if (node.MaxInclusive)
-                        dateRange.Lte = max;
+                        dateRange.Lte = RoundToPeriod(max);
                     else
-                        dateRange.Lt = max;
+                        dateRange.Lt = RoundToPeriod(max);
                 }
 
                 return WrapNested(field, dateRange);
@@ -505,7 +505,10 @@ internal static class ElasticsearchQueryBuilder
             // An inclusive range on the same value covers the whole period of a partial date or rounded date math,
             // so created:2024-01 matches all of January (a term query would only match the first instant).
             if (fieldType is FieldType.Date or FieldType.DateNanos)
-                return new DateRangeQuery(field) { Gte = term.Value, Lte = term.Value, TimeZone = context.DefaultTimeZone, Boost = term.Boost };
+            {
+                string period = RoundToPeriod(term.Value);
+                return new DateRangeQuery(field) { Gte = period, Lte = period, TimeZone = context.DefaultTimeZone, Boost = term.Boost };
+            }
 
             return new TermQuery(field, GetTypedValue(term.Value, fieldType)) { Boost = term.Boost };
         }
@@ -775,6 +778,26 @@ internal static class ElasticsearchQueryBuilder
             or FieldType.HalfFloat or FieldType.Double or FieldType.ScaledFloat or FieldType.TokenCount
             or FieldType.Date or FieldType.DateNanos or FieldType.Boolean;
     }
+
+    /// <summary>
+    /// Appends date math rounding to dates that leave out components (<c>2024</c>, <c>2024-01</c>, <c>2024-01-15</c>)
+    /// so a bound covers the whole year, month, or day. Elasticsearch rounds <c>gte</c>/<c>lt</c> down and
+    /// <c>gt</c>/<c>lte</c> up, so <c>[2024-01 TO 2024-02]</c> is all of January and February. (Without rounding
+    /// Elasticsearch fills missing months and days with 01, so <c>lte 2024-02</c> would mean February 1.)
+    /// </summary>
+    private static string RoundToPeriod(string value)
+    {
+        return PartialDate().Match(value) switch
+        {
+            { Success: false } => value,
+            { Groups: var groups } when groups["day"].Success => value + "||/d",
+            { Groups: var groups } when groups["month"].Success => value + "||/M",
+            _ => value + "||/y"
+        };
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\d{4}(?<month>-\d{2}(?<day>-\d{2})?)?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex PartialDate();
 
     private static bool IsValidValue(string value, FieldType fieldType)
     {

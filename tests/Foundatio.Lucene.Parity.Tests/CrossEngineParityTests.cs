@@ -1,57 +1,112 @@
 namespace Foundatio.Lucene.Parity.Tests;
 
 /// <summary>
-/// Strict cross-engine parity gate: the same Lucene query must return the same result set from
-/// SQL Server (via the EntityFramework parser) and Elasticsearch, for every construct both engines
-/// support. Constructs SQL cannot honor (fuzzy, regex, proximity) are intentionally excluded — they
-/// are covered as engine-specific behavior elsewhere.
+/// The same query must return the same documents from SQL Server (Entity Framework provider) and Elasticsearch, and
+/// both must match the expected ids worked out by hand from the seed data in <see cref="CrossEngineFixture"/>.
+/// Constructs only one engine supports (fuzzy, regex, proximity, scoring) are covered by the provider test suites.
 /// </summary>
 [Collection("CrossEngine")]
 public class CrossEngineParityTests(CrossEngineFixture fixture)
 {
-    public static IEnumerable<object[]> ParityQueries() =>
-    [
-        ["*:*", new[] { 1, 2, 3, 4, 5 }],
-        ["age:[30 TO 40]", new[] { 1, 2, 3 }],
-        ["age:>35", new[] { 3, 5 }],
-        ["salary:<90000", new[] { 1, 4 }],
-        ["category:engineering", new[] { 1, 4 }],
-        ["name:alpha", new[] { 1 }],
-        ["category:research AND active:true", new[] { 3 }],
-        ["category:engineering OR category:sales", new[] { 1, 2, 4 }],
-        ["NOT active:true", new[] { 4, 5 }],
-        ["_exists_:notes", new[] { 1, 3, 5 }],
-        ["created:[2020-01-01 TO 2021-12-31]", new[] { 1, 5 }],
-        ["-category:engineering active:true", new[] { 2, 3 }],
-        ["+active:true category:sales", new[] { 2 }],
-        ["category:research OR NOT active:true", new[] { 3, 4, 5 }],
-        ["category:engineering OR -active:true", new[] { 4 }],
-        ["-category:engineering -category:sales", new[] { 3, 5 }],
-        ["category:engineering AND active:true OR category:sales", new[] { 1, 2 }],
-        ["created:[2020-06-15 TO 2021-01-25}", new[] { 1 }],
-        ["created:<=2020-06-15", new[] { 1, 2, 3 }],
-        ["created:>2020-06-15", new[] { 4, 5 }],
-        ["name:a*", new[] { 1 }],
-        ["name:*har*", new[] { 3 }],
-        ["name:ch?rlie", new[] { 3 }],
-        ["name:*o", new[] { 2, 5 }],
-        ["_missing_:notes", new[] { 2, 4 }],
-        ["notes:*", new[] { 1, 3, 5 }],
-        ["age:{30 TO 40]", new[] { 2, 3 }],
-        ["salary:[* TO 95000]", new[] { 1, 2, 4 }],
-        ["category:(sales OR research) -age:>45", new[] { 2, 3 }],
-    ];
+    public static TheoryData<string, int[]> ParityQueries() => new()
+    {
+        { "*:*", [1, 2, 3, 4, 5, 6, 7, 8] },
+        { "", [1, 2, 3, 4, 5, 6, 7, 8] },
+        { "name:alpha", [1] },
+        { "category:engineering", [1, 4, 7] },
+        { "active:true", [1, 2, 3, 7] },
+        { "age:30", [1, 6] },
+        { "category:research active:true", [3] },
+        { "category:research AND active:true", [3] },
+        { "category:engineering OR category:sales", [1, 2, 4, 6, 7] },
+        { "category:engineering OR category:sales AND active:true", [1, 2, 4, 7] },
+        { "(category:engineering OR category:sales) AND active:true", [1, 2, 7] },
+        { "category:engineering AND active:true OR category:research", [1, 3, 5, 7, 8] },
+        { "NOT active:true", [4, 5, 6, 8] },
+        { "-active:true", [4, 5, 6, 8] },
+        { "category:engineering -active:true", [4] },
+        { "category:engineering NOT active:true", [4] },
+        { "category:engineering OR NOT active:true", [1, 4, 5, 6, 7, 8] },
+        { "NOT (category:engineering OR category:sales)", [3, 5, 8] },
+        { "-category:(engineering OR sales)", [3, 5, 8] },
+        { "category:(engineering OR sales) -name:bravo", [1, 4, 6, 7] },
+        { "+category:research age:40", [3] },
+        { "NOT name:alpha NOT name:bravo", [3, 4, 5, 6, 7, 8] },
+        { "age:[30 TO 40]", [1, 2, 3, 6] },
+        { "age:{30 TO 40}", [2] },
+        { "age:[30 TO 40}", [1, 2, 6] },
+        { "age:>35", [3, 5, 8] },
+        { "age:>=35", [2, 3, 5, 8] },
+        { "age:<30", [4, 7] },
+        { "age:[45 TO *]", [5, 8] },
+        { "age:[* TO 25]", [4, 7] },
+        { "balance:[-100 TO 0]", [4, 6, 7] },
+        { "balance:<0", [4, 7] },
+        { "salary:<90000", [1, 4, 7] },
+        { "salary:[95000 TO 110000]", [2, 3, 6] },
+        { "age:(>=30 AND <40)", [1, 2, 6] },
+        { "created:[2020-01-01 TO 2021-12-31]", [1, 5, 6] },
+        { "created:[2020-06-15 TO 2020-06-15]", [1, 6] },
+        { "created:{2020-06-15 TO *]", [4, 5, 7] },
+        { "created:>=2021-01", [4, 5, 7] },
+        { "created:<2020", [2, 3, 8] },
+        { "created:<=2019-03-10", [2, 3, 8] },
+        { "name:ch*", [3] },
+        { "name:*a", [1, 4, 7] },
+        { "name:?ravo", [2] },
+        { "name:d*a", [4] },
+        { "_exists_:notes", [1, 3, 5, 6] },
+        { "notes:*", [1, 3, 5, 6] },
+        { "_missing_:notes", [2, 4, 7, 8] },
+        { "NOT _exists_:notes", [2, 4, 7, 8] },
+        { "@include:seniors", [3, 5, 8] },
+        { "@include:seniors -name:echo", [3, 8] },
+        { "dept:engineering", [1, 4, 7] },
+        { "-category:engineering active:true", [2, 3] },
+        { "+active:true category:sales", [2] },
+        { "category:research OR NOT active:true", [3, 4, 5, 6, 8] },
+        { "category:engineering OR -active:true", [4] },
+        { "-category:engineering -category:sales", [3, 5, 8] },
+        { "category:engineering AND active:true OR category:sales", [1, 2, 6, 7] },
+        { "created:[2020-06-15 TO 2021-01-25}", [1, 6] },
+        { "created:<=2020-06-15", [1, 2, 3, 6, 8] },
+        { "created:>2020-06-15", [4, 5, 7] },
+        { "created:2020-06", [1, 6] },
+        { "name:a*", [1] },
+        { "name:*har*", [3] },
+        { "name:ch?rlie", [3] },
+        { "name:*o", [2, 5] },
+        { "age:{30 TO 40]", [2, 3] },
+        { "salary:[* TO 95000]", [1, 2, 4, 7] },
+        { "category:(sales OR research) -age:>45", [2, 3, 6, 8] },
+    };
 
     [Theory]
     [MemberData(nameof(ParityQueries))]
-    public async Task Query_ReturnsSameResultSetOnSqlAndElasticsearch(string query, int[] expectedIds)
+    public async Task Query_ReturnsSameResultsOnSqlServerAndElasticsearch(string query, int[] expectedIds)
     {
-        var expected = expectedIds.OrderBy(id => id).ToArray();
+        int[] sqlIds = fixture.QuerySql(query).Order().ToArray();
+        int[] esIds = (await fixture.QueryElasticsearchAsync(query)).Order().ToArray();
 
-        var sqlIds = fixture.QuerySql(query).OrderBy(id => id).ToArray();
-        var esIds = (await fixture.QueryElasticsearchAsync(query)).OrderBy(id => id).ToArray();
+        Assert.Equal(expectedIds, sqlIds);
+        Assert.Equal(expectedIds, esIds);
+    }
 
-        Assert.Equal(expected, sqlIds);
-        Assert.Equal(expected, esIds);
+    public static TheoryData<string, int[]> SortQueries() => new()
+    {
+        { "age name", [7, 4, 1, 6, 2, 3, 8, 5] },
+        { "-salary", [8, 5, 3, 6, 2, 1, 7, 4] },
+        { "category -age", [1, 4, 7, 5, 8, 3, 2, 6] },
+    };
+
+    [Theory]
+    [MemberData(nameof(SortQueries))]
+    public async Task Sort_ReturnsSameOrderOnSqlServerAndElasticsearch(string sort, int[] expectedIds)
+    {
+        int[] sqlIds = fixture.SortSql(sort).ToArray();
+        int[] esIds = (await fixture.SortElasticsearchAsync(sort)).ToArray();
+
+        Assert.Equal(expectedIds, sqlIds);
+        Assert.Equal(expectedIds, esIds);
     }
 }
