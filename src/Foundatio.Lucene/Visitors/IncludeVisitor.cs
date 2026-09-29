@@ -22,16 +22,33 @@ public class IncludeVisitor : QueryVisitor
 
     private const string StateKey = "@IncludeState";
 
+    private readonly bool _expandInsideFields;
+
     /// <summary>
-    /// A shared instance. The visitor is stateless.
+    /// Creates the visitor.
+    /// </summary>
+    /// <param name="expandInsideFields">Whether references inside field groups (<c>field:(@include:x)</c>) are
+    /// expanded. Aggregation expressions pass false because <c>@include</c> inside an aggregation is a modifier.</param>
+    public IncludeVisitor(bool expandInsideFields = true)
+    {
+        _expandInsideFields = expandInsideFields;
+    }
+
+    /// <summary>
+    /// A shared instance that expands references everywhere. The visitor is stateless.
     /// </summary>
     public static IncludeVisitor Instance { get; } = new();
+
+    /// <summary>
+    /// A shared instance that only expands references outside field groups, for aggregation expressions.
+    /// </summary>
+    public static IncludeVisitor TopLevelInstance { get; } = new(expandInsideFields: false);
 
     /// <inheritdoc/>
     protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         if (!IsInclude(node))
-            return base.Visit(node, context);
+            return _expandInsideFields ? base.Visit(node, context) : node;
 
         string? name = GetIncludeName(node);
         var result = context.ValidationResult;

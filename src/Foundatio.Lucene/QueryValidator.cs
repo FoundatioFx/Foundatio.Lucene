@@ -89,7 +89,7 @@ public static class QueryValidator
         AddParseErrors(parsed, context);
         if (result.IsValid)
         {
-            var document = (QueryDocument)IncludeVisitor.Instance.Accept(parsed.Document, context);
+            var document = (QueryDocument)IncludeVisitor.TopLevelInstance.Accept(parsed.Document, context);
             RecordAggregations(AggregationExpressionParser.FromDocument(document, result), context);
             ValidationVisitor.ApplyRestrictions(context);
         }

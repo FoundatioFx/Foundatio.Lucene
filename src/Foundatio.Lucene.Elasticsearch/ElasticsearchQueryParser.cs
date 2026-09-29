@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using Elastic.Clients.Elasticsearch;
+using Elastic.Clients.Elasticsearch.Aggregations;
+using Elastic.Clients.Elasticsearch.Mapping;
 using Elastic.Clients.Elasticsearch.QueryDsl;
 using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Visitors;
@@ -6,377 +9,461 @@ using Foundatio.Lucene.Visitors;
 namespace Foundatio.Lucene.Elasticsearch;
 
 /// <summary>
-/// Parser that converts Lucene query strings to Elasticsearch Query DSL.
+/// Builds Elasticsearch queries, aggregations, and sorts from Lucene-syntax expressions.
 /// </summary>
-public class ElasticsearchQueryParser
+/// <remarks>
+/// <para>The parser is thread-safe and meant to be created once and shared. Per-request settings (field aliases,
+/// includes, validation, the mapping for an index) are passed as <see cref="ElasticsearchQueryOptions"/>.</para>
+/// <para>Building is synchronous. When the configuration has asynchronous dependencies (include or field resolvers,
+/// a mapping loaded from the server, geo location, runtime field, or nested filter resolvers) use the <c>Async</c>
+/// methods, which resolve them before building.</para>
+/// </remarks>
+public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisitorContext>
 {
-    private readonly ElasticsearchQueryParserConfiguration _config;
-    private readonly ConcurrentDictionary<string, ElasticsearchQueryOptions> _indexOptions = new(StringComparer.OrdinalIgnoreCase);
+    private const string MappingResolutionInstalledKey = "@MappingResolutionInstalled";
 
-    // Stateless visitors reused as singletons across all requests. Per-request
-    // configuration (field map, includes) is carried on the visitor context, so
-    // no visitor is allocated per query even when each scope supplies its own config.
-    private readonly FieldResolverQueryVisitor _fieldResolverVisitor = new();
-    private readonly IncludeVisitor _includeVisitor = new();
-    private readonly DateMathEvaluatorVisitor _dateMathVisitor;
-    private readonly ValidationVisitor _validationVisitor = new();
-    private readonly List<QueryVisitor> _customVisitors;
+    private readonly ConcurrentDictionary<string, ElasticsearchQueryOptions> _registeredOptions = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Creates a new parser with default configuration.
+    /// Creates a parser.
     /// </summary>
-    public ElasticsearchQueryParser() : this(null) { }
-
-    /// <summary>
-    /// Creates a new parser with the specified configuration.
-    /// </summary>
-    public ElasticsearchQueryParser(Action<ElasticsearchQueryParserConfiguration>? configure)
+    public ElasticsearchQueryParser(Action<ElasticsearchQueryParserConfiguration>? configure = null)
+        : this(CreateConfiguration(configure))
     {
-        _config = new ElasticsearchQueryParserConfiguration();
-        configure?.Invoke(_config);
+    }
 
-        _customVisitors = [.. _config.Visitors];
+    private ElasticsearchQueryParser(ElasticsearchQueryParserConfiguration configuration) : base(configuration)
+    {
+        Configuration = configuration;
+    }
 
-        _dateMathVisitor = new DateMathEvaluatorVisitor(_config.TimeProvider);
+    private static ElasticsearchQueryParserConfiguration CreateConfiguration(Action<ElasticsearchQueryParserConfiguration>? configure)
+    {
+        var configuration = new ElasticsearchQueryParserConfiguration();
+        configure?.Invoke(configuration);
+        return configuration;
     }
 
     /// <summary>
-    /// Registers options for a specific index.
-    /// These options are used as the base configuration when building queries for this index.
+    /// The parser configuration.
     /// </summary>
-    /// <param name="indexName">The index name.</param>
-    /// <param name="options">The options to register.</param>
-    /// <returns>This parser instance for chaining.</returns>
-    public ElasticsearchQueryParser SetOptions(string indexName, ElasticsearchQueryOptions options)
+    public ElasticsearchQueryParserConfiguration Configuration { get; }
+
+    /// <summary>
+    /// Registers options by name (typically an index name). Requests select them with <see cref="ElasticsearchQueryOptions.Index"/>.
+    /// </summary>
+    public ElasticsearchQueryParser SetOptions(string index, ElasticsearchQueryOptions options)
     {
-        _indexOptions[indexName] = options;
+        ArgumentException.ThrowIfNullOrEmpty(index);
+        _registeredOptions[index] = options ?? throw new ArgumentNullException(nameof(options));
         return this;
     }
 
     /// <summary>
-    /// Registers options for a specific index using a configuration action.
+    /// Gets registered options, or null.
     /// </summary>
-    /// <param name="indexName">The index name.</param>
-    /// <param name="configure">Action to configure the options.</param>
-    /// <returns>This parser instance for chaining.</returns>
-    public ElasticsearchQueryParser SetOptions(string indexName, Action<ElasticsearchQueryOptionsBuilder> configure)
-    {
-        var builder = new ElasticsearchQueryOptionsBuilder();
-        configure(builder);
-        return SetOptions(indexName, builder.Build());
-    }
+    public ElasticsearchQueryOptions? GetOptions(string index) => _registeredOptions.TryGetValue(index, out var options) ? options : null;
 
     /// <summary>
-    /// Gets the registered options for a specific index, or null if not registered.
+    /// Removes registered options.
     /// </summary>
-    /// <param name="indexName">The index name.</param>
-    /// <returns>The registered options, or null.</returns>
-    public ElasticsearchQueryOptions? GetOptions(string indexName)
-    {
-        return _indexOptions.TryGetValue(indexName, out var options) ? options : null;
-    }
+    public bool RemoveOptions(string index) => _registeredOptions.TryRemove(index, out _);
 
     /// <summary>
-    /// Removes registered options for a specific index.
+    /// Creates a context for a request. Pass it to the context overloads to inspect it after building, for example to
+    /// read <see cref="ElasticsearchQueryVisitorContext.RuntimeFields"/>.
     /// </summary>
-    /// <param name="indexName">The index name.</param>
-    /// <returns>True if options were removed.</returns>
-    public bool RemoveOptions(string indexName)
+    public ElasticsearchQueryVisitorContext CreateContext(ElasticsearchQueryOptions? options = null)
     {
-        return _indexOptions.TryRemove(indexName, out _);
-    }
+        var registered = options?.Index is { } index ? GetOptions(index) : null;
+        var context = new ElasticsearchQueryVisitorContext();
+        ApplyOptions(context, registered, options);
 
-    /// <summary>
-    /// Clears all registered index options.
-    /// </summary>
-    public void ClearOptions()
-    {
-        _indexOptions.Clear();
-    }
-
-    /// <summary>
-    /// Gets all index names that have registered options.
-    /// </summary>
-    public IEnumerable<string> RegisteredIndexes => _indexOptions.Keys;
-
-    /// <summary>
-    /// Parses a Lucene query string and returns the AST.
-    /// </summary>
-    public LuceneParseResult Parse(string query)
-    {
-        return LuceneQuery.Parse(query);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a Lucene query string.
-    /// </summary>
-    public Query BuildQuery(string query)
-    {
-        return BuildQuery(query, indexName: null, options: null);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a Lucene query string using registered options for the specified index.
-    /// </summary>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="indexName">The index name to look up registered options for.</param>
-    /// <returns>The Elasticsearch Query DSL.</returns>
-    public Query BuildQuery(string query, string indexName)
-    {
-        return BuildQuery(query, indexName, options: null);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a Lucene query string with per-request options.
-    /// </summary>
-    public Query BuildQuery(string query, ElasticsearchQueryOptions? options)
-    {
-        return BuildQuery(query, indexName: null, options);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a Lucene query string using registered index options merged with per-request options.
-    /// </summary>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="indexName">The index name to look up registered options for (can be null).</param>
-    /// <param name="options">Optional per-request options that override registered options.</param>
-    /// <returns>The Elasticsearch Query DSL.</returns>
-    public Query BuildQuery(string query, string? indexName, ElasticsearchQueryOptions? options)
-    {
-        var parseResult = LuceneQuery.Parse(query);
-
-        if (!parseResult.IsSuccess)
-        {
-            var errors = string.Join("; ", parseResult.Errors.Select(e => e.Message));
-            throw new QueryParseException($"Failed to parse query: {errors}");
-        }
-
-        return BuildQuery(parseResult.Document, indexName, options);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a parsed query document.
-    /// </summary>
-    public Query BuildQuery(QueryDocument document)
-    {
-        return BuildQuery(document, indexName: null, options: null);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a parsed query document using registered options for the specified index.
-    /// </summary>
-    /// <param name="document">The parsed query document.</param>
-    /// <param name="indexName">The index name to look up registered options for.</param>
-    /// <returns>The Elasticsearch Query DSL.</returns>
-    public Query BuildQuery(QueryDocument document, string indexName)
-    {
-        return BuildQuery(document, indexName, options: null);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a parsed query document with per-request options.
-    /// </summary>
-    public Query BuildQuery(QueryDocument document, ElasticsearchQueryOptions? options)
-    {
-        return BuildQuery(document, indexName: null, options);
-    }
-
-    /// <summary>
-    /// Builds an Elasticsearch Query from a parsed query document using registered index options merged with per-request options.
-    /// </summary>
-    /// <param name="document">The parsed query document.</param>
-    /// <param name="indexName">The index name to look up registered options for (can be null).</param>
-    /// <param name="options">Optional per-request options that override registered options.</param>
-    /// <returns>The Elasticsearch Query DSL.</returns>
-    public Query BuildQuery(QueryDocument document, string? indexName, ElasticsearchQueryOptions? options)
-    {
-        // Get registered options for this index (if any)
-        var registeredOptions = indexName is not null ? GetOptions(indexName) : null;
-
-        // Create the visitor context, merging global config with registered and per-request options
-        var context = CreateContext(registeredOptions, options);
-
-        // Build visitor chain for this request. The field map and includes for this
-        // scope are carried on the context so the singleton visitors can be reused
-        // without allocating a new visitor per query.
-        QueryNode currentNode = document;
-
-        // Resolve field aliases (per-request > registered > global)
-        var fieldMap = options?.FieldMap ?? registeredOptions?.FieldMap ?? _config.FieldMap;
-        if (fieldMap is not null)
-        {
-            context.SetFieldMap(fieldMap);
-            currentNode = _fieldResolverVisitor.Accept(currentNode, context);
-        }
-
-        // Expand includes (per-request > registered > global)
-        var includes = options?.Includes ?? registeredOptions?.Includes ?? _config.Includes;
-        if (includes is not null)
-        {
-            context.SetIncludes(includes);
-            currentNode = _includeVisitor.Accept(currentNode, context);
-        }
-
-        currentNode = _dateMathVisitor.Accept(currentNode, context);
-
-        foreach (var visitor in _customVisitors)
-        {
-            currentNode = visitor.Accept(currentNode, context);
-        }
-
-        currentNode = _validationVisitor.Accept(currentNode, context);
-
-        // Use the stateless singleton builder
-        return ElasticsearchQueryBuilderVisitor.Instance.BuildQuery(currentNode, context);
-    }
-
-    private ElasticsearchQueryVisitorContext CreateContext(ElasticsearchQueryOptions? registeredOptions, ElasticsearchQueryOptions? options)
-    {
-        var context = new ElasticsearchQueryVisitorContext
-        {
-            // Merge: per-request > registered > global config
-            UseScoring = options?.UseScoring ?? registeredOptions?.UseScoring ?? _config.UseScoring,
-            DefaultFields = options?.DefaultFields ?? registeredOptions?.DefaultFields ?? _config.DefaultFields,
-            DefaultOperator = _config.DefaultOperator,
-            IsDateField = options?.IsDateField ?? registeredOptions?.IsDateField ?? _config.IsDateField,
-            DefaultTimeZone = options?.DefaultTimeZone ?? registeredOptions?.DefaultTimeZone ?? _config.DefaultTimeZone
-        };
-
-        // Set up validation options: per-request > registered > global
-        var validationOptions = options?.ValidationOptions ?? registeredOptions?.ValidationOptions ?? _config.ValidationOptions;
-        if (validationOptions is not null)
-        {
-            context.SetValidationOptions(validationOptions);
-        }
-
+        var config = Configuration;
+        context.UseScoring = options?.UseScoring ?? registered?.UseScoring ?? config.UseScoring;
+        context.MappingResolver = options?.MappingResolver ?? registered?.MappingResolver ?? config.MappingResolver;
+        context.DefaultTimeZone = options?.DefaultTimeZone ?? registered?.DefaultTimeZone ?? config.DefaultTimeZone;
+        context.UseNested = config.UseNested;
+        context.GeoLocationResolver = options?.GeoLocationResolver ?? registered?.GeoLocationResolver ?? config.GeoLocationResolver;
+        context.RuntimeFieldResolver = options?.RuntimeFieldResolver ?? registered?.RuntimeFieldResolver ?? config.RuntimeFieldResolver;
+        context.NestedFilterResolver = options?.NestedFilterResolver ?? registered?.NestedFilterResolver ?? config.NestedFilterResolver;
+        context.StartDate = options?.StartDate ?? registered?.StartDate;
+        context.EndDate = options?.EndDate ?? registered?.EndDate;
         return context;
     }
 
     /// <summary>
-    /// Adds a custom visitor to the visitor chain.
+    /// Builds a query. An empty query matches all documents.
     /// </summary>
-    public ElasticsearchQueryParser AddVisitor(QueryVisitor visitor)
+    /// <exception cref="QueryParseException">The query has syntax errors.</exception>
+    /// <exception cref="QueryValidationException">The query is invalid (for example it uses a restricted field).</exception>
+    /// <exception cref="InvalidOperationException">The configuration has asynchronous dependencies; use <see cref="BuildQueryAsync(string, ElasticsearchQueryOptions?, CancellationToken)"/>.</exception>
+    public Query BuildQuery(string query, ElasticsearchQueryOptions? options = null) => BuildQuery(query, CreateContext(options));
+
+    /// <summary>
+    /// Builds a query using the specified context.
+    /// </summary>
+    public Query BuildQuery(string query, ElasticsearchQueryVisitorContext context)
     {
-        _customVisitors.Add(visitor);
-        return this;
+        ArgumentNullException.ThrowIfNull(context);
+        var document = ParseQuery(query, context);
+        return BuildProcessed(document, context, clone: false);
     }
 
     /// <summary>
-    /// Tries to build an Elasticsearch Query from a Lucene query string.
-    /// Returns a result object instead of throwing exceptions.
+    /// Builds a query from a parsed document. The document is not modified, so it can be cached and reused.
     /// </summary>
-    public QueryResult<Query> TryBuildQuery(string query)
+    public Query BuildQuery(QueryDocument document, ElasticsearchQueryOptions? options = null) => BuildQuery(document, CreateContext(options));
+
+    /// <summary>
+    /// Builds a query from a parsed document using the specified context. The document is not modified.
+    /// </summary>
+    public Query BuildQuery(QueryDocument document, ElasticsearchQueryVisitorContext context)
     {
-        return TryBuildQuery(query, indexName: null, options: null);
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(context);
+        return BuildProcessed(document, context, clone: true);
     }
 
     /// <summary>
-    /// Tries to build an Elasticsearch Query from a Lucene query string using registered options for the specified index.
-    /// Returns a result object instead of throwing exceptions.
+    /// Resolves asynchronous dependencies, then builds a query.
     /// </summary>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="indexName">The index name to look up registered options for.</param>
-    /// <returns>A QueryResult containing the query or error information.</returns>
-    public QueryResult<Query> TryBuildQuery(string query, string indexName)
+    public ValueTask<Query> BuildQueryAsync(string query, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+        => BuildQueryAsync(query, CreateContext(options), cancellationToken);
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then builds a query using the specified context.
+    /// </summary>
+    public async ValueTask<Query> BuildQueryAsync(string query, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken = default)
     {
-        return TryBuildQuery(query, indexName, options: null);
+        ArgumentNullException.ThrowIfNull(context);
+        var document = ParseQuery(query, context);
+        await ResolveQueryAsync(document, context, cancellationToken).ConfigureAwait(false);
+        return BuildProcessed(document, context, clone: false);
     }
 
     /// <summary>
-    /// Tries to build an Elasticsearch Query from a Lucene query string with per-request options.
-    /// Returns a result object instead of throwing exceptions.
+    /// Resolves asynchronous dependencies, then builds a query from a parsed document. The document is not modified.
     /// </summary>
-    public QueryResult<Query> TryBuildQuery(string query, ElasticsearchQueryOptions? options)
+    public async ValueTask<Query> BuildQueryAsync(QueryDocument document, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
     {
-        return TryBuildQuery(query, indexName: null, options);
+        ArgumentNullException.ThrowIfNull(document);
+        var context = CreateContext(options);
+        await ResolveQueryAsync(document, context, cancellationToken).ConfigureAwait(false);
+        return BuildProcessed(document, context, clone: true);
     }
 
     /// <summary>
-    /// Tries to build an Elasticsearch Query from a Lucene query string using registered index options merged with per-request options.
-    /// Returns a result object instead of throwing exceptions.
+    /// Builds a query, returning failures as a result instead of throwing.
     /// </summary>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="indexName">The index name to look up registered options for (can be null).</param>
-    /// <param name="options">Optional per-request options that override registered options.</param>
-    /// <returns>A QueryResult containing the query or error information.</returns>
-    public QueryResult<Query> TryBuildQuery(string query, string? indexName, ElasticsearchQueryOptions? options)
+    public QueryResult<Query> TryBuildQuery(string query, ElasticsearchQueryOptions? options = null)
+    {
+        return QueryResult.Try(() => BuildQuery(query, options));
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies and builds a query, returning failures as a result instead of throwing.
+    /// </summary>
+    public async ValueTask<QueryResult<Query>> TryBuildQueryAsync(string query, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var parseResult = LuceneQuery.Parse(query);
-
-            if (!parseResult.IsSuccess)
-            {
-                var errors = string.Join("; ", parseResult.Errors.Select(e => e.Message));
-                return QueryResult<Query>.Failure(
-                    new QueryParseException($"Failed to parse query: {errors}", QueryErrorCode.ParseError)
-                    {
-                        Errors = parseResult.Errors.ToList()
-                    });
-            }
-
-            var result = BuildQuery(parseResult.Document, indexName, options);
-            return QueryResult<Query>.Success(result);
+            return QueryResult<Query>.Success(await BuildQueryAsync(query, options, cancellationToken).ConfigureAwait(false));
         }
         catch (QueryException ex)
         {
             return QueryResult<Query>.Failure(ex);
         }
-        catch (Exception ex)
+    }
+
+    /// <summary>
+    /// Builds aggregations from an expression such as <c>terms:(status~10 min:created) date:created~1d</c>.
+    /// </summary>
+    public IDictionary<string, Aggregation> BuildAggregations(string aggregations, ElasticsearchQueryOptions? options = null)
+        => BuildAggregations(aggregations, CreateContext(options));
+
+    /// <summary>
+    /// Builds aggregations using the specified context.
+    /// </summary>
+    public IDictionary<string, Aggregation> BuildAggregations(string aggregations, ElasticsearchQueryVisitorContext context)
+    {
+        ArgumentNullException.ThrowIfNull(aggregations);
+        ArgumentNullException.ThrowIfNull(context);
+        InstallMappingResolution(context);
+        var expressions = ProcessAggregations(aggregations, context);
+        return ElasticsearchAggregationBuilder.Build(expressions, context);
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then builds aggregations.
+    /// </summary>
+    public ValueTask<IDictionary<string, Aggregation>> BuildAggregationsAsync(string aggregations, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+        => BuildAggregationsAsync(aggregations, CreateContext(options), cancellationToken);
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then builds aggregations using the specified context.
+    /// </summary>
+    public async ValueTask<IDictionary<string, Aggregation>> BuildAggregationsAsync(string aggregations, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(aggregations);
+        ArgumentNullException.ThrowIfNull(context);
+        var expressions = await ProcessAggregationsAsync(aggregations, context, cancellationToken).ConfigureAwait(false);
+        return ElasticsearchAggregationBuilder.Build(expressions, context);
+    }
+
+    /// <summary>
+    /// Builds sort options from an expression such as <c>-created +name</c>.
+    /// </summary>
+    public ICollection<SortOptions> BuildSort(string sort, ElasticsearchQueryOptions? options = null) => BuildSort(sort, CreateContext(options));
+
+    /// <summary>
+    /// Builds sort options using the specified context.
+    /// </summary>
+    public ICollection<SortOptions> BuildSort(string sort, ElasticsearchQueryVisitorContext context)
+    {
+        ArgumentNullException.ThrowIfNull(sort);
+        ArgumentNullException.ThrowIfNull(context);
+        InstallMappingResolution(context);
+        var fields = ProcessSort(sort, context);
+        return ElasticsearchSortBuilder.Build(fields, context);
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then builds sort options.
+    /// </summary>
+    public ValueTask<ICollection<SortOptions>> BuildSortAsync(string sort, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+        => BuildSortAsync(sort, CreateContext(options), cancellationToken);
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then builds sort options using the specified context.
+    /// </summary>
+    public async ValueTask<ICollection<SortOptions>> BuildSortAsync(string sort, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sort);
+        ArgumentNullException.ThrowIfNull(context);
+        var fields = await ProcessSortAsync(sort, context, cancellationToken).ConfigureAwait(false);
+        return ElasticsearchSortBuilder.Build(fields, context);
+    }
+
+    /// <summary>
+    /// Validates a query without building it.
+    /// </summary>
+    public QueryValidationResult ValidateQuery(string query, ElasticsearchQueryOptions? options = null)
+    {
+        var context = CreateContext(options);
+        InstallMappingResolution(context);
+        return ValidateQuery(query, context);
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then validates a query without building it.
+    /// </summary>
+    public ValueTask<QueryValidationResult> ValidateQueryAsync(string query, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        return ValidateQueryAsync(query, CreateContext(options), cancellationToken);
+    }
+
+    /// <summary>
+    /// Validates an aggregation expression without building it.
+    /// </summary>
+    public QueryValidationResult ValidateAggregations(string aggregations, ElasticsearchQueryOptions? options = null)
+    {
+        var context = CreateContext(options);
+        return CatchValidation(context, () => BuildAggregations(aggregations, context));
+    }
+
+    /// <summary>
+    /// Validates a sort expression without building it.
+    /// </summary>
+    public QueryValidationResult ValidateSort(string sort, ElasticsearchQueryOptions? options = null)
+    {
+        var context = CreateContext(options);
+        return CatchValidation(context, () => BuildSort(sort, context));
+    }
+
+    private static QueryValidationResult CatchValidation(ElasticsearchQueryVisitorContext context, Action action)
+    {
+        try
         {
-            return QueryResult<Query>.Failure(
-                new QueryBuildException($"Failed to build query: {ex.Message}", ex));
+            action();
         }
-    }
-
-    /// <summary>
-    /// Validates a query string and returns the validation result.
-    /// </summary>
-    public QueryValidationResult Validate(string query, ElasticsearchQueryOptions? options = null)
-    {
-        return Validate(query, indexName: null, options);
-    }
-
-    /// <summary>
-    /// Validates a query string using registered options for the specified index.
-    /// </summary>
-    /// <param name="query">The query string to validate.</param>
-    /// <param name="indexName">The index name to look up registered options for.</param>
-    /// <returns>The validation result.</returns>
-    public QueryValidationResult Validate(string query, string indexName)
-    {
-        return Validate(query, indexName, options: null);
-    }
-
-    /// <summary>
-    /// Validates a query string using registered index options merged with per-request options.
-    /// </summary>
-    /// <param name="query">The query string to validate.</param>
-    /// <param name="indexName">The index name to look up registered options for (can be null).</param>
-    /// <param name="options">Optional per-request options that override registered options.</param>
-    /// <returns>The validation result.</returns>
-    public QueryValidationResult Validate(string query, string? indexName, ElasticsearchQueryOptions? options)
-    {
-        var registeredOptions = indexName is not null ? GetOptions(indexName) : null;
-        var parseResult = LuceneQuery.Parse(query);
-        var context = CreateContext(registeredOptions, options);
-
-        // Add parse errors as validation errors
-        if (!parseResult.IsSuccess)
+        catch (QueryValidationException)
         {
-            foreach (var error in parseResult.Errors)
+        }
+
+        if (context.ValidationOptions is { ShouldThrow: true })
+            context.ValidationResult.ThrowIfInvalid();
+
+        return context.ValidationResult;
+    }
+
+    private Query BuildProcessed(QueryDocument document, ElasticsearchQueryVisitorContext context, bool clone)
+    {
+        InstallMappingResolution(context);
+        var processed = ProcessQuery(document, context, clone);
+        return ElasticsearchQueryBuilder.Build(processed, context);
+    }
+
+    /// <inheritdoc/>
+    protected override bool RequiresResolution(ElasticsearchQueryVisitorContext context)
+    {
+        return base.RequiresResolution(context)
+            || context.MappingResolver is { CanResolveSynchronously: false }
+            || context.GeoLocationResolver is not null
+            || context.RuntimeFieldResolver is not null
+            || context.NestedFilterResolver is not null;
+    }
+
+    /// <inheritdoc/>
+    protected override async ValueTask OnResolveAsync(QueryType type, QueryDocument document, IReadOnlyDictionary<string, string> fields, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken)
+    {
+        var resolver = context.MappingResolver;
+        var resolvedFields = fields.Values.Concat(context.DefaultFields ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (resolver is not null)
+            await resolver.EnsureFieldsAsync(resolvedFields, cancellationToken).ConfigureAwait(false);
+
+        if (context.RuntimeFieldResolver is { } runtimeFieldResolver)
+        {
+            foreach (string field in resolvedFields)
             {
-                context.AddValidationError(error.Message, error.Position);
+                if (resolver?.GetMapping(field) is { Found: true } || context.GetRuntimeField(field) is not null)
+                    continue;
+
+                ElasticRuntimeField? runtimeField;
+                try
+                {
+                    runtimeField = await runtimeFieldResolver(field, context, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    context.ValidationResult.AddError($"Error in runtime field resolver callback when resolving field ({field}): {ex.Message}", code: QueryErrorCode.UnresolvedField);
+                    continue;
+                }
+
+                if (runtimeField is not null)
+                    context.AddRuntimeField(runtimeField);
             }
         }
 
-        // Validate the document if it exists
-        if (parseResult.Document is not null)
+        InstallMappingResolution(context);
+
+        if (type == QueryType.Query && context.GeoLocationResolver is not null)
+            await ResolveGeoLocationsAsync(document, context, cancellationToken).ConfigureAwait(false);
+
+        if (context.NestedFilterResolver is { } nestedFilterResolver && context.UseNested && resolver is not null)
         {
-            _validationVisitor.Accept(parseResult.Document, context);
-            _validationVisitor.ApplyRestrictions(context);
+            var pairs = fields.Select(p => (Original: p.Key, Resolved: CanonicalField(p.Value, context)))
+                .Concat((context.DefaultFields ?? []).Select(f => (Original: f, Resolved: CanonicalField(f, context))));
+            foreach (var (original, resolved) in pairs)
+            {
+                var mapping = resolver.GetMapping(resolved);
+                string? path = mapping.Property is NestedProperty ? mapping.FullPath : mapping.NestedPath;
+                if (path is null)
+                    continue;
+
+                try
+                {
+                    var filter = await nestedFilterResolver(new NestedFilterContext(path, original, resolved), context, cancellationToken).ConfigureAwait(false);
+                    context.SetNestedFilter(path, resolved, filter);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    context.ValidationResult.AddError($"Error in nested filter resolver callback for path ({path}): {ex.Message}");
+                }
+            }
+        }
+    }
+
+    private static string CanonicalField(string field, ElasticsearchQueryVisitorContext context)
+    {
+        return context.MappingResolver?.GetMapping(field) is { Found: true } mapping ? mapping.FullPath : field;
+    }
+
+    private static async ValueTask ResolveGeoLocationsAsync(QueryDocument document, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken)
+    {
+        var texts = new HashSet<string>(StringComparer.Ordinal);
+        CollectGeoTerms(document, field: null, context, texts);
+        if (context.Includes is { } includes)
+        {
+            foreach (string text in includes.Values)
+                CollectGeoTerms(LuceneQuery.Parse(text, context.ParserOptions).Document, field: null, context, texts);
         }
 
-        return context.GetValidationResult();
+        foreach (string text in texts)
+        {
+            try
+            {
+                if (await context.GeoLocationResolver!(text, context, cancellationToken).ConfigureAwait(false) is { } location)
+                    context.SetGeoLocation(text, location);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                context.ValidationResult.AddError($"Error in geo location resolver callback when resolving ({text}): {ex.Message}");
+            }
+        }
+    }
+
+    private static void CollectGeoTerms(QueryNode? node, string? field, ElasticsearchQueryVisitorContext context, HashSet<string> texts)
+    {
+        switch (node)
+        {
+            case QueryDocument document:
+                CollectGeoTerms(document.Query, field, context, texts);
+                break;
+            case GroupNode group:
+                CollectGeoTerms(group.Query, field, context, texts);
+                break;
+            case NotNode not:
+                CollectGeoTerms(not.Query, field, context, texts);
+                break;
+            case BooleanQueryNode boolean:
+                foreach (var clause in boolean.Clauses)
+                    CollectGeoTerms(clause.Query, field, context, texts);
+                break;
+            case FieldQueryNode fieldNode:
+                FieldResolverQueryVisitor.TryResolveField(fieldNode.Field, context, out string resolved);
+                CollectGeoTerms(fieldNode.Query, resolved, context, texts);
+                break;
+            case TermNode term when field is not null && IsGeoField(field, context):
+                texts.Add(term.UnescapedTerm);
+                break;
+            case PhraseNode phrase when field is not null && IsGeoField(field, context):
+                texts.Add(phrase.Phrase);
+                break;
+        }
+    }
+
+    private static bool IsGeoField(string field, ElasticsearchQueryVisitorContext context)
+    {
+        return context.MappingResolver?.GetMapping(field) is { Property: GeoPointProperty }
+            || context.GetRuntimeField(field)?.Type == RuntimeFieldType.GeoPoint;
+    }
+
+    /// <summary>
+    /// Adds mapping-based resolution after the configured field resolver and field map: field names are matched
+    /// against the mapping case-insensitively and replaced with their canonical path, and fields that are neither
+    /// mapped nor runtime fields are reported as unresolved.
+    /// </summary>
+    private static void InstallMappingResolution(ElasticsearchQueryVisitorContext context)
+    {
+        if (context.MappingResolver is not { } resolver || context.GetValue<bool>(MappingResolutionInstalledKey))
+            return;
+
+        context.SetValue(MappingResolutionInstalledKey, true);
+        var fieldResolver = context.FieldResolver;
+        var fieldMap = context.FieldMap;
+        context.FieldMap = null;
+        context.FieldResolver = (field, ctx) =>
+        {
+            string? resolved = fieldResolver?.Invoke(field, ctx) ?? fieldMap?.ResolveField(field) ?? (fieldResolver is null && fieldMap is null ? field : null);
+            if (resolved is null)
+                return null;
+
+            if (resolver.GetMapping(resolved) is { Found: true } mapping)
+                return mapping.FullPath;
+
+            return context.GetRuntimeField(resolved) is not null ? resolved : null;
+        };
     }
 }
