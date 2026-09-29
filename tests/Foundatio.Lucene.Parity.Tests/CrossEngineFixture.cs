@@ -1,6 +1,7 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Elastic.Clients.Elasticsearch;
+using Elastic.Clients.Elasticsearch.Mapping;
 using Elastic.Transport;
 using Foundatio.Lucene.Elasticsearch;
 using Foundatio.Lucene.EntityFramework;
@@ -40,17 +41,13 @@ public class CrossEngineFixture : IAsyncLifetime
 
     public EntityFrameworkQueryParser EfParser { get; } = new();
 
-    public ElasticsearchQueryParser EsParser { get; } = new(c =>
-    {
-        // Filter context (term/range) so string equality matches SQL's exact-ish Contains on the
-        // non-substring test data, and date fields produce real date range queries.
-        c.UseScoring = false;
-        c.IsDateField = f => string.Equals(f, "created", StringComparison.OrdinalIgnoreCase);
-    });
+    // Filter context (term/range) with the index mapping, so keyword fields use exact term matching like SQL
+    // equality and date fields produce real date range queries.
+    public ElasticsearchQueryParser EsParser { get; } = new(c => c.UseMappings(CreateMapping()));
 
     public CrossEngineFixture()
     {
-        _sql = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+        _sql = new MsSqlBuilder("concordservicing/sqlserver-fts:2022-latest").Build();
 
         // Testcontainers.Elasticsearch does not yet support 9.x, so build the container directly
         // (mirrors the Elasticsearch.Tests fixture).
@@ -95,8 +92,7 @@ public class CrossEngineFixture : IAsyncLifetime
     public List<int> QuerySql(string query)
     {
         using var db = CreateDb();
-        var filter = EfParser.BuildFilter<Doc>(query);
-        return db.Docs.Where(filter).Select(d => d.Id).ToList();
+        return db.Docs.Where(query, EfParser).Select(d => d.Id).ToList();
     }
 
     /// <summary>Runs the query through the ES parser against Elasticsearch and returns matching ids.</summary>
@@ -114,6 +110,21 @@ public class CrossEngineFixture : IAsyncLifetime
         return response.Documents.Select(d => d.Id).ToList();
     }
 
+    private static TypeMapping CreateMapping() => new()
+    {
+        Properties = new Properties
+        {
+            { "id", new IntegerNumberProperty() },
+            { "name", new KeywordProperty() },
+            { "category", new KeywordProperty() },
+            { "age", new IntegerNumberProperty() },
+            { "salary", new DoubleNumberProperty() },
+            { "active", new BooleanProperty() },
+            { "created", new DateProperty() },
+            { "notes", new KeywordProperty() }
+        }
+    };
+
     private ParityDbContext CreateDb()
         => new(new DbContextOptionsBuilder<ParityDbContext>().UseSqlServer(_connectionString).Options);
 
@@ -127,17 +138,7 @@ public class CrossEngineFixture : IAsyncLifetime
 
     private async Task SeedElasticsearchAsync()
     {
-        var create = await _esClient.Indices.CreateAsync<Doc>(IndexName, c => c
-            .Mappings(m => m
-                .Properties(p => p
-                    .IntegerNumber(d => d.Id)
-                    .Keyword(d => d.Name)
-                    .Keyword(d => d.Category)
-                    .IntegerNumber(d => d.Age)
-                    .DoubleNumber(d => d.Salary)
-                    .Boolean(d => d.Active)
-                    .Date(d => d.Created)
-                    .Keyword(d => d.Notes!))));
+        var create = await _esClient.Indices.CreateAsync(IndexName, c => c.Mappings(CreateMapping()));
 
         if (!create.IsValidResponse)
             throw new InvalidOperationException($"Failed to create index: {create.DebugInformation}");

@@ -85,8 +85,10 @@ using Foundatio.Lucene.EntityFramework;
 
 var parser = new EntityFrameworkQueryParser(c => c.DefaultFields = ["Name"]);
 
-Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
-var employees = await db.Employees.Where(filter).ToListAsync();
+var employees = await db.Employees
+    .Where("name:john AND salary:[50000 TO *]", parser)
+    .OrderBy("-salary name", parser)
+    .ToListAsync();
 ```
 
 See [Entity Framework](./entity-framework).

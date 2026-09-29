@@ -40,10 +40,12 @@ var search = await esParser.BuildSearchAsync(
     sort: "-created");
 var response = await client.SearchAsync<Event>(s => s.Indices("events").Apply(search));
 
-// Entity Framework Core: a LINQ expression that runs on the database
+// Entity Framework Core: LINQ expressions that run on the database, limited to the model's fields
 var efParser = new EntityFrameworkQueryParser();
-Expression<Func<Employee, bool>> filter = efParser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
-var employees = await db.Employees.Where(filter).ToListAsync();
+var employees = await db.Employees
+    .Where("name:john AND salary:[50000 TO *]", efParser)
+    .OrderBy("-salary", efParser)
+    .ToListAsync();
 ```
 
 ## 📚 Learn More

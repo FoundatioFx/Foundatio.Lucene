@@ -74,8 +74,9 @@ src
 │   ├── DateMath.cs                     # Elasticsearch date math evaluation
 │   └── FieldMap.cs                     # Field alias mapping
 ├── Foundatio.Lucene.EntityFramework    # EF Core integration
-│   ├── EntityFrameworkQueryParser.cs   # Main parser for EF queries
-│   ├── ExpressionBuilderVisitor.cs     # Converts AST to LINQ expressions
+│   ├── EntityFrameworkQueryParser.cs   # Main parser: filters, sorts, validation, resolution
+│   ├── FilterExpressionBuilder.cs      # Processed AST → LINQ predicate (parameterized values)
+│   ├── EntityFieldResolver.cs          # Lazy, per-parser field discovery from the EF Core model
 │   └── EntityFieldInfo.cs              # Entity field metadata
 └── Foundatio.Lucene.Elasticsearch      # Elasticsearch integration
     ├── ElasticsearchQueryParser.cs     # Main parser: queries, aggregations, sorts, BuildSearch, resolution hook
@@ -417,12 +418,18 @@ var validationResult = QueryValidator.Validate(document, options);
 
 ```csharp
 var parser = new EntityFrameworkQueryParser(c => c.SetDefaultFields("Name"));
-Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
-var results = context.Employees.Where(filter).ToList();
+var results = context.Employees
+    .Where("name:john AND salary:[50000 TO *]", parser)
+    .OrderBy("-salary", parser)
+    .ToList();
+
+// Without a DbSet, give the parser the model: c.UseModel(model) or new EntityFrameworkQueryOptions { Model = model }
+Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>("age:>30", new() { Model = context.Model });
 ```
 
-- `ExpressionBuilderVisitor` converts AST to LINQ expressions
-- Entity field metadata auto-discovered via EF Core `IEntityType`
+- `FilterExpressionBuilder` converts the processed AST to a predicate; problems become validation errors with positions
+- Only fields discovered from the EF Core model (after property/navigation filters) and registered custom fields are queryable
+- Values are parsed invariantly and captured as SQL parameters; date math uses the configured `TimeProvider` and time zone
 
 ### Elasticsearch Integration
 

@@ -29,7 +29,7 @@ Rules can also be set per request with `options.ValidationOptions`. Configure an
 | `AllowedFields` | empty (all) | Field names that may be used, as written by the user. A name also allows its sub-fields (`data` allows `data.age`). |
 | `RestrictedFields` | empty | Field names that may not be used, checked against the name as written and the resolved name, including sub-fields. |
 | `AllowLeadingWildcards` | `true` | Whether terms may start with `*` or `?`. |
-| `AllowUnresolvedFields` | `true` | Whether fields the resolvers (or the Elasticsearch mapping, or the Entity Framework model) can't resolve are allowed. |
+| `AllowUnresolvedFields` | `true` | Whether fields the resolvers (or the Elasticsearch mapping) can't resolve are allowed. The Entity Framework provider always rejects fields that aren't in the model. |
 | `AllowUnresolvedIncludes` | `false` | Whether `@include` references that can't be resolved are allowed. |
 | `AllowedOperations` / `RestrictedOperations` | empty | `QueryOperations` names for queries; aggregation types for aggregation expressions. |
 | `AllowedMaxNodeDepth` | 0 (no limit) | Maximum nesting of parenthesized groups. |
@@ -60,7 +60,7 @@ var context = new QueryVisitorContext
 var result = QueryValidator.ValidateQuery("user:john @include:mine", validation, context);
 ```
 
-Use `QueryValidator.ValidateSort` and `QueryValidator.ValidateAggregations` for the other expression types. The providers have their own `ValidateQuery`, `ValidateSort`, and `ValidateAggregations` methods that also resolve fields against the Elasticsearch mapping or the Entity Framework model.
+Use `QueryValidator.ValidateSort` and `QueryValidator.ValidateAggregations` for the other expression types. The providers have their own `ValidateQuery` and `ValidateSort` methods (and `ValidateAggregations` for Elasticsearch) that also resolve fields against the Elasticsearch mapping or the Entity Framework model.
 
 ## What the result tells you
 

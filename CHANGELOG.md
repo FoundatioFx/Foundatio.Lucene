@@ -93,11 +93,29 @@ changes from Foundatio.Parsers.
 
 ### Entity Framework Core
 
-- Rebuilt on the shared engine: field maps, includes, date math, validation, and the async resolution phase.
+- Rebuilt on the shared engine: field maps, includes, date math, validation, and the async resolution phase
+  (`BuildFilterAsync`, `WhereAsync`, `ValidateQueryAsync`, `BuildSortAsync`).
 - Lucene boolean semantics matching the Elasticsearch provider.
-- Sorting.
+- Sorting: `query.OrderBy(sort, parser)`, `BuildSort<T>`, and `ValidateSort<T>`.
 - Queries are limited to fields discovered from the model (after property and navigation filters) and registered
-  fields.
+  fields; anything else is a validation error, including paths through excluded navigations.
+- Values are parsed with the invariant culture for every supported type (numbers, enums, `bool`, `Guid`, `char`,
+  `DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`, `TimeSpan`, nullable variants); values that don't fit the
+  field are validation errors naming the field and value instead of matching nothing.
+- Dates round like Elasticsearch (`[2024-01-01 TO 2024-02-01}`, `<=2024-01-31`, `>2024-01-31`), date math is
+  evaluated with the configured clock and time zone, and `DateTime` columns are compared in a configurable storage
+  time zone.
+- Wildcards: `jo*` is `StartsWith`, `*oh*` is `Contains`, other patterns use `LIKE` with escaping; `\*` and `\?` are
+  literal.
+- Values are SQL parameters, so queries share compiled queries and plans.
+- Full-text search conditions are always a single quoted phrase, so user text can't add full-text operators.
+- `_exists_` on collections requires an element; primitive collections, owned types, complex properties, skip
+  navigations, and shadow properties are supported.
+- Regular expressions are rejected unless `UseRegex` supplies a translation; fuzzy, proximity, and boosts are errors.
+- Field metadata is discovered lazily and cached per parser (not in a static cache shared by all parsers).
+- `AddLuceneQuery` no longer creates an EF Core internal service provider per parser.
+- Custom (dynamic/EAV) fields via `AdditionalFields` and `CustomFieldExpressionBuilder` with `BuildDefault`, and
+  per-node overrides with `node.SetFilterExpression`.
 
 ### Performance
 
