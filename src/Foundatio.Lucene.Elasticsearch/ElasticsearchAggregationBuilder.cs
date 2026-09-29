@@ -109,6 +109,9 @@ internal static class ElasticsearchAggregationBuilder
 
         private Aggregation? Create(AggregationExpression expression)
         {
+            if (expression.GetData<Aggregation>(ElasticsearchNodeExtensions.AggregationKey) is { } custom)
+                return custom;
+
             if (expression.Field.Contains('^'))
             {
                 _result.AddError($"Field names cannot contain '^': {expression.Field}", expression.Position);

@@ -231,3 +231,4 @@ virtual Foundatio.Lucene.EntityFramework.EntityTypePropertyFilter.Invoke(Microso
 virtual Foundatio.Lucene.EntityFramework.EntityTypeSkipNavigationFilter.Invoke(Microsoft.EntityFrameworkCore.Metadata.ISkipNavigation! navigation) -> bool
 virtual Foundatio.Lucene.EntityFramework.RegexExpressionBuilder.Invoke(System.Linq.Expressions.Expression! field, System.Linq.Expressions.Expression! pattern) -> System.Linq.Expressions.Expression!
 virtual Foundatio.Lucene.EntityFramework.SearchTokenizer.Invoke(Foundatio.Lucene.EntityFramework.SearchTerm! term) -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateSortAsync<T>(string! sort, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>

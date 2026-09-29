@@ -115,14 +115,16 @@ public class QueryParserBaseTests
     }
 
     [Fact]
-    public void ProcessQuery_SyntaxError_ThrowsQueryParseException()
+    public void ProcessQuery_SyntaxError_ThrowsQueryValidationExceptionWithParseErrors()
     {
         var parser = new TestQueryParser(new TestQueryParserConfiguration());
 
-        var exception = Assert.Throws<QueryParseException>(() => parser.Process("title:(a"));
+        var exception = Assert.Throws<QueryValidationException>(() => parser.Process("title:(a"));
 
-        Assert.NotEmpty(exception.Errors);
-        Assert.Equal(QueryErrorCode.ParseError, exception.ErrorCode);
+        var error = Assert.Single(exception.Errors);
+        Assert.True(error.Position >= 0);
+        Assert.InRange((int)exception.ErrorCode, (int)QueryErrorCode.ParseError, 199);
+        Assert.StartsWith("Invalid query:", exception.Message);
     }
 
     [Fact]
@@ -253,6 +255,59 @@ public class QueryParserBaseTests
         var result = parser.Process("a:1");
 
         Assert.Equal("x.y.a:1", result.ToDebugString());
+    }
+
+    [Fact]
+    public void AddVisitor_RunsOnQueriesSortsAndAggregationsUntilRemoved()
+    {
+        var configuration = new TestQueryParserConfiguration();
+        var recorder = new FieldRecordingVisitor();
+        configuration.AddVisitor(recorder);
+        var parser = new TestQueryParser(configuration);
+
+        parser.Process("a:1");
+        parser.Sort("b:desc", parser.CreateContext());
+        parser.Aggregations("terms:c", parser.CreateContext());
+        configuration.RemoveVisitor<FieldRecordingVisitor>();
+        parser.Process("a:1");
+        parser.Sort("b:desc", parser.CreateContext());
+        parser.Aggregations("terms:c", parser.CreateContext());
+
+        Assert.Equal(["a", "b", "terms"], recorder.Fields);
+    }
+
+    [Fact]
+    public void AddSortVisitor_RewritesSortFieldsBeforeFieldResolution()
+    {
+        var configuration = new TestQueryParserConfiguration { FieldMap = new FieldMap { { "x.b", "resolved" } } };
+        configuration.AddSortVisitor(new PrefixFieldVisitor("x."));
+        var parser = new TestQueryParser(configuration);
+
+        var field = Assert.Single(parser.Sort("b:desc", parser.CreateContext()));
+
+        Assert.Equal("x.b", field.OriginalField);
+        Assert.Equal("resolved", field.Field);
+        Assert.Equal(SortDirection.Descending, field.Direction);
+        Assert.Equal("a:1", parser.Process("a:1").ToDebugString());
+    }
+
+    [Fact]
+    public void ReplaceVisitor_WithVisitorInSortPipeline_ReplacesItThereAndAddsItToQueries()
+    {
+        var configuration = new TestQueryParserConfiguration();
+        var recorder = new FieldRecordingVisitor();
+        configuration.AddSortVisitor(recorder);
+        configuration.ReplaceVisitor<FieldRecordingVisitor>(new PrefixFieldVisitor("x."));
+        var parser = new TestQueryParser(configuration);
+
+        var query = parser.Process("a:1");
+        var sort = parser.Sort("b:desc", parser.CreateContext());
+        var aggregation = parser.Aggregations("terms:c", parser.CreateContext());
+
+        Assert.Equal("x.a:1", query.ToDebugString());
+        Assert.Equal("x.b", Assert.Single(sort).OriginalField);
+        Assert.Equal("terms", Assert.Single(aggregation).Type);
+        Assert.Empty(recorder.Fields);
     }
 
     [Fact]

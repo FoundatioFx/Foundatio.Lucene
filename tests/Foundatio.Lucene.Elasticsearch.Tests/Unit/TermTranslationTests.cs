@@ -282,11 +282,11 @@ public class TermTranslationTests
     [InlineData("text:/foo/~1")]
     [InlineData("(text:a OR text:b)~AUTO")]
     [InlineData("_exists_:text^2")]
-    public void BuildQuery_WithUnsupportedModifier_ThrowsParseException(string query)
+    public void BuildQuery_WithUnsupportedModifier_ThrowsValidationException(string query)
     {
         var parser = TestMapping.CreateParser();
 
-        Assert.Throws<QueryParseException>(() => parser.BuildQuery(query));
+        Assert.Throws<QueryValidationException>(() => parser.BuildQuery(query));
         Assert.False(parser.ValidateQuery(query).IsValid);
     }
 
@@ -336,7 +336,7 @@ public class TermTranslationTests
 
         if (expected is null)
         {
-            Assert.Throws<QueryParseException>(() => parser.BuildQuery(query));
+            Assert.Throws<QueryValidationException>(() => parser.BuildQuery(query));
             return;
         }
 

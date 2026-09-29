@@ -102,10 +102,41 @@ public abstract class QueryParserConfiguration
     public ChainedQueryVisitor QueryVisitor { get; } = new();
 
     /// <summary>
-    /// Adds a visitor to the query pipeline. The default priority of 0 runs it after include expansion and before
-    /// field resolution, so it sees field names as written.
+    /// The visitors run on every sort expression after include expansion and before its fields are resolved.
     /// </summary>
-    public void AddVisitor(IQueryVisitor visitor, int priority = 0) => QueryVisitor.AddVisitor(visitor, priority);
+    public ChainedQueryVisitor SortVisitor { get; } = new();
+
+    /// <summary>
+    /// The visitors run on every aggregation expression after include expansion and before its fields are resolved.
+    /// </summary>
+    public ChainedQueryVisitor AggregationVisitor { get; } = new();
+
+    /// <summary>
+    /// Adds a visitor to the query, sort, and aggregation pipelines (check <see cref="IQueryVisitorContext.QueryType"/>
+    /// to tell them apart). The default priority of 0 runs it after include expansion and before field resolution, so
+    /// it sees field names as written.
+    /// </summary>
+    public void AddVisitor(IQueryVisitor visitor, int priority = 0)
+    {
+        QueryVisitor.AddVisitor(visitor, priority);
+        SortVisitor.AddVisitor(visitor, priority);
+        AggregationVisitor.AddVisitor(visitor, priority);
+    }
+
+    /// <summary>
+    /// Adds a visitor to the query pipeline only.
+    /// </summary>
+    public void AddQueryVisitor(IQueryVisitor visitor, int priority = 0) => QueryVisitor.AddVisitor(visitor, priority);
+
+    /// <summary>
+    /// Adds a visitor to the sort pipeline only.
+    /// </summary>
+    public void AddSortVisitor(IQueryVisitor visitor, int priority = 0) => SortVisitor.AddVisitor(visitor, priority);
+
+    /// <summary>
+    /// Adds a visitor to the aggregation pipeline only.
+    /// </summary>
+    public void AddAggregationVisitor(IQueryVisitor visitor, int priority = 0) => AggregationVisitor.AddVisitor(visitor, priority);
 
     /// <summary>
     /// Adds a visitor to the query pipeline immediately before the visitor of type <typeparamref name="T"/>.
@@ -118,12 +149,25 @@ public abstract class QueryParserConfiguration
     public void AddVisitorAfter<T>(IQueryVisitor visitor) where T : IQueryVisitor => QueryVisitor.AddVisitorAfter<T>(visitor);
 
     /// <summary>
-    /// Removes visitors of type <typeparamref name="T"/> from the query pipeline.
+    /// Removes visitors of type <typeparamref name="T"/> from the query, sort, and aggregation pipelines.
     /// </summary>
-    public void RemoveVisitor<T>() where T : IQueryVisitor => QueryVisitor.RemoveVisitor<T>();
+    public void RemoveVisitor<T>() where T : IQueryVisitor
+    {
+        QueryVisitor.RemoveVisitor<T>();
+        SortVisitor.RemoveVisitor<T>();
+        AggregationVisitor.RemoveVisitor<T>();
+    }
 
     /// <summary>
-    /// Replaces visitors of type <typeparamref name="T"/> in the query pipeline.
+    /// Replaces visitors of type <typeparamref name="T"/> in the query pipeline (adding <paramref name="visitor"/> when
+    /// there are none), and in the sort and aggregation pipelines that contain one.
     /// </summary>
-    public void ReplaceVisitor<T>(IQueryVisitor visitor, int? priority = null) where T : IQueryVisitor => QueryVisitor.ReplaceVisitor<T>(visitor, priority);
+    public void ReplaceVisitor<T>(IQueryVisitor visitor, int? priority = null) where T : IQueryVisitor
+    {
+        QueryVisitor.ReplaceVisitor<T>(visitor, priority);
+        if (SortVisitor.Visitors.Any(v => v is T))
+            SortVisitor.ReplaceVisitor<T>(visitor, priority);
+        if (AggregationVisitor.Visitors.Any(v => v is T))
+            AggregationVisitor.ReplaceVisitor<T>(visitor, priority);
+    }
 }

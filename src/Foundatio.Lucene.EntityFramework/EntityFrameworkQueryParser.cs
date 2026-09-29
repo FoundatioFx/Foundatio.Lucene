@@ -267,6 +267,24 @@ public class EntityFrameworkQueryParser : QueryParserBase<EntityFrameworkQueryVi
         return context.ValidationResult;
     }
 
+    /// <summary>
+    /// Validates a sort expression for <typeparamref name="T"/>, first running the asynchronous resolution phase.
+    /// </summary>
+    public async ValueTask<QueryValidationResult> ValidateSortAsync<T>(string sort, EntityFrameworkQueryOptions? options = null, CancellationToken cancellationToken = default) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(sort);
+        var context = CreateContext(GetEntityType(typeof(T), options), options);
+        try
+        {
+            CreateSort<T>(await ProcessSortAsync(sort, context, cancellationToken).ConfigureAwait(false), context);
+        }
+        catch (QueryValidationException) when (context.ValidationOptions is not { ShouldThrow: true })
+        {
+        }
+
+        return context.ValidationResult;
+    }
+
     private QueryValidationResult ValidateQuery(LuceneParseResult parsed, EntityFrameworkQueryVisitorContext context)
     {
         context.QueryType = QueryType.Query;

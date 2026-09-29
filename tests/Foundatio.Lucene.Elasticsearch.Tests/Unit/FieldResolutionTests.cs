@@ -324,6 +324,35 @@ public class FieldResolutionTests
     }
 
     [Fact]
+    public async Task ValidateSortAndAggregationsAsync_WithRuntimeFieldResolver_ResolveRuntimeFieldsFirst()
+    {
+        var parser = TestMapping.CreateParser(c =>
+        {
+            c.ValidationOptions = new QueryValidationOptions { AllowUnresolvedFields = false };
+            c.RuntimeFieldResolver = (field, _, _) => ValueTask.FromResult(field == "computed" ? new ElasticRuntimeField("computed", RuntimeFieldType.Long) : null);
+        });
+
+        Assert.Throws<InvalidOperationException>(() => parser.ValidateSort("computed"));
+        Assert.Throws<InvalidOperationException>(() => parser.ValidateAggregations("max:computed"));
+        Assert.True((await parser.ValidateSortAsync("-computed", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
+        Assert.True((await parser.ValidateAggregationsAsync("max:computed", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
+        var invalidSort = await parser.ValidateSortAsync("other", cancellationToken: TestContext.Current.CancellationToken);
+        var invalidAggregation = await parser.ValidateAggregationsAsync("max:other", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(["other"], invalidSort.UnresolvedFields);
+        Assert.Equal(["other"], invalidAggregation.UnresolvedFields);
+    }
+
+    [Fact]
+    public void BuildSortAndAggregations_WithOnlyGeoLocationResolver_DoNotRequireResolution()
+    {
+        var parser = TestMapping.CreateParser(c => c.GeoLocationResolver = (_, _, _) => ValueTask.FromResult<string?>("51.5,-0.12"));
+
+        Assert.Single(parser.BuildSort("-number"));
+        Assert.Single(parser.BuildAggregations("terms:keyword"));
+        Assert.Throws<InvalidOperationException>(() => parser.BuildQuery("geo:London"));
+    }
+
+    [Fact]
     public async Task BuildQueryAsync_WithRuntimeFieldResolverAndUnresolvedFieldsDisallowed_AcceptsRuntimeFields()
     {
         var parser = TestMapping.CreateParser(c =>

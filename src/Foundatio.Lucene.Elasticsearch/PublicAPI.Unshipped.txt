@@ -239,3 +239,11 @@ virtual Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver.Invoke(string! field
 ~override Foundatio.Lucene.Elasticsearch.NestedFilterContext.ToString() -> string
 Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EnableRuntimeFieldResolver.get -> bool?
 Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EnableRuntimeFieldResolver.init -> void
+const Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.AggregationKey = "@Aggregation" -> string!
+const Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SortKey = "@Sort" -> string!
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.GetAggregation(this Foundatio.Lucene.Ast.QueryNode! node) -> Elastic.Clients.Elasticsearch.Aggregations.Aggregation?
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.GetSort(this Foundatio.Lucene.Ast.QueryNode! node) -> Elastic.Clients.Elasticsearch.SortOptions?
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SetAggregation(this Foundatio.Lucene.Ast.QueryNode! node, Elastic.Clients.Elasticsearch.Aggregations.Aggregation? aggregation) -> void
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SetSort(this Foundatio.Lucene.Ast.QueryNode! node, Elastic.Clients.Elasticsearch.SortOptions? sort) -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateAggregationsAsync(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateSortAsync(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>

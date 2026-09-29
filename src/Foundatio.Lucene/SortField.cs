@@ -56,6 +56,11 @@ public sealed class SortField
     /// </summary>
     public IDictionary<string, object?> Data => _data ??= new Dictionary<string, object?>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Gets a metadata value, or the default when it isn't set.
+    /// </summary>
+    public T? GetData<T>(string key) => _data is not null && _data.TryGetValue(key, out var value) && value is T typed ? typed : default;
+
     /// <inheritdoc/>
     public override string ToString() => (Direction == SortDirection.Descending ? "-" : "") + Field;
 }
@@ -138,6 +143,10 @@ public static class SortExpression
                 when value.UnescapedTerm.Equals("asc", StringComparison.OrdinalIgnoreCase) || value.UnescapedTerm.Equals("desc", StringComparison.OrdinalIgnoreCase):
                 Add(field.Field, value.UnescapedTerm.Equals("desc", StringComparison.OrdinalIgnoreCase) ? SortDirection.Descending : SortDirection.Ascending, field, fields);
                 break;
+            case FieldQueryNode { HasData: true } field:
+                // A visitor attached data (for example a provider-specific sort), so the provider interprets the value.
+                Add(field.Field, direction, field, fields);
+                break;
             default:
                 result.AddError($"Sort expressions only support field names, optionally prefixed with + or - or suffixed with :asc or :desc ({QueryStringBuilder.ToQueryString(node)}).", node.StartPosition);
                 break;
@@ -146,7 +155,14 @@ public static class SortExpression
 
     private static void Add(string field, SortDirection direction, QueryNode node, List<SortField> fields)
     {
-        fields.Add(new SortField(field, direction) { Position = node.StartPosition });
+        var sortField = new SortField(field, direction) { Position = node.StartPosition };
+        if (node.HasData)
+        {
+            foreach (var (key, value) in node.Data)
+                sortField.Data[key] = value;
+        }
+
+        fields.Add(sortField);
     }
 
     internal static void AddOrderingError(QueryNode? node, string kind, QueryValidationResult result)

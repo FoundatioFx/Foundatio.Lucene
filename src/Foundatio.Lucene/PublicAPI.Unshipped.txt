@@ -845,3 +845,10 @@ virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.
 virtual Foundatio.Lucene.Visitors.ShouldSkipIncludeFunc.Invoke(Foundatio.Lucene.Ast.FieldQueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> bool
 ~override Foundatio.Lucene.ParseError.Equals(object obj) -> bool
 ~override Foundatio.Lucene.Token.Equals(object obj) -> bool
+Foundatio.Lucene.AggregationExpression.GetData<T>(string! key) -> T?
+Foundatio.Lucene.QueryParserConfiguration.AddAggregationVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AddQueryVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AddSortVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AggregationVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
+Foundatio.Lucene.QueryParserConfiguration.SortVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
+Foundatio.Lucene.SortField.GetData<T>(string! key) -> T?

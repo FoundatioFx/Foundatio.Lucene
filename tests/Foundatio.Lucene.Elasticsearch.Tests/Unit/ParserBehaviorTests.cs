@@ -55,7 +55,6 @@ public class ParserBehaviorTests
     [
         ["include resolver", (Action<ElasticsearchQueryParserConfiguration>)(c => c.IncludeResolver = (_, _, _) => ValueTask.FromResult<string?>(null))],
         ["async field resolver", (Action<ElasticsearchQueryParserConfiguration>)(c => c.AsyncFieldResolver = (f, _, _) => ValueTask.FromResult<string?>(f))],
-        ["geo location resolver", (Action<ElasticsearchQueryParserConfiguration>)(c => c.GeoLocationResolver = (_, _, _) => ValueTask.FromResult<string?>(null))],
         ["runtime field resolver", (Action<ElasticsearchQueryParserConfiguration>)(c => c.RuntimeFieldResolver = (_, _, _) => ValueTask.FromResult<ElasticRuntimeField?>(null))],
         ["nested filter resolver", (Action<ElasticsearchQueryParserConfiguration>)(c => c.NestedFilterResolver = (_, _, _) => ValueTask.FromResult<Query?>(null))]
     ];
@@ -73,6 +72,8 @@ public class ParserBehaviorTests
         Assert.Throws<InvalidOperationException>(() => parser.ValidateAggregations("terms:keyword"));
         Assert.Throws<InvalidOperationException>(() => parser.ValidateSort("keyword"));
         Assert.True((await parser.ValidateQueryAsync("keyword:x", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
+        Assert.True((await parser.ValidateAggregationsAsync("terms:keyword", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
+        Assert.True((await parser.ValidateSortAsync("keyword", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
         Assert.NotNull(await parser.BuildQueryAsync("keyword:x", cancellationToken: TestContext.Current.CancellationToken));
         Assert.NotEmpty(await parser.BuildAggregationsAsync("terms:keyword", cancellationToken: TestContext.Current.CancellationToken));
         Assert.NotEmpty(await parser.BuildSortAsync("keyword", cancellationToken: TestContext.Current.CancellationToken));

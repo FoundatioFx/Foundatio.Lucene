@@ -52,7 +52,7 @@ public class BuildSearchTests
 
         Assert.Throws<QueryValidationException>(() => parser.BuildSearch("keyword:a", "foo:bar"));
         Assert.Throws<QueryValidationException>(() => parser.BuildSearch("keyword:a", sort: "!keyword"));
-        Assert.Throws<QueryParseException>(() => parser.BuildSearch("keyword:(a"));
+        Assert.Throws<QueryValidationException>(() => parser.BuildSearch("keyword:(a"));
     }
 
     [Fact]

@@ -13,6 +13,12 @@ internal static class ElasticsearchSortBuilder
         var sorts = new List<SortOptions>(fields.Count);
         foreach (var field in fields)
         {
+            if (field.GetData<SortOptions>(ElasticsearchNodeExtensions.SortKey) is { } custom)
+            {
+                sorts.Add(custom);
+                continue;
+            }
+
             var order = field.Direction == SortDirection.Descending ? SortOrder.Desc : SortOrder.Asc;
             switch (field.Field)
             {

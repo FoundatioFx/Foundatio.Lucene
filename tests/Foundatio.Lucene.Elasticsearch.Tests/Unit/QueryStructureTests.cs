@@ -145,11 +145,11 @@ public class QueryStructureTests
     [Theory]
     [InlineData("NOT +keyword:value1")]
     [InlineData("NOT -keyword:value1")]
-    public void BuildQuery_WithContradictoryPrefixes_ThrowsParseException(string query)
+    public void BuildQuery_WithContradictoryPrefixes_ThrowsValidationException(string query)
     {
         var parser = TestMapping.CreateParser();
 
-        var exception = Assert.Throws<QueryParseException>(() => parser.BuildQuery(query));
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildQuery(query));
 
         Assert.Contains("Unexpected operator", exception.Message);
     }
@@ -272,11 +272,11 @@ public class QueryStructureTests
     [InlineData("keyword:-(a OR b)")]
     [InlineData("number:-[1 TO 5]")]
     [InlineData("number:NOT [1 TO 2]")]
-    public void BuildQuery_WithPostColonOperator_ThrowsParseException(string query)
+    public void BuildQuery_WithPostColonOperator_ThrowsValidationException(string query)
     {
         var parser = TestMapping.CreateParser();
 
-        var exception = Assert.Throws<QueryParseException>(() => parser.BuildQuery(query));
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildQuery(query));
 
         Assert.Contains("before the field name", exception.Message);
         Assert.False(parser.ValidateQuery(query).IsValid);
@@ -312,7 +312,7 @@ public class QueryStructureTests
         var result = await parser.TryBuildQueryAsync("keyword:(a", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFailure);
-        Assert.IsType<QueryParseException>(result.Error);
+        Assert.IsType<QueryValidationException>(result.Error);
     }
 
     [Fact]

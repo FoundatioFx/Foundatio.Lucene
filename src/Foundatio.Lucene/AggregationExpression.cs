@@ -133,6 +133,11 @@ public sealed class AggregationExpression
     public IDictionary<string, object?> Data => _data ??= new Dictionary<string, object?>(StringComparer.Ordinal);
 
     /// <summary>
+    /// Gets a metadata value, or the default when it isn't set.
+    /// </summary>
+    public T? GetData<T>(string key) => _data is not null && _data.TryGetValue(key, out var value) && value is T typed ? typed : default;
+
+    /// <summary>
     /// The conventional name of the aggregation: <c>{type}_{original field}</c>, or <c>tophits</c>.
     /// </summary>
     public string Name => string.Equals(Type, AggregationTypes.TopHits, StringComparison.OrdinalIgnoreCase) ? AggregationTypes.TopHits : $"{Type}_{OriginalField}";
@@ -233,7 +238,7 @@ public static class AggregationExpressionParser
                 AddModifier(parent, field, isExcluded: false, result);
                 break;
             case FieldQueryNode field:
-                if (CreateAggregation(field, order, result) is { } aggregation)
+                if (WithData(CreateAggregation(field, order, result), field) is { } aggregation)
                     aggregations.Add(aggregation);
                 break;
             default:
@@ -245,7 +250,9 @@ public static class AggregationExpressionParser
     private static AggregationExpression? CreateAggregation(FieldQueryNode node, SortDirection? order, QueryValidationResult result)
     {
         string type = node.Field.ToLowerInvariant();
-        if (!AggregationTypes.IsKnown(type))
+        // Unknown types are allowed when a visitor attached data to the node (for example a provider-specific
+        // aggregation); the provider reports them if it can't build them.
+        if (!AggregationTypes.IsKnown(type) && !node.HasData)
         {
             result.AddError($"Unknown aggregation type '{node.Field}'.", node.StartPosition, QueryErrorCode.OperationNotAllowed);
             return null;
@@ -275,6 +282,17 @@ public static class AggregationExpressionParser
                 result.AddError($"Aggregations ({type}) must specify a field.", node.StartPosition);
                 return null;
         }
+    }
+
+    private static AggregationExpression? WithData(AggregationExpression? aggregation, QueryNode node)
+    {
+        if (aggregation is not null && node.HasData)
+        {
+            foreach (var (key, value) in node.Data)
+                aggregation.Data[key] = value;
+        }
+
+        return aggregation;
     }
 
     private static AggregationExpression? CreateGroupAggregation(string type, FieldQueryNode node, GroupNode group, SortDirection? order, QueryValidationResult result)
@@ -338,7 +356,7 @@ public static class AggregationExpressionParser
                 _ => (SortDirection?)null
             };
 
-            if (CreateAggregation(subField, subOrder, result) is { } sub)
+            if (WithData(CreateAggregation(subField, subOrder, result), subField) is { } sub)
                 aggregation.Aggregations.Add(sub);
         }
 

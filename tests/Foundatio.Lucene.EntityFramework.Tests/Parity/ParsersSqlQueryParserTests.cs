@@ -35,7 +35,7 @@ public partial class ParsersSqlQueryParserTests : IDisposable
         var parser = ParsersSampleContext.CreateParser();
 
         var validation = parser.ValidateQuery<WorkItem>(query, Model);
-        var ex = Assert.Throws<QueryParseException>(() => parser.BuildFilter<WorkItem>(query, Model));
+        var ex = Assert.Throws<QueryValidationException>(() => parser.BuildFilter<WorkItem>(query, Model));
 
         var error = Assert.Single(validation.ValidationErrors);
         Assert.Contains("before the field name", error.Message);

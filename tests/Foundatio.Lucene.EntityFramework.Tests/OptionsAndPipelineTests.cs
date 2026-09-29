@@ -167,7 +167,21 @@ public class OptionsAndPipelineTests : IDisposable
         var success = await parser.TryBuildFilterAsync<Employee>("who:\"Jane Smith\"", cancellationToken: TestContext.Current.CancellationToken);
         var failure = await parser.TryBuildFilterAsync<Employee>("who:(x", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(["Jane Smith"], _db.Employees.Where(success.Value).Names());
-        Assert.IsType<QueryParseException>(failure.Error);
+        Assert.IsType<QueryValidationException>(failure.Error);
+    }
+
+    [Fact]
+    public async Task ValidateSortAsync_WithAsyncFieldResolver_ResolvesFieldsFirst()
+    {
+        var parser = new EntityFrameworkQueryParser(c =>
+        {
+            c.UseModel(_db.Model);
+            c.AsyncFieldResolver = (field, _, _) => ValueTask.FromResult<string?>(field == "who" ? "Name" : null);
+        });
+
+        Assert.Throws<InvalidOperationException>(() => parser.ValidateSort<Employee>("-who"));
+        Assert.True((await parser.ValidateSortAsync<Employee>("-who", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
+        Assert.False((await parser.ValidateSortAsync<Employee>("-nobody", cancellationToken: TestContext.Current.CancellationToken)).IsValid);
     }
 
     [Fact]
@@ -245,7 +259,7 @@ public class OptionsAndPipelineTests : IDisposable
         var valid = parser.TryBuildFilter<Employee>("age:30");
 
         Assert.False(syntax.IsSuccess);
-        Assert.IsType<QueryParseException>(syntax.Error);
+        Assert.IsType<QueryValidationException>(syntax.Error);
         Assert.False(invalid.IsSuccess);
         Assert.Equal(QueryErrorCode.TypeConversionError, Assert.IsType<QueryValidationException>(invalid.Error).Errors.Single().Code);
         Assert.True(valid.IsSuccess);

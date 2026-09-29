@@ -314,12 +314,46 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
     }
 
     /// <summary>
+    /// Resolves asynchronous dependencies, then validates an aggregation expression without building it.
+    /// </summary>
+    public async ValueTask<QueryValidationResult> ValidateAggregationsAsync(string aggregations, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var context = CreateContext(options);
+        try
+        {
+            await BuildAggregationsAsync(aggregations, context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (QueryValidationException)
+        {
+        }
+
+        return FinishValidation(context);
+    }
+
+    /// <summary>
     /// Validates a sort expression without building it.
     /// </summary>
     public QueryValidationResult ValidateSort(string sort, ElasticsearchQueryOptions? options = null)
     {
         var context = CreateContext(options);
         return CatchValidation(context, () => BuildSort(sort, context));
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then validates a sort expression without building it.
+    /// </summary>
+    public async ValueTask<QueryValidationResult> ValidateSortAsync(string sort, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var context = CreateContext(options);
+        try
+        {
+            await BuildSortAsync(sort, context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (QueryValidationException)
+        {
+        }
+
+        return FinishValidation(context);
     }
 
     private static QueryValidationResult CatchValidation(ElasticsearchQueryVisitorContext context, Action action)
@@ -332,6 +366,11 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
         {
         }
 
+        return FinishValidation(context);
+    }
+
+    private static QueryValidationResult FinishValidation(ElasticsearchQueryVisitorContext context)
+    {
         if (context.ValidationOptions is { ShouldThrow: true })
             context.ValidationResult.ThrowIfInvalid();
 
@@ -350,7 +389,7 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
     {
         return base.RequiresResolution(context)
             || context.MappingResolver is { CanResolveSynchronously: false }
-            || context.GeoLocationResolver is not null
+            || (context.GeoLocationResolver is not null && context.QueryType == QueryType.Query)
             || context.RuntimeFieldResolver is not null
             || context.NestedFilterResolver is not null;
     }

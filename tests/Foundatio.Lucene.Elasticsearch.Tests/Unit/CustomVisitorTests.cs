@@ -1,4 +1,5 @@
 using Elastic.Clients.Elasticsearch;
+using Elastic.Clients.Elasticsearch.Aggregations;
 using Elastic.Clients.Elasticsearch.QueryDsl;
 using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Elasticsearch.Tests.Utility;
@@ -134,6 +135,67 @@ public class CustomVisitorTests
         Assert.Equal(["user"], recorder.Fields);
     }
 
+    [Fact]
+    public void Configuration_WithAddedVisitor_RunsItOnQueriesSortsAndAggregations()
+    {
+        var recorder = new FieldRecordingVisitor();
+        var parser = TestMapping.CreateParser(c => c.AddVisitor(recorder));
+
+        parser.BuildQuery("keyword:x");
+        parser.BuildSort("number:desc");
+        parser.BuildAggregations("terms:keyword");
+
+        Assert.Equal(["keyword", "number", "terms"], recorder.Fields);
+        Assert.Equal([QueryType.Query, QueryType.Sort, QueryType.Aggregation], recorder.QueryTypes);
+    }
+
+    [Fact]
+    public void Configuration_WithQueryVisitor_DoesNotRunItOnSortsOrAggregations()
+    {
+        var recorder = new FieldRecordingVisitor();
+        var parser = TestMapping.CreateParser(c => c.AddQueryVisitor(recorder));
+
+        parser.BuildSort("number:desc");
+        parser.BuildAggregations("terms:keyword");
+
+        Assert.Empty(recorder.Fields);
+    }
+
+    [Fact]
+    public void BuildSort_WithVisitorSettingSort_UsesCustomSort()
+    {
+        var parser = TestMapping.CreateParser(c => c.AddSortVisitor(new GeoDistanceSortVisitor()));
+
+        var sorts = parser.BuildSort("-number geo:\"51.5,-0.12\"");
+
+        Assert.Equal(2, sorts.Count);
+        ElasticAssert.Json("{'number':{'order':'desc','unmapped_type':'integer'}}", sorts.First());
+        ElasticAssert.Json("{'_geo_distance':{'order':'asc','geo':{'lat':51.5,'lon':-0.12}}}", sorts.Last());
+    }
+
+    [Fact]
+    public void BuildAggregations_WithVisitorSettingAggregation_BuildsUnknownAggregationType()
+    {
+        var parser = TestMapping.CreateParser(c => c.AddAggregationVisitor(new RareTermsVisitor()));
+
+        var aggregations = parser.BuildAggregations("rare:keyword terms:(number rare:children.name)");
+
+        ElasticAssert.Json("{'rare_terms':{'field':'keyword'}}", aggregations["rare_keyword"]);
+        ElasticAssert.Json(
+            "{'terms':{'field':'number'},'aggregations':{'nested_children':{'nested':{'path':'children'},'aggregations':{'rare_children.name':{'rare_terms':{'field':'children.name'}}}}},'meta':{'@field_type':'integer'}}",
+            aggregations["terms_number"]);
+    }
+
+    [Fact]
+    public void BuildAggregations_WithUnknownTypeAndNoVisitor_ThrowsValidationError()
+    {
+        var parser = TestMapping.CreateParser();
+
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildAggregations("rare:keyword"));
+
+        Assert.Contains("Unknown aggregation type 'rare'", exception.Message);
+    }
+
     private static ElasticsearchQueryParser CreateParser(Action<ElasticsearchQueryParserConfiguration>? configure = null)
     {
         return new ElasticsearchQueryParser(c =>
@@ -209,9 +271,50 @@ public class CustomVisitorTests
     {
         public List<string> Fields { get; } = [];
 
+        public List<QueryType> QueryTypes { get; } = [];
+
         protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
         {
             Fields.Add(node.Field);
+            QueryTypes.Add(context.QueryType);
+            return base.Visit(node, context);
+        }
+    }
+
+    /// <summary>
+    /// Sorts by distance from the point in <c>geo:"lat,lon"</c>.
+    /// </summary>
+    private sealed class GeoDistanceSortVisitor : QueryVisitor
+    {
+        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+        {
+            if (node.Field != "geo" || node.Query is not PhraseNode point)
+                return base.Visit(node, context);
+
+            string[] parts = point.Phrase.Split(',');
+            node.SetSort(new SortOptions
+            {
+                GeoDistance = new GeoDistanceSort
+                {
+                    Field = "geo",
+                    Location = [GeoLocation.LatitudeLongitude(new LatLonGeoLocation { Lat = double.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture), Lon = double.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture) })],
+                    Order = SortOrder.Asc
+                }
+            });
+            return node;
+        }
+    }
+
+    /// <summary>
+    /// Builds a <c>rare_terms</c> aggregation for <c>rare:field</c>, a type the provider doesn't know.
+    /// </summary>
+    private sealed class RareTermsVisitor : QueryVisitor
+    {
+        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+        {
+            if (node.Field == "rare" && node.Query is TermNode field)
+                node.SetAggregation(new RareTermsAggregation { Field = field.UnescapedTerm });
+
             return base.Visit(node, context);
         }
     }

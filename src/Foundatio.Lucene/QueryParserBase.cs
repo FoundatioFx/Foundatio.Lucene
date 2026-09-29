@@ -56,12 +56,23 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     }
 
     /// <summary>
-    /// Parses query text, throwing a <see cref="QueryParseException"/> when it has syntax errors.
+    /// Parses query text. Syntax errors are added to the context's validation result (with their positions and
+    /// parse error codes (100-199)) and thrown as a <see cref="QueryValidationException"/>, like
+    /// every other problem with the query, so callers handle all invalid input with one exception type.
     /// </summary>
     protected static QueryDocument ParseQuery(string query, TContext context)
     {
         ArgumentNullException.ThrowIfNull(query);
-        return LuceneQuery.Parse(query, context.ParserOptions).GetDocumentOrThrow();
+        var parsed = LuceneQuery.Parse(query, context.ParserOptions);
+        if (parsed.IsSuccess)
+            return parsed.Document;
+
+        var result = BeginExpression(context, QueryType.Query);
+        foreach (var error in parsed.Errors)
+            result.AddError(error.Message, error.Position, error.Code);
+
+        result.ThrowIfInvalid();
+        return parsed.Document;
     }
 
     /// <summary>
@@ -72,10 +83,9 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     protected QueryDocument ProcessQuery(QueryDocument document, TContext context, bool clone)
     {
         ArgumentNullException.ThrowIfNull(document);
+        BeginExpression(context, QueryType.Query);
         EnsureResolved(context);
 
-        context.QueryType = QueryType.Query;
-        context.ValidationResult.QueryType = QueryType.Query;
         if (clone)
             document = document.CloneDocument();
 
@@ -92,10 +102,8 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     protected QueryValidationResult ValidateQuery(string query, TContext context)
     {
         ArgumentNullException.ThrowIfNull(query);
+        BeginExpression(context, QueryType.Query);
         EnsureResolved(context);
-
-        context.QueryType = QueryType.Query;
-        context.ValidationResult.QueryType = QueryType.Query;
 
         var parsed = LuceneQuery.Parse(query, context.ParserOptions);
         foreach (var error in parsed.Errors)
@@ -136,9 +144,9 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     protected List<SortField> ProcessSort(string sort, TContext context)
     {
         ArgumentNullException.ThrowIfNull(sort);
+        var result = BeginExpression(context, QueryType.Sort);
         EnsureResolved(context);
 
-        var result = BeginExpression(context, QueryType.Sort);
         var document = ParseExpression(sort, context);
         var fields = SortExpression.FromDocument(document, result);
         foreach (var field in fields)
@@ -187,9 +195,9 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     protected List<AggregationExpression> ProcessAggregations(string aggregations, TContext context)
     {
         ArgumentNullException.ThrowIfNull(aggregations);
+        var result = BeginExpression(context, QueryType.Aggregation);
         EnsureResolved(context);
 
-        var result = BeginExpression(context, QueryType.Aggregation);
         var document = ParseExpression(aggregations, context);
         var expressions = AggregationExpressionParser.FromDocument(document, result);
         ResolveAggregationFields(expressions, context, result);
@@ -238,7 +246,10 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             result.AddError(error.Message, error.Position, error.Code);
 
         result.ThrowIfInvalid();
-        return (QueryDocument)IncludeVisitor.Instance.Accept(parsed.Document, context);
+        var document = IncludeVisitor.Instance.Accept(parsed.Document, context);
+        var visitor = context.QueryType == QueryType.Sort ? BaseConfiguration.SortVisitor : BaseConfiguration.AggregationVisitor;
+        return visitor.Accept(document, context) as QueryDocument
+            ?? throw new InvalidOperationException("A visitor replaced the expression document with a different node type.");
     }
 
     private static void ResolveAggregationFields(List<AggregationExpression> aggregations, TContext context, QueryValidationResult result)
@@ -334,7 +345,8 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
 
     /// <summary>
     /// Whether the synchronous build methods can be used with this context. Providers override this to require the
-    /// resolution phase when they have asynchronous dependencies of their own.
+    /// resolution phase when they have asynchronous dependencies of their own; <see cref="IQueryVisitorContext.QueryType"/>
+    /// is set to the kind of expression being built.
     /// </summary>
     protected virtual bool RequiresResolution(TContext context)
     {
