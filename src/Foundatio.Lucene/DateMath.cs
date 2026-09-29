@@ -12,9 +12,12 @@ namespace Foundatio.Lucene;
 /// <c>+N</c>/<c>-N</c> followed by a unit adds or subtracts, and a trailing <c>/unit</c> rounds. Units are
 /// <c>y</c> (years), <c>M</c> (months), <c>w</c> (weeks), <c>d</c> (days), <c>h</c>/<c>H</c> (hours),
 /// <c>m</c> (minutes), and <c>s</c> (seconds); they are case-sensitive.</para>
-/// <para>Arithmetic and rounding happen on the local wall clock of the time zone, so <c>now/d</c> in
-/// America/Chicago is midnight in Chicago and adding days across a daylight-saving change keeps the time of day.
-/// Dates without an offset are interpreted in the time zone using the offset in effect on that date.</para>
+/// <para>Rounding and adding years, months, weeks, or days happen on the local wall clock of the time zone, so
+/// <c>now/d</c> in America/Chicago is midnight in Chicago and adding days across a daylight-saving change keeps the
+/// time of day. Hours, minutes, and seconds are added to the instant, as Elasticsearch does. Dates without an
+/// offset are interpreted in the time zone using the offset in effect on that date. A wall-clock time skipped by a
+/// daylight-saving change moves forward by the length of the gap, and a repeated wall-clock time keeps the current
+/// offset when it can and otherwise uses the earlier one.</para>
 /// <para>For upper limits (<c>isUpperLimit</c>) rounding goes to the end of the period, and a date that
 /// omits components is rounded up the same way Elasticsearch does: <c>2024-01</c> becomes the last instant of
 /// January.</para>
@@ -113,11 +116,9 @@ public static class DateMath
         if (string.IsNullOrEmpty(expression))
             return false;
 
-        if (expression.StartsWith("now", StringComparison.Ordinal))
-            return true;
-
         var match = MatchExpression(expression);
-        return match is { Success: true } && (match.Groups["ops"].Length > 0 || expression.Contains("||", StringComparison.Ordinal));
+        return match is { Success: true }
+            && (match.Groups["now"].Success || match.Groups["ops"].Length > 0 || expression.Contains("||", StringComparison.Ordinal));
     }
 
     private static Match? MatchExpression(string expression)
@@ -145,14 +146,14 @@ public static class DateMath
         if (match is not { Success: true })
             return TryParseFallback(expression, now, timeZone, isUpperLimit, out result);
 
-        DateTime local;
-        Func<DateTime, TimeSpan> offsetFor;
+        Clock clock;
+        DateTime local = default;
         var precision = Precision.Instant;
+        bool isNow = match.Groups["now"].Success;
 
-        if (match.Groups["now"].Success)
+        if (isNow)
         {
-            local = timeZone is null ? now.DateTime : TimeZoneInfo.ConvertTime(now, timeZone).DateTime;
-            offsetFor = timeZone is null ? _ => now.Offset : ZoneOffset(timeZone);
+            clock = new Clock(timeZone, now.Offset);
         }
         else
         {
@@ -164,27 +165,22 @@ public static class DateMath
             {
                 if (!TryParseOffset(offsetGroup.Value, out var fixedOffset))
                     return false;
-                offsetFor = _ => fixedOffset;
+                clock = new Clock(null, fixedOffset);
             }
             else
             {
-                offsetFor = timeZone is null ? _ => now.Offset : ZoneOffset(timeZone);
+                clock = new Clock(timeZone, now.Offset);
             }
         }
 
         string operations = match.Groups["ops"].Value;
         try
         {
-            if (operations.Length > 0)
-            {
-                local = ApplyOperations(local, operations, isUpperLimit);
-            }
-            else if (isUpperLimit && precision != Precision.Instant)
-            {
+            if (operations.Length == 0 && isUpperLimit && precision != Precision.Instant)
                 local = RoundUp(local, precision);
-            }
 
-            result = new DateTimeOffset(local, offsetFor(local));
+            var anchor = isNow ? clock.FromInstant(now) : clock.FromLocal(local);
+            result = ApplyOperations(anchor, operations, isUpperLimit, clock);
             return true;
         }
         catch (ArgumentException)
@@ -265,18 +261,6 @@ public static class DateMath
         return true;
     }
 
-    private static Func<DateTime, TimeSpan> ZoneOffset(TimeZoneInfo timeZone)
-    {
-        return local =>
-        {
-            // A wall-clock time skipped by a daylight-saving transition does not exist; use the offset after it.
-            if (timeZone.IsInvalidTime(local))
-                return timeZone.GetUtcOffset(local.AddHours(1));
-
-            return timeZone.GetUtcOffset(local);
-        };
-    }
-
     private static bool TryParseFallback(string expression, DateTimeOffset now, TimeZoneInfo? timeZone, bool isUpperLimit, out DateTimeOffset result)
     {
         result = default;
@@ -298,8 +282,15 @@ public static class DateMath
             local = RoundUp(local, Precision.Day);
 
         local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-        result = new DateTimeOffset(local, timeZone is null ? now.Offset : ZoneOffset(timeZone)(local));
-        return true;
+        try
+        {
+            result = new Clock(timeZone, now.Offset).FromLocal(local);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private static bool ContainsYear(string expression)
@@ -328,10 +319,10 @@ public static class DateMath
     public static DateTimeOffset ApplyOperations(DateTimeOffset baseTime, string operations, bool isUpperLimit = false)
     {
         ArgumentNullException.ThrowIfNull(operations);
-        return new DateTimeOffset(ApplyOperations(baseTime.DateTime, operations, isUpperLimit), baseTime.Offset);
+        return ApplyOperations(baseTime, operations, isUpperLimit, new Clock(null, baseTime.Offset));
     }
 
-    private static DateTime ApplyOperations(DateTime baseTime, string operations, bool isUpperLimit)
+    private static DateTimeOffset ApplyOperations(DateTimeOffset baseTime, string operations, bool isUpperLimit, Clock clock)
     {
         if (operations.Length == 0)
             return baseTime;
@@ -359,15 +350,31 @@ public static class DateMath
                 if (amountText.Length > 0)
                     throw new ArgumentException("Rounding does not take an amount.", nameof(operations));
 
-                result = isUpperLimit ? RoundUp(result, unit) : RoundDown(result, unit);
+                result = clock.FromLocal(isUpperLimit ? RoundUp(result.DateTime, unit) : RoundDown(result.DateTime, unit), result.Offset);
                 continue;
             }
 
             int amount = amountText.Length == 0 ? 1 : ParseInt(amountText);
-            result = Add(result, operation == "-" ? -amount : amount, unit);
+            result = Add(result, operation == "-" ? -amount : amount, unit, clock);
         }
 
         return result;
+    }
+
+    private static DateTimeOffset Add(DateTimeOffset date, long amount, string unit, Clock clock)
+    {
+        if (unit is not ("h" or "H" or "m" or "s"))
+            return clock.FromLocal(Add(date.DateTime, amount, unit), date.Offset);
+
+        try
+        {
+            var instant = unit == "s" ? date.AddSeconds(amount) : unit == "m" ? date.AddMinutes(amount) : date.AddHours(amount);
+            return clock.FromInstant(instant);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new ArgumentException($"Date math result is out of range: {amount}{unit}", nameof(amount), ex);
+        }
     }
 
     /// <summary>
@@ -456,5 +463,40 @@ public static class DateMath
             Precision.Second => RoundUp(date, "s"),
             _ => date
         };
+    }
+
+    /// <summary>
+    /// Converts between local wall-clock times and instants in a time zone, or at a fixed offset when there is none.
+    /// </summary>
+    private readonly struct Clock(TimeZoneInfo? timeZone, TimeSpan fixedOffset)
+    {
+        public DateTimeOffset FromInstant(DateTimeOffset instant)
+        {
+            return timeZone is null ? instant.ToOffset(fixedOffset) : TimeZoneInfo.ConvertTime(instant, timeZone);
+        }
+
+        public DateTimeOffset FromLocal(DateTime local, TimeSpan? preferredOffset = null)
+        {
+            if (timeZone is null)
+                return new DateTimeOffset(local, fixedOffset);
+
+            if (timeZone.IsAmbiguousTime(local))
+            {
+                var offsets = timeZone.GetAmbiguousTimeOffsets(local);
+                return new DateTimeOffset(local, preferredOffset is { } preferred && offsets.Contains(preferred) ? preferred : offsets.Max());
+            }
+
+            if (timeZone.IsInvalidTime(local))
+            {
+                var beforeGap = local;
+                do
+                    beforeGap = beforeGap.AddMinutes(-15);
+                while (timeZone.IsInvalidTime(beforeGap));
+
+                return TimeZoneInfo.ConvertTime(new DateTimeOffset(local, timeZone.GetUtcOffset(beforeGap)), timeZone);
+            }
+
+            return new DateTimeOffset(local, timeZone.GetUtcOffset(local));
+        }
     }
 }

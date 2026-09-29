@@ -92,6 +92,8 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     protected QueryValidationResult ValidateQuery(string query, TContext context)
     {
         ArgumentNullException.ThrowIfNull(query);
+        EnsureResolved(context);
+
         context.QueryType = QueryType.Query;
         context.ValidationResult.QueryType = QueryType.Query;
 
@@ -115,6 +117,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
         if (parsed.IsSuccess)
             await ResolveQueryAsync(parsed.Document, context, cancellationToken).ConfigureAwait(false);
 
+        context.IsResolved = true;
         return ValidateQuery(query, context);
     }
 
@@ -163,7 +166,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
         var parsed = LuceneQuery.Parse(sort, context.ParserOptions);
         if (parsed.IsSuccess)
         {
-            var includeDocuments = await ResolveIncludesAsync(parsed.Document, context, cancellationToken).ConfigureAwait(false);
+            var includeDocuments = await ResolveIncludesAsync(parsed.Document, QueryType.Sort, context, cancellationToken).ConfigureAwait(false);
             var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var document in includeDocuments.Prepend(parsed.Document))
                 foreach (var field in SortExpression.FromDocument(document, new QueryValidationResult()))
@@ -204,7 +207,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
         var parsed = LuceneQuery.Parse(aggregations, context.ParserOptions);
         if (parsed.IsSuccess)
         {
-            var includeDocuments = await ResolveIncludesAsync(parsed.Document, context, cancellationToken).ConfigureAwait(false);
+            var includeDocuments = await ResolveIncludesAsync(parsed.Document, QueryType.Aggregation, context, cancellationToken).ConfigureAwait(false);
             var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var document in includeDocuments.Prepend(parsed.Document))
                 CollectAggregationFields(AggregationExpressionParser.FromDocument(document, new QueryValidationResult()), fields);
@@ -275,12 +278,18 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
         var resolved = new List<string>();
         foreach (string field in fields)
         {
-            FieldResolverQueryVisitor.TryResolveField(field, new QueryVisitorContext
+            string? name;
+            try
             {
-                FieldResolver = context.FieldResolver,
-                FieldMap = context.FieldMap
-            }, out string name);
-            resolved.Add(name);
+                name = context.FieldResolver?.Invoke(field, context);
+            }
+            catch (Exception)
+            {
+                // Resolver failures are reported when the pipeline resolves the field.
+                name = null;
+            }
+
+            resolved.Add(name ?? context.FieldMap?.ResolveField(field) ?? field);
         }
 
         return resolved;
@@ -294,7 +303,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var includeDocuments = await ResolveIncludesAsync(document, context, cancellationToken).ConfigureAwait(false);
+        var includeDocuments = await ResolveIncludesAsync(document, QueryType.Query, context, cancellationToken).ConfigureAwait(false);
         var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var root in includeDocuments.Prepend(document))
         {
@@ -335,11 +344,11 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             throw new InvalidOperationException("The parser is configured with asynchronous resolvers. Use the Async build methods so they can run before the query is built.");
     }
 
-    private static async ValueTask<List<QueryDocument>> ResolveIncludesAsync(QueryDocument document, TContext context, CancellationToken cancellationToken)
+    private static async ValueTask<List<QueryDocument>> ResolveIncludesAsync(QueryDocument document, QueryType type, TContext context, CancellationToken cancellationToken)
     {
         var documents = new List<QueryDocument>();
         var resolver = context.IncludeResolver;
-        if (resolver is null)
+        if (resolver is null && context.Includes is null)
             return documents;
 
         var options = context.ValidationOptions ?? QueryValidationOptions.Default;
@@ -348,7 +357,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new List<string>();
-        CollectIncludeNames(document, pending);
+        CollectIncludeNames(document, type, pending);
 
         int fetched = 0;
         for (int depth = 0; depth < options.MaxIncludeDepth && pending.Count > 0; depth++)
@@ -356,16 +365,21 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             var level = pending.Where(seen.Add).ToList();
             pending = [];
 
-            var missing = level.Where(name => !includes.ContainsKey(name)).ToList();
+            var missing = resolver is null ? [] : level.Where(name => !includes.ContainsKey(name)).ToList();
             fetched += missing.Count;
             if (fetched > options.MaxIncludeExpansions)
                 break;
 
-            var results = await Task.WhenAll(missing.Select(name => ResolveIncludeAsync(resolver, name, context, cancellationToken))).ConfigureAwait(false);
-            foreach (var (name, text) in results)
+            if (resolver is not null && missing.Count > 0)
             {
-                if (text is not null)
-                    includes[name] = text;
+                var results = await Task.WhenAll(missing.Select(name => ResolveIncludeAsync(resolver, name, context, cancellationToken))).ConfigureAwait(false);
+                foreach (var (name, text, error) in results)
+                {
+                    if (error is not null)
+                        context.ValidationResult.AddError(error, code: QueryErrorCode.UnresolvedInclude);
+                    else if (text is not null)
+                        includes[name] = text;
+                }
             }
 
             foreach (string name in level)
@@ -375,34 +389,61 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
 
                 var parsed = LuceneQuery.Parse(text, context.ParserOptions);
                 documents.Add(parsed.Document);
-                CollectIncludeNames(parsed.Document, pending);
+                CollectIncludeNames(parsed.Document, type, pending);
             }
         }
 
-        context.Includes = includes;
+        if (resolver is not null)
+            context.Includes = includes;
+
         return documents;
     }
 
-    private static async Task<(string Name, string? Text)> ResolveIncludeAsync(IncludeResolver resolver, string name, TContext context, CancellationToken cancellationToken)
+    private static async Task<(string Name, string? Text, string? Error)> ResolveIncludeAsync(IncludeResolver resolver, string name, TContext context, CancellationToken cancellationToken)
     {
         try
         {
-            return (name, await resolver(name, context, cancellationToken).ConfigureAwait(false));
+            return (name, await resolver(name, context, cancellationToken).ConfigureAwait(false), null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            context.ValidationResult.AddError($"Error in include resolver callback when resolving include ({name}): {ex.Message}", code: QueryErrorCode.UnresolvedInclude);
-            return (name, null);
+            return (name, null, $"Error in include resolver callback when resolving include ({name}): {ex.Message}");
         }
     }
 
-    private static void CollectIncludeNames(QueryNode node, List<string> names)
+    private static void CollectIncludeNames(QueryNode root, QueryType type, List<string> names)
     {
-        node.Walk(n =>
+        var stack = new Stack<QueryNode>();
+        stack.Push(root);
+        while (stack.TryPop(out var node))
         {
-            if (n is FieldQueryNode field && IncludeVisitor.IsInclude(field) && IncludeVisitor.GetIncludeName(field) is { Length: > 0 } name)
-                names.Add(name);
-        });
+            switch (node)
+            {
+                case FieldQueryNode field when IncludeVisitor.IsInclude(field):
+                    if (IncludeVisitor.GetIncludeName(field) is { Length: > 0 } name)
+                        names.Add(name);
+                    break;
+                case FieldQueryNode { Query: { } query } when type != QueryType.Aggregation:
+                    stack.Push(query);
+                    break;
+                case QueryDocument { Query: { } query }:
+                    stack.Push(query);
+                    break;
+                case GroupNode { Query: { } query }:
+                    stack.Push(query);
+                    break;
+                case NotNode { Query: { } query }:
+                    stack.Push(query);
+                    break;
+                case BooleanQueryNode boolean:
+                    for (int i = boolean.Clauses.Count - 1; i >= 0; i--)
+                    {
+                        if (boolean.Clauses[i].Query is { } clauseQuery)
+                            stack.Push(clauseQuery);
+                    }
+                    break;
+            }
+        }
     }
 
     private static async ValueTask ResolveFieldsAsync(IEnumerable<string> fields, TContext context, CancellationToken cancellationToken)
@@ -416,18 +457,22 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
         {
             try
             {
-                return (Name: name, Resolved: await resolver(name, context, cancellationToken).ConfigureAwait(false));
+                return (Name: name, Resolved: await resolver(name, context, cancellationToken).ConfigureAwait(false), Error: (string?)null);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                context.ValidationResult.AddError($"Error in field resolver callback when resolving field ({name}): {ex.Message}", code: QueryErrorCode.UnresolvedField);
-                return (Name: name, Resolved: (string?)null);
+                return (Name: name, Resolved: (string?)null, Error: $"Error in field resolver callback when resolving field ({name}): {ex.Message}");
             }
         })).ConfigureAwait(false);
 
         var resolved = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, value) in results)
+        foreach (var (name, value, error) in results)
+        {
+            if (error is not null)
+                context.ValidationResult.AddError(error, code: QueryErrorCode.UnresolvedField);
+
             resolved[name] = value;
+        }
 
         var previous = context.FieldResolver;
         context.FieldResolver = (field, ctx) => resolved.TryGetValue(field, out string? value) && value is not null

@@ -7,6 +7,8 @@ namespace Foundatio.Lucene.Visitors;
 /// Each expansion is wrapped in a group so it keeps its meaning, and it takes the place of the reference, so a
 /// prefix such as <c>-@include:name</c> applies to the whole expansion. Includes may reference other includes;
 /// recursion, depth, and the total number of expansions are bounded by <see cref="QueryValidationOptions"/>.
+/// In aggregation expressions only references outside of aggregations are expanded: inside an aggregation, such as
+/// <c>terms:(status @include:active)</c>, <c>@include</c> is an aggregation modifier.
 /// </summary>
 public class IncludeVisitor : QueryVisitor
 {
@@ -31,7 +33,7 @@ public class IncludeVisitor : QueryVisitor
     protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
         if (!IsInclude(node))
-            return base.Visit(node, context);
+            return context.QueryType == QueryType.Aggregation ? node : base.Visit(node, context);
 
         string? name = GetIncludeName(node);
         var result = context.ValidationResult;
