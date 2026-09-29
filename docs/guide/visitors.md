@@ -1,30 +1,51 @@
 # Visitors
 
-Visitors are the core mechanism for transforming, validating, and analyzing parsed queries. They implement the visitor pattern to traverse and optionally modify the AST (Abstract Syntax Tree).
+Visitors walk a parsed query tree to analyze or transform it. The parsers run a visitor pipeline on every query before building it, and you can run visitors yourself on any parsed document.
 
-## Built-in Visitors
+## The query pipeline
 
-Foundatio.Lucene includes several built-in visitors:
+Every provider (Elasticsearch, Entity Framework) processes a query in the same order:
 
-| Visitor | Description |
-|---------|-------------|
-| `FieldResolverQueryVisitor` | Maps field aliases using `FieldMap` |
-| `IncludeVisitor` | Expands `@include:name` references |
-| `DateMathEvaluatorVisitor` | Evaluates date math expressions |
-| `ValidationVisitor` | Validates queries against `QueryValidationOptions` |
-| `GetReferencedFieldsVisitor` | Extracts all referenced field names |
+1. **Parse** the text into a `QueryDocument`.
+2. **Resolve** asynchronous dependencies (only in the `Async` methods): include text, field names, and provider data such as index mappings.
+3. **Run the visitor pipeline**, in priority order:
 
-## Using Built-in Visitors
+   | Priority | Visitor | Purpose |
+   |---:|---|---|
+   | 0 | `IncludeVisitor` | expands `@include:name` references |
+   | 0 | your visitors (default priority) | see field names as written |
+   | 10 | `FieldResolverQueryVisitor` | resolves aliases and field names |
+   | 30 | `ValidationVisitor` | records what the query uses and enforces `QueryValidationOptions` |
 
-### Field Resolver
+4. **Build** the provider's query from the processed tree.
 
-Map user-friendly field names to actual field names:
+Documents you pass in are cloned first, so a cached `QueryDocument` is never modified.
 
 ```csharp
-using Foundatio.Lucene;
-using Foundatio.Lucene.Visitors;
+var parser = new ElasticsearchQueryParser(c =>
+{
+    c.AddVisitor(new MyVisitor());                                   // priority 0
+    c.AddVisitor(new AfterResolutionVisitor(), priority: 20);        // after field resolution
+    c.AddVisitorAfter<ValidationVisitor>(new AfterValidationVisitor());
+});
+```
 
-var result = LuceneQuery.Parse("user:john AND created:[now-1d TO now]");
+## Built-in visitors
+
+| Visitor | What it does |
+|---|---|
+| `IncludeVisitor` | Replaces `@include:name` with the parsed text of the include, wrapped in a group so it keeps its meaning. Nested includes are expanded; recursion, depth (`MaxIncludeDepth`), and total expansions (`MaxIncludeExpansions`) are bounded. |
+| `FieldResolverQueryVisitor` | Replaces field names using the context's `FieldResolver` and then `FieldMap`. The name as written is kept on the node (`node.GetOriginalField()`). Fields starting with `@` are left alone. |
+| `ValidationVisitor` | Collects referenced fields, operations, and nesting depth into `context.ValidationResult` and applies `QueryValidationOptions`. |
+| `DateMathEvaluatorVisitor` | Replaces date math (`now-1d/d`) with absolute dates, for data stores that don't evaluate date math themselves. |
+| `InvertQueryVisitor` | Inverts a query while keeping scope fields (such as a tenant id) intact. |
+| `RemoveFieldsQueryVisitor` | Removes clauses that use given fields. |
+| `CleanupQueryVisitor` | Removes redundant parentheses and empty clauses. |
+
+### Field resolution
+
+```csharp
+var document = LuceneQuery.Parse("user:john AND created:[now-1d TO now]").Document;
 
 var fieldMap = new FieldMap
 {
@@ -32,232 +53,87 @@ var fieldMap = new FieldMap
     { "created", "metadata.timestamp" }
 };
 
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
+FieldResolverQueryVisitor.Run(document, fieldMap);
 
-var resolved = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "account.username:john AND metadata.timestamp:[now-1d TO now]"
+string text = QueryStringBuilder.ToQueryString(document);
+// account.username:john AND metadata.timestamp:[now-1d TO now]
 ```
 
-### Date Math Evaluator
+See [Field Mapping](./field-mapping) for resolvers, hierarchical maps, and unresolved fields.
 
-Evaluate date math expressions to actual dates:
-
-```csharp
-var result = LuceneQuery.Parse("created:[now-7d TO now]");
-
-new DateMathEvaluatorVisitor().Evaluate(result.Document);
-
-// Date expressions are now evaluated to actual DateTime values
-```
-
-### Include Visitor
-
-Expand `@include:name` references to saved queries:
+### Includes
 
 ```csharp
-var result = LuceneQuery.Parse("@include:active-filter AND category:books");
-
-// Pre-resolve saved queries (from a database, file, etc.) into a dictionary.
 var includes = new Dictionary<string, string>
 {
-    ["active-filter"] = "status:active AND deleted:false"
+    ["active"] = "status:active AND deleted:false"
 };
 
-result.Document.ExpandIncludes(includes);
-
-var expanded = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "(status:active AND deleted:false) AND category:books"
+var document = LuceneQuery.Parse("@include:active category:books").Document;
+document = IncludeVisitor.ExpandIncludes(document, includes);
+// (status:active AND deleted:false) category:books
 ```
 
-### Get Referenced Fields
+Configure `Includes` (or an async `IncludeResolver`) on a parser to expand includes automatically.
 
-Extract all field names used in a query:
+### Date math
 
 ```csharp
-var result = LuceneQuery.Parse("title:hello AND author:john AND date:[2024-01-01 TO *]");
-
-var fields = result.Document.GetReferencedFields();
-// Returns: ["title", "author", "date"]
+var document = LuceneQuery.Parse("created:[now-7d/d TO now]").Document;
+var evaluated = DateMathEvaluatorVisitor.Evaluate(document, now: DateTimeOffset.UtcNow);
 ```
 
-## Creating Custom Visitors
+See [Date Math](./date-math).
 
-Extend `QueryVisitor` to create custom transformations:
+### Inverting a query
+
+`InvertQueryVisitor` returns the complement of a query within its scope fields:
 
 ```csharp
-using Foundatio.Lucene.Ast;
-using Foundatio.Lucene.Visitors;
+string inverted = InvertQueryVisitor.Run(
+    "organization:1 status:open type:error",
+    nonInvertedFields: ["organization"]);
+// organization:1 (NOT (status:open type:error))
 
-public class LowercaseTermVisitor : QueryVisitor
-{
-    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
-    {
-        // Lowercase the term
-        node.Term = node.Term?.ToLowerInvariant();
-        return node;
-    }
-
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
-    {
-        // Lowercase the field name
-        node.Field = node.Field?.ToLowerInvariant();
-
-        // Visit children (the field's value)
-        return base.Visit(node, context);
-    }
-}
-
-// Usage
-var result = LuceneQuery.Parse("Title:HELLO");
-var visitor = new LowercaseTermVisitor();
-visitor.Accept(result.Document, new QueryVisitorContext());
-
-var output = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "title:hello"
+string withAlternate = InvertQueryVisitor.Run(
+    "organization:1 status:open",
+    nonInvertedFields: ["organization"],
+    alternateInvertedCriteria: "is_deleted:true");
+// organization:1 (is_deleted:true OR (NOT status:open))
 ```
 
-## Visitor Context
-
-Use `IQueryVisitorContext` to pass state between visitors or across the traversal:
+### Removing fields and cleaning up
 
 ```csharp
-public class FieldCollectorVisitor : QueryVisitor
-{
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
-    {
-        // Get or create the field list in context
-        var fields = context.GetValue<List<string>>("CollectedFields") ?? new List<string>();
-        
-        if (node.Field != null && !fields.Contains(node.Field))
-        {
-            fields.Add(node.Field);
-            context.SetValue("CollectedFields", fields);
-        }
-
-        return base.Visit(node, context);
-    }
-}
-
-// Usage
-var context = new QueryVisitorContext();
-new FieldCollectorVisitor().Accept(result.Document, context);
-
-var fields = context.GetValue<List<string>>("CollectedFields");
+RemoveFieldsQueryVisitor.Run("organization:1 status:open", ["organization"]); // status:open
+CleanupQueryVisitor.Run("NOT ((status:fixed))");                             // NOT status:fixed
 ```
 
-## Chaining Visitors
+### Referenced fields
 
-Use `ChainedQueryVisitor` to run multiple visitors in sequence:
+```csharp
+ISet<string> fields = LuceneQuery.Parse("title:hello AND (status:open OR _exists_:tags)").Document.GetReferencedFields();
+// title, status, tags
+```
+
+## Running visitors yourself
+
+Visitors implement `IQueryVisitor` and take a context:
+
+```csharp
+var context = new QueryVisitorContext { FieldMap = fieldMap };
+var result = new MyVisitor().Accept(document, context);
+```
+
+Compose several with `ChainedQueryVisitor`, which runs them in priority order and is safe to share between threads:
 
 ```csharp
 var chain = new ChainedQueryVisitor()
-    .AddVisitor(new FieldResolverQueryVisitor(fieldMap), priority: 10)
-    .AddVisitor(new DateMathEvaluatorVisitor(), priority: 20)
-    .AddVisitor(new LowercaseTermVisitor(), priority: 30)
-    .AddVisitor(new ValidationVisitor(), priority: 100);
+    .AddVisitor(IncludeVisitor.Instance, 0)
+    .AddVisitor(FieldResolverQueryVisitor.Instance, 10)
+    .AddVisitor(new MyVisitor(), 20);
 
-chain.Accept(document, context);
+var processed = chain.Accept(document, context);
 ```
 
-Visitors with lower priority numbers run first.
-
-## Visitor Methods
-
-Override these methods to handle specific node types:
-
-```csharp
-public class MyVisitor : QueryVisitor
-{
-    // Called for the root document
-    protected override QueryNode Visit(QueryDocument node, IQueryVisitorContext context);
-
-    // Simple terms like: hello
-    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context);
-
-    // Quoted phrases like: "hello world"
-    protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context);
-
-    // Field queries like: title:hello
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context);
-
-    // Range queries like: [1 TO 10]
-    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context);
-
-    // Boolean combinations like: a AND b
-    protected override QueryNode Visit(BooleanQueryNode node, IQueryVisitorContext context);
-
-    // Parenthetical groups like: (a OR b)
-    protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context);
-
-    // Negations like: NOT a
-    protected override QueryNode Visit(NotNode node, IQueryVisitorContext context);
-
-    // Existence checks like: _exists_:field
-    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context);
-
-    // Missing checks like: _missing_:field
-    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context);
-
-    // Match all like: *:*
-    protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context);
-
-    // Regex patterns like: /pattern/
-    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context);
-}
-```
-
-## Replacing Nodes
-
-Return a different node to replace the current one:
-
-```csharp
-public class ExpandStatusVisitor : QueryVisitor
-{
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
-    {
-        // Replace status:all with a group of all statuses
-        if (node.Field == "status" && node.Query is TermNode { Term: "all" })
-        {
-            // Re-parsing is simpler and safer than hand-building AST nodes.
-            return LuceneQuery.Parse("(status:active OR status:pending)").Document.Query!;
-        }
-
-        return base.Visit(node, context);
-    }
-}
-
-// Input: "status:all"
-// Output: "(status:active OR status:pending)"
-```
-
-## Removing Nodes
-
-Return `null` to remove a node (parent must handle this):
-
-```csharp
-public class RemoveFieldVisitor : QueryVisitor
-{
-    private readonly HashSet<string> _fieldsToRemove;
-
-    public RemoveFieldVisitor(params string[] fields)
-    {
-        _fieldsToRemove = new HashSet<string>(fields, StringComparer.OrdinalIgnoreCase);
-    }
-
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
-    {
-        if (_fieldsToRemove.Contains(node.Field ?? ""))
-        {
-            return null!;
-        }
-
-        return base.Visit(node, context);
-    }
-}
-```
-
-## Next Steps
-
-- [Field Mapping](./field-mapping) - Detailed field aliasing
-- [Validation](./validation) - Query validation
-- [Custom Visitors](./custom-visitors) - Advanced visitor patterns
+To write your own visitor, see [Custom Visitors](./custom-visitors).
