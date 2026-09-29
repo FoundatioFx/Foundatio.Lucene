@@ -85,7 +85,7 @@ changes from Foundatio.Parsers.
   `NestedFilterResolver`.
 - Geo distance and bounding box queries with an asynchronous `GeoLocationResolver`.
 - Date ranges with default and per-range time zones.
-- Runtime fields via `RuntimeFieldResolver`.
+- Runtime fields via `RuntimeFieldResolver`, which can be turned off per request with `EnableRuntimeFieldResolver`.
 - Aggregations (`BuildAggregations`) and sorts (`BuildSort`) for every Foundatio.Parsers aggregation type and
   modifier.
 - `BuildSearch`/`BuildSearchAsync` build a query, aggregations, and sort together and apply them to a search request.
@@ -108,6 +108,8 @@ changes from Foundatio.Parsers.
 - Wildcards: `jo*` is `StartsWith`, `*oh*` is `Contains`, other patterns use `LIKE` with escaping; `\*` and `\?` are
   literal.
 - Values are SQL parameters, so queries share compiled queries and plans.
+- Negated comparisons keep rows where the column is `NULL` (`-rating:>3` includes rows without a rating) on every
+  supported EF Core version.
 - Full-text search conditions are always a single quoted phrase, so user text can't add full-text operators.
 - `_exists_` on collections requires an element; primitive collections, owned types, complex properties, skip
   navigations, and shadow properties are supported.
@@ -136,6 +138,9 @@ changes from Foundatio.Parsers.
 
 - Dependabot updates are grouped and monthly, auto-merge waits for CI and skips major updates, and `main` is built
   on a schedule.
-- Public API tracking with `Microsoft.CodeAnalysis.PublicApiAnalyzers`.
+- Public API tracking with `Microsoft.CodeAnalysis.PublicApiAnalyzers` for all three packages.
+- Tests run on .NET 8 (EF Core 8) and .NET 10 (EF Core 10), including randomized robustness tests for the parser and
+  both providers, SQL Server and Elasticsearch integration tests, and a cross-engine parity suite that runs the same
+  queries against both.
 - Documentation rewritten, with guides for migration, security, performance, sorting and aggregations, and
   Elasticsearch mappings; the docs build fails on dead links and runs on pull requests.
