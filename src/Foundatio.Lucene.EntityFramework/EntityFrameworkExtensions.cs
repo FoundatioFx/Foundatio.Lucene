@@ -18,8 +18,7 @@ public static class EntityFrameworkExtensions
     /// Filters <paramref name="source"/> with a Lucene query. The entity's fields are discovered from the model of the
     /// query's <c>DbSet</c>. A null or blank query returns <paramref name="source"/> unchanged.
     /// </summary>
-    /// <exception cref="QueryParseException">The query has syntax errors.</exception>
-    /// <exception cref="QueryValidationException">The query is invalid.</exception>
+    /// <exception cref="QueryValidationException">The query has syntax errors or is invalid.</exception>
     public static IQueryable<T> Where<T>(this IQueryable<T> source, string? query, EntityFrameworkQueryParser parser, EntityFrameworkQueryOptions? options = null) where T : class
     {
         ArgumentNullException.ThrowIfNull(source);

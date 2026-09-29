@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.EntityFramework.Tests;
@@ -168,6 +169,21 @@ public class OptionsAndPipelineTests : IDisposable
         var failure = await parser.TryBuildFilterAsync<Employee>("who:(x", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(["Jane Smith"], _db.Employees.Where(success.Value).Names());
         Assert.IsType<QueryValidationException>(failure.Error);
+    }
+
+    [Fact]
+    public async Task Parse_WithAsyncFieldResolver_ReturnsProcessedDocument()
+    {
+        var parser = new EntityFrameworkQueryParser(c =>
+        {
+            c.UseModel(_db.Model);
+            c.AsyncFieldResolver = (field, _, _) => ValueTask.FromResult<string?>(field == "who" ? "Name" : null);
+        });
+
+        var document = await parser.ParseAsync<Employee>("who:x", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Name"], document.GetReferencedFields());
+        Assert.Throws<InvalidOperationException>(() => parser.Parse<Employee>("who:x"));
     }
 
     [Fact]

@@ -95,10 +95,37 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
     }
 
     /// <summary>
+    /// Parses and processes a query without building it: includes are expanded, field names are resolved (the name as
+    /// written is kept with <c>GetOriginalField()</c>), and the query is validated. Use it to inspect what a query
+    /// references after resolution.
+    /// </summary>
+    /// <exception cref="QueryValidationException">The query has syntax errors or is invalid.</exception>
+    /// <exception cref="InvalidOperationException">The configuration has asynchronous dependencies; use <see cref="ParseAsync"/>.</exception>
+    public QueryDocument Parse(string query, ElasticsearchQueryOptions? options = null)
+    {
+        var context = CreateContext(options);
+        var document = ParseQuery(query, context);
+        InstallMappingResolution(context);
+        return ProcessQuery(document, context, clone: false);
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then parses and processes a query without building it.
+    /// </summary>
+    /// <inheritdoc cref="Parse"/>
+    public async ValueTask<QueryDocument> ParseAsync(string query, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var context = CreateContext(options);
+        var document = ParseQuery(query, context);
+        await ResolveQueryAsync(document, context, cancellationToken).ConfigureAwait(false);
+        InstallMappingResolution(context);
+        return ProcessQuery(document, context, clone: false);
+    }
+
+    /// <summary>
     /// Builds a query. An empty query matches all documents.
     /// </summary>
-    /// <exception cref="QueryParseException">The query has syntax errors.</exception>
-    /// <exception cref="QueryValidationException">The query is invalid (for example it uses a restricted field).</exception>
+    /// <exception cref="QueryValidationException">The query has syntax errors or is invalid (for example it uses a restricted field).</exception>
     /// <exception cref="InvalidOperationException">The configuration has asynchronous dependencies; use <see cref="BuildQueryAsync(string, ElasticsearchQueryOptions?, CancellationToken)"/>.</exception>
     public Query BuildQuery(string query, ElasticsearchQueryOptions? options = null) => BuildQuery(query, CreateContext(options));
 

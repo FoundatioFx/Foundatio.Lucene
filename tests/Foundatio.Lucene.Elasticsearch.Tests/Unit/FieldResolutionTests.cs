@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using Elastic.Clients.Elasticsearch.Mapping;
+using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 using Foundatio.Lucene.Elasticsearch.Tests.Utility;
 
 namespace Foundatio.Lucene.Elasticsearch.Tests.Unit;
@@ -321,6 +323,25 @@ public class FieldResolutionTests
         Assert.Empty(context.RuntimeFields);
         ElasticAssert.Json("{'term':{'computed':{'value':'1.5'}}}", result);
         Assert.Throws<InvalidOperationException>(() => parser.BuildQuery("computed:1.5"));
+    }
+
+    [Fact]
+    public async Task Parse_WithAliasesIncludesAndMapping_ReturnsProcessedDocument()
+    {
+        var parser = TestMapping.CreateParser(c =>
+        {
+            c.FieldMap = new FieldMap { { "user", "keyword" } };
+            c.Includes = new Dictionary<string, string> { ["recent"] = "DATE:>now-1d" };
+        });
+
+        var document = parser.Parse("user:x @include:recent");
+        var resolved = await parser.ParseAsync("user:x @include:recent", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["keyword", "date"], document.GetReferencedFields());
+        Assert.Equal(document.ToDebugString(), resolved.ToDebugString());
+        var user = Assert.IsType<FieldQueryNode>(Assert.IsType<BooleanQueryNode>(document.Query).Clauses[0].Query);
+        Assert.Equal("user", user.GetOriginalField());
+        Assert.Throws<QueryValidationException>(() => parser.Parse("user:(x"));
     }
 
     [Fact]

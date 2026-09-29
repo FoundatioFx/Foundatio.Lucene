@@ -120,10 +120,35 @@ public class EntityFrameworkQueryParser : QueryParserBase<EntityFrameworkQueryVi
     public void ClearOptions() => _entityOptions.Clear();
 
     /// <summary>
+    /// Parses and processes a query for <typeparamref name="T"/> without building it: includes are expanded, field
+    /// names are resolved (the name as written is kept with <c>GetOriginalField()</c>), and the query is validated
+    /// against the validation options. Use it to inspect what a query references after resolution.
+    /// </summary>
+    /// <exception cref="QueryValidationException">The query has syntax errors or is invalid.</exception>
+    /// <exception cref="InvalidOperationException">Asynchronous resolvers are configured; use <see cref="ParseAsync{T}"/>.</exception>
+    public QueryDocument Parse<T>(string query, EntityFrameworkQueryOptions? options = null) where T : class
+    {
+        var context = CreateContext(GetEntityType(typeof(T), options), options);
+        return ProcessQuery(ParseQuery(query, context), context, clone: false);
+    }
+
+    /// <summary>
+    /// Runs the asynchronous resolution phase, then parses and processes a query for <typeparamref name="T"/> without
+    /// building it.
+    /// </summary>
+    /// <inheritdoc cref="Parse{T}"/>
+    public async ValueTask<QueryDocument> ParseAsync<T>(string query, EntityFrameworkQueryOptions? options = null, CancellationToken cancellationToken = default) where T : class
+    {
+        var context = CreateContext(GetEntityType(typeof(T), options), options);
+        var document = ParseQuery(query, context);
+        await ResolveQueryAsync(document, context, cancellationToken).ConfigureAwait(false);
+        return ProcessQuery(document, context, clone: false);
+    }
+
+    /// <summary>
     /// Builds a filter expression for <typeparamref name="T"/> from a Lucene query. An empty query matches everything.
     /// </summary>
-    /// <exception cref="QueryParseException">The query has syntax errors.</exception>
-    /// <exception cref="QueryValidationException">The query is invalid, for example it uses an unknown field or a value
+    /// <exception cref="QueryValidationException">The query has syntax errors or is invalid, for example it uses an unknown field or a value
     /// that cannot be converted to the field's type.</exception>
     public Expression<Func<T, bool>> BuildFilter<T>(string query, EntityFrameworkQueryOptions? options = null) where T : class
     {
