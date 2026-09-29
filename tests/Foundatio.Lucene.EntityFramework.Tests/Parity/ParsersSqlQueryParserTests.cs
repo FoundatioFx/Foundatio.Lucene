@@ -59,7 +59,7 @@ public partial class ParsersSqlQueryParserTests : IDisposable
         WorkItem[] items = [new() { Id = 1 }, new() { Id = 2 }];
 
         var filter = parser.BuildFilter<WorkItem>(query, Model);
-        string sql = _db.WorkItems.Where(filter).ToQueryString();
+        string sql = _db.WorkItems.Where(filter).ToSql();
 
         Assert.Equal(expectedId, Assert.Single(items.AsQueryable().Where(filter)).Id);
         Assert.Contains("WHERE", sql);
@@ -77,7 +77,7 @@ public partial class ParsersSqlQueryParserTests : IDisposable
     {
         var parser = new EntityFrameworkQueryParser();
 
-        string sql = _db.WorkItems.Where(query, parser).ToQueryString();
+        string sql = _db.WorkItems.Where(query, parser).ToSql();
 
         foreach (string comparison in comparisons.Split(" AND "))
         {
@@ -296,7 +296,7 @@ public partial class ParsersSqlQueryParserTests : IDisposable
         var utcNow = new DateTime(2026, 9, 29, 3, 4, 5, 678, DateTimeKind.Utc);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, tokyo);
 
-        string sql = _db.Employees.Where($"created:>\"{localNow:yyyy-MM-ddTHH:mm:ss.fff}\"", parser).ToQueryString();
+        string sql = _db.Employees.Where($"created:>\"{localNow:yyyy-MM-ddTHH:mm:ss.fff}\"", parser).ToSql();
 
         Assert.Contains(utcNow.ToString("O"), sql);
     }
@@ -404,7 +404,7 @@ public partial class ParsersSqlQueryParserTests : IDisposable
 
     internal static void AssertSameSql<T>(IQueryable<T> expected, IQueryable<T> actual)
     {
-        Assert.Equal(Normalize(expected.ToQueryString()), Normalize(actual.ToQueryString()));
+        Assert.Equal(Normalize(expected.ToSql()), Normalize(actual.ToSql()));
     }
 
     private static string Normalize(string sql) => ParameterName().Replace(sql, "@p");

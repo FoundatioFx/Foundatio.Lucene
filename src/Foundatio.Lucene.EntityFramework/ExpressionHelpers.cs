@@ -107,7 +107,7 @@ internal static class ExpressionHelpers
         if (expression is UnaryExpression { NodeType: ExpressionType.Not } not)
             return not.Operand;
 
-        return Expression.Not(expression);
+        return Expression.Not(NullSafeComparisons.Instance.Visit(expression));
     }
 
     public static Expression Any(Expression collection, LambdaExpression predicate)
@@ -165,5 +165,57 @@ internal static class ExpressionHelpers
     private sealed class ParameterReplacer(ParameterExpression parameter, Expression replacement) : ExpressionVisitor
     {
         protected override Expression VisitParameter(ParameterExpression node) => node == parameter ? replacement : node;
+    }
+
+    /// <summary>
+    /// Guards relational comparisons with a null check before they are negated. SQL evaluates <c>NULL &gt; 5</c> as
+    /// unknown, and <c>NOT</c> of unknown is still unknown, so <c>NOT (x &gt; 5)</c> would drop rows where <c>x</c> is
+    /// null (EF Core 8 doesn't compensate for this). With the guard the comparison is false for those rows, so
+    /// negating it includes them, as in Lucene and C#. Lambdas are skipped: <c>EXISTS</c> is never unknown.
+    /// </summary>
+    private sealed class NullSafeComparisons : ExpressionVisitor
+    {
+        public static readonly NullSafeComparisons Instance = new();
+
+        protected override Expression VisitBinary(BinaryExpression node)
+        {
+            if (node.NodeType is not (ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual or ExpressionType.LessThan or ExpressionType.LessThanOrEqual))
+                return base.VisitBinary(node);
+
+            Expression result = node;
+            foreach (var operand in (ReadOnlySpan<Expression>)[node.Right, node.Left])
+            {
+                if (GetNullableSource(operand) is { } source)
+                    result = Expression.AndAlso(Expression.NotEqual(source, Expression.Constant(null, source.Type)), result);
+            }
+
+            return result;
+        }
+
+        protected override Expression VisitLambda<T>(Expression<T> node) => node;
+
+        private static Expression? GetNullableSource(Expression expression)
+        {
+            while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } convert)
+                expression = convert.Operand;
+
+            if (expression is MethodCallExpression compare && compare.Method == StringCompare)
+                expression = compare.Arguments[0];
+
+            var instance = expression switch
+            {
+                MemberExpression member => member.Expression,
+                MethodCallExpression { Method.IsGenericMethod: true } call when call.Method.GetGenericMethodDefinition() == EfProperty => call.Arguments[0],
+                _ => null
+            };
+
+            if (instance is null or ConstantExpression)
+                return null;
+
+            if (!expression.Type.IsValueType || Nullable.GetUnderlyingType(expression.Type) is not null)
+                return expression;
+
+            return instance is ParameterExpression || instance.Type.IsValueType ? null : instance;
+        }
     }
 }

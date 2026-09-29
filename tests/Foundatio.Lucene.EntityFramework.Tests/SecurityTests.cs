@@ -156,7 +156,7 @@ public class SecurityTests : IDisposable
         var parser = new EntityFrameworkQueryParser();
 
         var filter = parser.BuildFilter<Employee>("name:\"x' OR 1=1 --\" OR email:*\\'*", new EntityFrameworkQueryOptions { Model = _db.Model });
-        string sql = SampleData.CreateOfflineSqlServer().Employees.Where(filter).ToQueryString();
+        string sql = SampleData.CreateOfflineSqlServer().Employees.Where(filter).ToSql();
 
         string where = sql[sql.IndexOf("WHERE", StringComparison.Ordinal)..];
 

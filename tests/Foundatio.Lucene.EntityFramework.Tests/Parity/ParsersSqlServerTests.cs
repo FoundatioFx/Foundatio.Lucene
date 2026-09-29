@@ -30,7 +30,7 @@ public class ParsersSqlServerTests(SqlServerFixture fixture)
             .UseIncludes(new Dictionary<string, string> { ["matching"] = "location:jo%_?n" })
             .UseValidationOptions(new QueryValidationOptions { AllowedFields = { "location" } }));
 
-        string sql = db.Companies.Where("@include:matching", parser).ToQueryString();
+        string sql = db.Companies.Where("@include:matching", parser).ToSql();
         var companies = db.Companies.Where("@include:matching", parser).ToList();
 
         Assert.Contains(" LIKE ", sql, StringComparison.OrdinalIgnoreCase);
@@ -50,7 +50,7 @@ public class ParsersSqlServerTests(SqlServerFixture fixture)
         db.SaveChanges();
         var parser = new EntityFrameworkQueryParser();
 
-        string sql = db.Companies.Where(query, parser).ToQueryString();
+        string sql = db.Companies.Where(query, parser).ToSql();
 
         Assert.DoesNotContain(" LIKE ", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("Literal", Assert.Single(db.Companies.Where(query, parser).ToList()).Name);

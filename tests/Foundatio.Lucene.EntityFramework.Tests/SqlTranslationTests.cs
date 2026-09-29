@@ -20,7 +20,7 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildFilter_WithValues_UsesSqlParametersInsteadOfLiterals()
     {
-        string sql = _db.Employees.Where("name:\"John Doe\" AND age:[25 TO 40] AND hiredate:>2020-01-01 AND company.name:Acme* AND status:Active", _parser).ToQueryString();
+        string sql = _db.Employees.Where("name:\"John Doe\" AND age:[25 TO 40] AND hiredate:>2020-01-01 AND company.name:Acme* AND status:Active", _parser).ToSql();
         string where = Where(sql);
 
         Assert.Equal(6, Regex.Matches(sql, "^DECLARE @", RegexOptions.Multiline).Count);
@@ -34,8 +34,8 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildFilter_WithDifferentValues_ProducesTheSameSqlShape()
     {
-        string first = _db.Employees.Where("name:John* AND age:>30 AND hiredate:[2020-01-01 TO now]", _parser).ToQueryString();
-        string second = _db.Employees.Where("name:Bob* AND age:>45 AND hiredate:[2019-06-01 TO now-1d]", _parser).ToQueryString();
+        string first = _db.Employees.Where("name:John* AND age:>30 AND hiredate:[2020-01-01 TO now]", _parser).ToSql();
+        string second = _db.Employees.Where("name:Bob* AND age:>45 AND hiredate:[2019-06-01 TO now-1d]", _parser).ToSql();
 
         Assert.Equal(WithoutDeclarations(first), WithoutDeclarations(second));
         Assert.NotEqual(first, second);
@@ -54,7 +54,7 @@ public partial class SqlTranslationTests : IDisposable
     [InlineData("name:jo?n*", "jo_n%")]
     public void BuildFilter_WithWildcards_EscapesLikePattern(string query, string pattern)
     {
-        string sql = _db.Employees.Where(query, _parser).ToQueryString();
+        string sql = _db.Employees.Where(query, _parser).ToSql();
 
         Assert.Contains($"= N'{pattern}';", sql);
         Assert.Contains(@"LIKE @Value ESCAPE N'\'", sql);
@@ -69,7 +69,7 @@ public partial class SqlTranslationTests : IDisposable
     [InlineData("name:\"jo*n\"", "= @Value", "jo*n")]
     public void BuildFilter_WithPrefixContainsOrLiteral_UsesStartsWithContainsOrEquality(string query, string where, string value)
     {
-        string sql = _db.Employees.Where(query, _parser).ToQueryString();
+        string sql = _db.Employees.Where(query, _parser).ToSql();
 
         Assert.Contains(where, sql);
         Assert.Contains($"= N'{value}';", sql);
@@ -87,7 +87,7 @@ public partial class SqlTranslationTests : IDisposable
     [InlineData("\"john smith\"", "\"john smith*\"")]
     public void BuildFilter_WithFullTextField_UsesContainsWithQuotedSearchCondition(string query, string condition)
     {
-        string sql = _db.Employees.Where(query, _fullTextParser).ToQueryString();
+        string sql = _db.Employees.Where(query, _fullTextParser).ToSql();
 
         Assert.Contains("CONTAINS([e].[", sql);
         Assert.Contains($"= N'{condition.Replace("'", "''")}';", sql);
@@ -96,7 +96,7 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildFilter_WithFullTextFieldOnNavigation_UsesContainsOnRelatedColumn()
     {
-        string sql = _db.Employees.Where("company.name:Acme", _fullTextParser).ToQueryString();
+        string sql = _db.Employees.Where("company.name:Acme", _fullTextParser).ToSql();
 
         Assert.Contains("CONTAINS([c].[Name], @Value)", sql);
     }
@@ -107,7 +107,7 @@ public partial class SqlTranslationTests : IDisposable
     [InlineData("email:John", "[e].[Email] = @Value")]
     public void BuildFilter_WithFullTextFieldAndInfixWildcard_FallsBackToLike(string query, string expected)
     {
-        string sql = _db.Employees.Where(query, _fullTextParser).ToQueryString();
+        string sql = _db.Employees.Where(query, _fullTextParser).ToSql();
 
         Assert.Contains(expected, sql);
         Assert.DoesNotContain("CONTAINS(", sql);
@@ -126,7 +126,7 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildSort_WithFields_TranslatesToOrderBy()
     {
-        string sql = _db.Employees.OrderBy("-salary company.name +name", _parser).ToQueryString();
+        string sql = _db.Employees.OrderBy("-salary company.name +name", _parser).ToSql();
 
         Assert.Contains("ORDER BY [e].[Salary] DESC, [c].[Name], [e].[Name]", sql);
     }
@@ -134,7 +134,7 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildFilter_WithEnumStoredAsString_ComparesStrings()
     {
-        string sql = _db.Employees.Where("level:Senior", _parser).ToQueryString();
+        string sql = _db.Employees.Where("level:Senior", _parser).ToSql();
 
         Assert.Contains("DECLARE @Value nvarchar(20) = N'Senior';", sql);
         Assert.Throws<QueryValidationException>(() => _db.Employees.Where("level:>Junior", _parser));
@@ -143,7 +143,7 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildFilter_WithPrimitiveCollection_TranslatesToJsonQuery()
     {
-        string sql = _db.Employees.Where("skills:c* OR skills:go", _parser).ToQueryString();
+        string sql = _db.Employees.Where("skills:c* OR skills:go", _parser).ToSql();
 
         Assert.Contains("OPENJSON([e].[Skills])", sql);
     }
@@ -151,7 +151,7 @@ public partial class SqlTranslationTests : IDisposable
     [Fact]
     public void BuildFilter_WithDateBounds_ComparesAgainstStartOfNextPeriod()
     {
-        string sql = _db.TypeSamples.Where("datetime:[2024-01-01 TO 2024-01-31]", _parser).ToQueryString();
+        string sql = _db.TypeSamples.Where("datetime:[2024-01-01 TO 2024-01-31]", _parser).ToSql();
 
         Assert.Contains("'2024-01-01T00:00:00.0000000Z'", sql);
         Assert.Contains("'2024-02-01T00:00:00.0000000Z'", sql);

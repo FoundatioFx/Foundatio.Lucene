@@ -119,7 +119,7 @@ public sealed class TestOutputLogger(ITestOutputHelper output) : ILogger
 /// <summary>Captures log entries so tests can assert on them.</summary>
 public sealed class CapturingLogger : ILogger
 {
-    private readonly Lock _lock = new();
+    private readonly object _lock = new();
     private readonly List<(LogLevel Level, string Message)> _entries = [];
 
     public IReadOnlyList<(LogLevel Level, string Message)> Entries

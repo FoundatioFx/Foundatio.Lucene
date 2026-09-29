@@ -18,7 +18,7 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
     [InlineData("FullName:jo?n*", "jo_n%")]
     public void BuildFilter_WithAdvancedWildcard_TranslatesToSqlLike(string query, string expectedPattern)
     {
-        string sql = _db.Employees.Where(query, new EntityFrameworkQueryParser()).ToQueryString();
+        string sql = _db.Employees.Where(query, new EntityFrameworkQueryParser()).ToSql();
 
         Assert.Contains(" LIKE ", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains($"N'{expectedPattern}'", sql, StringComparison.Ordinal);
@@ -33,7 +33,7 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
             .UseIncludes(new Dictionary<string, string> { ["find"] = "name:jo?n" })
             .UseValidationOptions(new QueryValidationOptions { AllowedFields = { "name" } }));
 
-        string sql = _db.Employees.Where("@include:find", parser).ToQueryString();
+        string sql = _db.Employees.Where("@include:find", parser).ToSql();
 
         Assert.Contains(" LIKE ", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("jo_n", sql, StringComparison.Ordinal);
@@ -44,8 +44,8 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
     {
         var parser = new EntityFrameworkQueryParser(c => c.SetDefaultFields("FullName", "Title"));
 
-        string defaultSql = _db.Employees.Where("jo?n", parser).ToQueryString();
-        string navigationSql = _db.Employees.Where("CurrentCompany.Name:jo?n", parser).ToQueryString();
+        string defaultSql = _db.Employees.Where("jo?n", parser).ToSql();
+        string navigationSql = _db.Employees.Where("CurrentCompany.Name:jo?n", parser).ToSql();
 
         Assert.Equal(2, defaultSql.Split(" LIKE ").Length - 1);
         Assert.Contains("jo_n", defaultSql, StringComparison.Ordinal);
@@ -58,7 +58,7 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
     {
         var parser = new EntityFrameworkQueryParser(c => c.SetDefaultFields("FullName", "Title"));
 
-        string sql = _db.Employees.Where("-jo?n*", parser).ToQueryString();
+        string sql = _db.Employees.Where("-jo?n*", parser).ToSql();
 
         Assert.Equal(2, sql.Split(" LIKE ").Length - 1);
         Assert.Contains("NOT", sql, StringComparison.OrdinalIgnoreCase);
@@ -80,7 +80,7 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
     [InlineData("FullName:\"jo*n\"", "jo*n")]
     public void BuildFilter_WithEscapedOrQuotedWildcard_KeepsLiteralValue(string query, string expectedValue)
     {
-        string sql = _db.Employees.Where(query, new EntityFrameworkQueryParser()).ToQueryString();
+        string sql = _db.Employees.Where(query, new EntityFrameworkQueryParser()).ToSql();
 
         Assert.DoesNotContain(" LIKE ", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(expectedValue, sql, StringComparison.Ordinal);
@@ -98,7 +98,7 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
     [Fact]
     public void BuildFilter_WithSqlLikeCharacters_EscapesLiteralCharacters()
     {
-        string sql = _db.Employees.Where("FullName:jo%_?", new EntityFrameworkQueryParser()).ToQueryString();
+        string sql = _db.Employees.Where("FullName:jo%_?", new EntityFrameworkQueryParser()).ToSql();
 
         Assert.Contains("LIKE", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(@"jo\%\__", sql, StringComparison.Ordinal);
@@ -111,7 +111,7 @@ public class ParsersSqlQuerySyntaxTests : IDisposable
 
         // Intentional difference: Parsers rejected advanced wildcards on full-text fields; the column can still be
         // matched with LIKE.
-        string sql = _db.Employees.Where("FullName:jo?n", parser).ToQueryString();
+        string sql = _db.Employees.Where("FullName:jo?n", parser).ToSql();
 
         Assert.Contains(" LIKE ", sql, StringComparison.Ordinal);
         Assert.True(parser.ValidateQuery<Employee>("FullName:jo?n", new EntityFrameworkQueryOptions { Model = _db.Model }).IsValid);
