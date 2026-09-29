@@ -30,7 +30,7 @@ public sealed record EntityFrameworkQueryOptions : QueryOptionsBase
     /// <summary>
     /// Overrides the time zone used for <c>now</c>, date math rounding, and dates written without an offset.
     /// </summary>
-    public TimeZoneInfo? TimeZone { get; init; }
+    public TimeZoneInfo? DefaultTimeZone { get; init; }
 
     /// <summary>
     /// Custom fields (for example dynamic or EAV fields) that can be queried in addition to the model's fields. A
@@ -164,9 +164,9 @@ public class EntityFrameworkQueryOptionsBuilder
     /// <summary>
     /// Sets the time zone used for <c>now</c>, date math rounding, and dates written without an offset.
     /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithTimeZone(TimeZoneInfo timeZone)
+    public EntityFrameworkQueryOptionsBuilder WithDefaultTimeZone(TimeZoneInfo timeZone)
     {
-        _options = _options with { TimeZone = timeZone };
+        _options = _options with { DefaultTimeZone = timeZone };
         return this;
     }
 

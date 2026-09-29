@@ -92,10 +92,10 @@ public class DateQueryTests : IDisposable
     [InlineData("dateonly:2024-01-31", new[] { 2 })]
     public void BuildFilter_WithConfiguredTimeZone_InterpretsDatesInThatZone(string query, int[] expected)
     {
-        var parser = new EntityFrameworkQueryParser(c => c.SetTimeProvider(new FixedTimeProvider(Now)).SetTimeZone(Chicago));
+        var parser = new EntityFrameworkQueryParser(c => c.SetTimeProvider(new FixedTimeProvider(Now)).SetDefaultTimeZone(Chicago));
 
         Assert.Equal(expected, _db.TypeSamples.Where(query, parser).Ids());
-        Assert.Equal(expected, _db.TypeSamples.Where(query, _parser, new EntityFrameworkQueryOptions { TimeZone = Chicago }).Ids());
+        Assert.Equal(expected, _db.TypeSamples.Where(query, _parser, new EntityFrameworkQueryOptions { DefaultTimeZone = Chicago }).Ids());
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class DateQueryTests : IDisposable
     public void BuildFilter_AcrossDaylightSavingTransition_UsesOffsetInEffectOnEachBound(string query, int[] expected)
     {
         // 2024-03-10 is 23 hours long in Chicago: 02:00 CST jumps to 03:00 CDT, so 03:30 local is 08:30Z.
-        var parser = new EntityFrameworkQueryParser(c => c.SetTimeZone(Chicago));
+        var parser = new EntityFrameworkQueryParser(c => c.SetDefaultTimeZone(Chicago));
 
         Assert.Equal(expected, _db.TypeSamples.Where(query, parser).Ids());
     }
@@ -126,7 +126,7 @@ public class DateQueryTests : IDisposable
     public void BuildFilter_WithDateTimeStorageTimeZone_ComparesStoredWallClockValues()
     {
         var localStorage = new EntityFrameworkQueryParser(c => c.SetDateTimeStorageTimeZone(Chicago));
-        var localEverywhere = new EntityFrameworkQueryParser(c => c.SetDateTimeStorageTimeZone(Chicago).SetTimeZone(Chicago));
+        var localEverywhere = new EntityFrameworkQueryParser(c => c.SetDateTimeStorageTimeZone(Chicago).SetDefaultTimeZone(Chicago));
 
         Assert.Empty(_db.TypeSamples.Where("datetime:2024-01-31", localStorage).Ids());
         Assert.Equal([2], _db.TypeSamples.Where("datetime:2024-01-31", localEverywhere).Ids());

@@ -292,7 +292,7 @@ public partial class ParsersSqlQueryParserTests : IDisposable
     public void BuildFilter_WithTimeZone_InterpretsLocalDatesInThatZone()
     {
         var tokyo = TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo");
-        var parser = ParsersSampleContext.CreateParser(c => c.SetTimeZone(tokyo));
+        var parser = ParsersSampleContext.CreateParser(c => c.SetDefaultTimeZone(tokyo));
         var utcNow = new DateTime(2026, 9, 29, 3, 4, 5, 678, DateTimeKind.Utc);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, tokyo);
 

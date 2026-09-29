@@ -163,7 +163,7 @@ public class DocumentationSampleTests : IDisposable
             .WithFieldMap(m => m.Map("who", "Name").Map("org", "Company.Name"))
             .WithDefaultFields("Name", "Title")
             .WithDefaultSearchOperator(SearchOperator.Contains)
-            .WithTimeZone(userTimeZone)
+            .WithDefaultTimeZone(userTimeZone)
             .WithValidationOptions(v => v.AllowLeadingWildcards = false)
             .WithIntField("age2", new Dictionary<string, object?> { ["DataDefinitionId"] = 1, ["Column"] = "IntegerValue" })
             .Build();

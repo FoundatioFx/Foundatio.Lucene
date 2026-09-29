@@ -177,11 +177,11 @@ Dates follow Elasticsearch: a date written without some components covers the wh
 Bounds rounded up to the end of a period are compared against the start of the next one (`<= 2024-01-31` becomes `< 2024-02-01`), which is exact for every column precision.
 
 ```csharp
-c.SetTimeZone(TimeZoneInfo.FindSystemTimeZoneById("America/Chicago"));   // now, rounding, dates without an offset
+c.SetDefaultTimeZone(TimeZoneInfo.FindSystemTimeZoneById("America/Chicago"));   // now, rounding, dates without an offset
 c.SetDateTimeStorageTimeZone(TimeZoneInfo.Utc);                             // what DateTime columns hold (default UTC)
 ```
 
-- The time zone (default UTC) decides what `now/d` and `2024-01-31` mean. Offsets follow daylight-saving time for each bound. Set it per request with `EntityFrameworkQueryOptions.TimeZone`, or per range with `^`: `created:[2024-01-31 TO 2024-01-31]^"America/Chicago"`.
+- The time zone (default UTC) decides what `now/d` and `2024-01-31` mean. Offsets follow daylight-saving time for each bound. Set it per request with `EntityFrameworkQueryOptions.DefaultTimeZone`, or per range with `^`: `created:[2024-01-31 TO 2024-01-31]^"America/Chicago"`.
 - `DateTime` columns are assumed to hold UTC values; if they hold local wall-clock times, set `DateTimeStorageTimeZone`. `DateTimeOffset` columns are compared as instants.
 - `DateOnly` columns compare against the calendar date of each (rounded) bound in the query's time zone: `birthday:now-1d` is yesterday, and `birthday:[now-7d TO now]` covers the dates from seven days ago through today.
 
@@ -292,7 +292,7 @@ var options = EntityFrameworkQueryOptions.CreateBuilder()
     .WithFieldMap(m => m.Map("who", "Name").Map("org", "Company.Name"))
     .WithDefaultFields("Name", "Title")
     .WithDefaultSearchOperator(SearchOperator.Contains)
-    .WithTimeZone(userTimeZone)
+    .WithDefaultTimeZone(userTimeZone)
     .WithValidationOptions(v => v.AllowLeadingWildcards = false)
     .WithIntField("age", new Dictionary<string, object?> { ["DataDefinitionId"] = 1, ["Column"] = "IntegerValue" })
     .Build();

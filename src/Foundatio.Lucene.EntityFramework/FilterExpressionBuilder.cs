@@ -380,11 +380,11 @@ internal sealed class FilterExpressionBuilder
             return BuildStringMatch(member, field, text, node, searchOperator);
 
         if (QueryValueParser.IsDate(type))
-            return BuildDateEquals(member, type, field, text, node, Context.TimeZone, lenient);
+            return BuildDateEquals(member, type, field, text, node, Context.DefaultTimeZone, lenient);
 
         if (type == typeof(TimeOnly))
         {
-            if (!TryParseTime(text, Context.TimeZone, out var time))
+            if (!TryParseTime(text, Context.DefaultTimeZone, out var time))
                 return InvalidValue(lenient, node, field, text, type);
 
             return Expression.Equal(member, QueryParameter.Create(time, member.Type));
@@ -481,7 +481,7 @@ internal sealed class FilterExpressionBuilder
 
     private Expression? BuildRange(Expression member, Type type, EntityFieldInfo field, RangeNode range, bool lenient)
     {
-        var timeZone = Context.TimeZone;
+        var timeZone = Context.DefaultTimeZone;
         if (range.BoostText is { } caret)
         {
             if (!QueryValueParser.IsDate(type) && type != typeof(TimeOnly))

@@ -61,8 +61,8 @@ Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.EntityFrameworkQuer
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Equals(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? other) -> bool
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Model.get -> Microsoft.EntityFrameworkCore.Metadata.IModel?
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Model.init -> void
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.TimeZone.get -> System.TimeZoneInfo?
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.TimeZone.init -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.DefaultTimeZone.get -> System.TimeZoneInfo?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.DefaultTimeZone.init -> void
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.Build() -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.EntityFrameworkQueryOptionsBuilder() -> void
@@ -84,7 +84,7 @@ Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithIncludes
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithIntField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithModel(Microsoft.EntityFrameworkCore.Metadata.IModel! model) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithStringField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDefaultTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithValidationOptions(Foundatio.Lucene.QueryValidationOptions! options) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithValidationOptions(System.Action<Foundatio.Lucene.QueryValidationOptions!>! configure) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser
@@ -145,11 +145,11 @@ Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefa
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultSearchOperator(Foundatio.Lucene.EntityFramework.SearchOperator searchOperator) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetMaxFieldDepth(int maxDepth) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetTimeProvider(System.TimeProvider! timeProvider) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SkipNavigationFilter.get -> Foundatio.Lucene.EntityFramework.EntityTypeSkipNavigationFilter?
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SkipNavigationFilter.set -> void
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.TimeZone.get -> System.TimeZoneInfo!
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.TimeZone.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DefaultTimeZone.get -> System.TimeZoneInfo!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DefaultTimeZone.set -> void
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseCustomFieldExpressionBuilder(Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder! builder) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseEntityTypeComplexPropertyFilter(Foundatio.Lucene.EntityFramework.EntityTypeComplexPropertyFilter! filter) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseEntityTypeNavigationFilter(Foundatio.Lucene.EntityFramework.EntityTypeNavigationFilter! filter) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
@@ -171,8 +171,8 @@ Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultSearc
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultSearchOperator.set -> void
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.EntityType.get -> Microsoft.EntityFrameworkCore.Metadata.IEntityType!
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.Options.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions?
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.TimeZone.get -> System.TimeZoneInfo!
-Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.TimeZone.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultTimeZone.get -> System.TimeZoneInfo!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultTimeZone.set -> void
 Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.TryGetField(string! name, out Foundatio.Lucene.EntityFramework.EntityFieldInfo? field) -> bool
 Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T>
 Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T>.Apply(System.Linq.IQueryable<T!>! source) -> System.Linq.IOrderedQueryable<T!>!

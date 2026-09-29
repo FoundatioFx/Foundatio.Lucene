@@ -89,7 +89,7 @@ public class EntityFrameworkQueryParserConfiguration : QueryParserConfiguration
     /// <summary>
     /// The time zone used for <c>now</c>, date math rounding, and dates written without an offset. Defaults to UTC.
     /// </summary>
-    public TimeZoneInfo TimeZone { get; set; } = TimeZoneInfo.Utc;
+    public TimeZoneInfo DefaultTimeZone { get; set; } = TimeZoneInfo.Utc;
 
     /// <summary>
     /// The time zone of the wall-clock values stored in <see cref="DateTime"/> columns. Query dates are converted to
@@ -168,9 +168,9 @@ public class EntityFrameworkQueryParserConfiguration : QueryParserConfiguration
     /// <summary>
     /// Sets the time zone used for <c>now</c>, date math rounding, and dates written without an offset.
     /// </summary>
-    public EntityFrameworkQueryParserConfiguration SetTimeZone(TimeZoneInfo timeZone)
+    public EntityFrameworkQueryParserConfiguration SetDefaultTimeZone(TimeZoneInfo timeZone)
     {
-        TimeZone = timeZone ?? throw new ArgumentNullException(nameof(timeZone));
+        DefaultTimeZone = timeZone ?? throw new ArgumentNullException(nameof(timeZone));
         return this;
     }
 

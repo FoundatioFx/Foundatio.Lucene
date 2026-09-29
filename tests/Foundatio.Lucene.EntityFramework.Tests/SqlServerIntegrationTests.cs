@@ -79,7 +79,7 @@ public class SqlServerIntegrationTests(SqlServerFixture fixture)
     public void BuildFilter_WithTimeZone_MatchesOnSqlServer(string query, int[] expected)
     {
         using var db = fixture.CreateSampleContext();
-        var parser = new EntityFrameworkQueryParser(c => c.SetTimeZone(Chicago));
+        var parser = new EntityFrameworkQueryParser(c => c.SetDefaultTimeZone(Chicago));
 
         Assert.Equal(expected, db.TypeSamples.Where(query, parser).Ids());
     }

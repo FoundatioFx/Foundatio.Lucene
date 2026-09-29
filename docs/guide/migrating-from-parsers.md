@@ -125,7 +125,7 @@ The syntax itself is a superset: everything Foundatio.Parsers accepted is accept
 | `c.SetDefaultFields(fields, SqlSearchOperator.Contains)` | `c.SetDefaultFields(fields, SearchOperator.Contains)` |
 | `c.SetFullTextFields([...])` | `c.AddFullTextFields(...)` |
 | `c.SetSearchTokenizer(...)` | `c.UseSearchTokenizer(...)` |
-| `c.SetDateTimeParser(...)` / `SetDateOnlyParser(...)` | `c.SetTimeZone(...)`, `c.SetDateTimeStorageTimeZone(...)`, `c.TimeProvider` |
+| `c.SetDateTimeParser(...)` / `SetDateOnlyParser(...)` | `c.SetDefaultTimeZone(...)`, `c.SetDateTimeStorageTimeZone(...)`, `c.TimeProvider` |
 | `c.SetFieldDepth(n)` | `c.SetMaxFieldDepth(n)` |
 | `c.UseEntityTypePropertyFilter` / `NavigationFilter` / `SkipNavigationFilter` | same names |
 | custom `EntityFieldInfo`s on the context + a visitor calling `node.SetQuery("...")` | `EntityFrameworkQueryOptions.AdditionalFields` + `c.UseCustomFieldExpressionBuilder(...)`, or `node.SetFilterExpression(lambda)` from a visitor |

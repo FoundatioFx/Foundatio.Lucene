@@ -51,7 +51,7 @@ public class OptionsAndPipelineTests : IDisposable
             .WithDefaultSearchOperator(SearchOperator.Contains)
             .WithDefaultOperator(BooleanOperator.Or)
             .WithValidationOptions(validation)
-            .WithTimeZone(TimeZoneInfo.Utc)
+            .WithDefaultTimeZone(TimeZoneInfo.Utc)
             .WithIntField("score", new Dictionary<string, object?> { ["Column"] = "Age" })
             .Build();
 

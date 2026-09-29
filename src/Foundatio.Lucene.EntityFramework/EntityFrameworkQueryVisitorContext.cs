@@ -42,7 +42,7 @@ public sealed class EntityFrameworkQueryVisitorContext : QueryVisitorContext
     /// <summary>
     /// The time zone used for <c>now</c>, date math rounding, and dates written without an offset.
     /// </summary>
-    public TimeZoneInfo TimeZone { get; set; } = TimeZoneInfo.Utc;
+    public TimeZoneInfo DefaultTimeZone { get; set; } = TimeZoneInfo.Utc;
 
     /// <summary>
     /// Custom fields that can be queried in addition to the model's fields.

@@ -401,7 +401,7 @@ public class EntityFrameworkQueryParser : QueryParserBase<EntityFrameworkQueryVi
         var context = new EntityFrameworkQueryVisitorContext(Configuration, _fields, entityType) { Options = options };
         ApplyOptions(context, registered, options);
         context.DefaultSearchOperator = options?.DefaultSearchOperator ?? registered?.DefaultSearchOperator ?? Configuration.DefaultSearchOperator;
-        context.TimeZone = options?.TimeZone ?? registered?.TimeZone ?? Configuration.TimeZone;
+        context.DefaultTimeZone = options?.DefaultTimeZone ?? registered?.DefaultTimeZone ?? Configuration.DefaultTimeZone;
         context.CustomFieldExpressionBuilder = options?.CustomFieldExpressionBuilder ?? registered?.CustomFieldExpressionBuilder ?? Configuration.CustomFieldExpressionBuilder;
         context.AdditionalFields = Combine(registered?.AdditionalFields, options?.AdditionalFields);
         return context;
