@@ -1,5 +1,4 @@
 using Foundatio.Lucene.Ast;
-using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene;
 

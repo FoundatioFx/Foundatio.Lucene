@@ -1,7 +1,6 @@
 // TEMPORARY: minimal stand-in with the agreed API, replaced by the full port of Foundatio.Parsers'
 // ElasticMappingResolver before merge.
 #pragma warning disable CS1591
-using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Mapping;
 
 namespace Foundatio.Lucene.Elasticsearch;

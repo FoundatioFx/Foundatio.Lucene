@@ -2,7 +2,6 @@ using System.Globalization;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Aggregations;
 using Elastic.Clients.Elasticsearch.Core.Search;
-using Elastic.Clients.Elasticsearch.Mapping;
 
 namespace Foundatio.Lucene.Elasticsearch;
 
