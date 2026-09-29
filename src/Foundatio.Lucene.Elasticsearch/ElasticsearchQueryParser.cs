@@ -246,6 +246,45 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
     }
 
     /// <summary>
+    /// Builds a query, aggregations, and sort together, sharing one context so the runtime fields all of them need
+    /// are collected. Pass null for any part you don't need.
+    /// </summary>
+    public ElasticsearchSearch BuildSearch(string? query, string? aggregations = null, string? sort = null, ElasticsearchQueryOptions? options = null)
+    {
+        var context = CreateContext(options);
+        var builtQuery = query is null ? null : BuildQuery(query, context);
+        var builtAggregations = aggregations is null ? null : BuildAggregations(aggregations, WithSharedState(context, options));
+        var builtSort = sort is null ? null : BuildSort(sort, WithSharedState(context, options));
+
+        return new ElasticsearchSearch { Query = builtQuery, Aggregations = builtAggregations, Sort = builtSort, RuntimeFields = context.RuntimeFields.ToList() };
+    }
+
+    /// <summary>
+    /// Resolves asynchronous dependencies, then builds a query, aggregations, and sort together. Pass null for any part
+    /// you don't need.
+    /// </summary>
+    public async ValueTask<ElasticsearchSearch> BuildSearchAsync(string? query, string? aggregations = null, string? sort = null, ElasticsearchQueryOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var context = CreateContext(options);
+        var builtQuery = query is null ? null : await BuildQueryAsync(query, context, cancellationToken).ConfigureAwait(false);
+        var builtAggregations = aggregations is null ? null : await BuildAggregationsAsync(aggregations, WithSharedState(context, options), cancellationToken).ConfigureAwait(false);
+        var builtSort = sort is null ? null : await BuildSortAsync(sort, WithSharedState(context, options), cancellationToken).ConfigureAwait(false);
+
+        return new ElasticsearchSearch { Query = builtQuery, Aggregations = builtAggregations, Sort = builtSort, RuntimeFields = context.RuntimeFields.ToList() };
+    }
+
+    /// <summary>
+    /// Creates a fresh context for the next expression (each expression has its own validation result and resolution
+    /// state) that adds its runtime fields to <paramref name="shared"/>.
+    /// </summary>
+    private ElasticsearchQueryVisitorContext WithSharedState(ElasticsearchQueryVisitorContext shared, ElasticsearchQueryOptions? options)
+    {
+        var context = CreateContext(options);
+        context.RuntimeFieldSink = shared;
+        return context;
+    }
+
+    /// <summary>
     /// Validates a query without building it.
     /// </summary>
     public QueryValidationResult ValidateQuery(string query, ElasticsearchQueryOptions? options = null)

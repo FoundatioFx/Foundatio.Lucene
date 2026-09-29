@@ -72,7 +72,15 @@ public class ElasticsearchQueryVisitorContext : QueryVisitorContext
         _runtimeFields ??= [];
         if (!_runtimeFields.Exists(f => string.Equals(f.Name, field.Name, StringComparison.OrdinalIgnoreCase)))
             _runtimeFields.Add(field);
+
+        RuntimeFieldSink?.AddRuntimeField(field);
     }
+
+    /// <summary>
+    /// Another context that also receives every runtime field added to this one, used when several expressions are
+    /// built for the same search request.
+    /// </summary>
+    internal ElasticsearchQueryVisitorContext? RuntimeFieldSink { get; set; }
 
     internal ElasticRuntimeField? GetRuntimeField(string field) =>
         _runtimeFields?.Find(f => string.Equals(f.Name, field, StringComparison.OrdinalIgnoreCase));
