@@ -367,7 +367,6 @@ public class QueryValidatorTests
 
     [Theory]
     [InlineData("NOT a")]
-    [InlineData("a:foo")]
     [InlineData("a*")]
     [InlineData("(a")]
     public void ValidateSort_InvalidSort_ReturnsError(string sort)

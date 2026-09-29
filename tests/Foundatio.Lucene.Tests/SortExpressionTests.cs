@@ -91,6 +91,7 @@ public class SortExpressionTests
     [InlineData("*")]
     [InlineData("\"a b\"~2")]
     [InlineData("a:desc*")]
+    [InlineData("@include:saved")]
     public void Parse_UnsupportedNode_ReturnsError(string sort)
     {
         // Arrange

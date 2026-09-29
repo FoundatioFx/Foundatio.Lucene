@@ -1,4 +1,5 @@
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene;
 
@@ -149,10 +150,12 @@ public static class SortExpression
                 when value.UnescapedTerm.Equals("asc", StringComparison.OrdinalIgnoreCase) || value.UnescapedTerm.Equals("desc", StringComparison.OrdinalIgnoreCase):
                 Add(field.Field, value.UnescapedTerm.Equals("desc", StringComparison.OrdinalIgnoreCase) ? SortDirection.Descending : SortDirection.Ascending, field, fields);
                 break;
-            case FieldQueryNode { Query: TermNode { IsPrefix: false, IsWildcard: false, IsFuzzy: false, BoostText: null } value } field:
+            case FieldQueryNode { Query: TermNode { IsPrefix: false, IsWildcard: false, IsFuzzy: false, BoostText: null } value } field
+                when !IncludeVisitor.IsInclude(field):
                 Add(field.Field, direction, field, fields).Value = value.UnescapedTerm;
                 break;
-            case FieldQueryNode { Query: PhraseNode { ProximityText: null, BoostText: null } value } field:
+            case FieldQueryNode { Query: PhraseNode { ProximityText: null, BoostText: null } value } field
+                when !IncludeVisitor.IsInclude(field):
                 Add(field.Field, direction, field, fields).Value = value.Phrase;
                 break;
             case FieldQueryNode { HasData: true } field:
