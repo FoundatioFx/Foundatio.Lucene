@@ -46,7 +46,7 @@ public class ParserBenchmarks
     public object Lucene_ParseComplex() => LuceneQuery.Parse(BenchmarkScenarios.ComplexQuery);
 
     [Benchmark(Baseline = true), BenchmarkCategory("To query string")]
-    public Task<string> Parsers_ToQueryString() => _parsersGenerator.AcceptAsync(_parsersComplexNode, null);
+    public Task<string> Parsers_ToQueryString() => _parsersGenerator.AcceptAsync(_parsersComplexNode, null!);
 
     [Benchmark, BenchmarkCategory("To query string")]
     public string Lucene_ToQueryString() => _builder.Build(_complexDocument);

@@ -502,7 +502,26 @@ internal static class ElasticsearchQueryBuilder
                 return new MatchNoneQuery();
             }
 
+            // An inclusive range on the same value covers the whole period of a partial date or rounded date math,
+            // so created:2024-01 matches all of January (a term query would only match the first instant).
+            if (fieldType is FieldType.Date or FieldType.DateNanos)
+                return new DateRangeQuery(field) { Gte = term.Value, Lte = term.Value, TimeZone = context.DefaultTimeZone, Boost = term.Boost };
+
             return new TermQuery(field, GetTypedValue(term.Value, fieldType)) { Boost = term.Boost };
+        }
+
+        /// <summary>
+        /// Whether a term can be searched on a field when the field is one of several default fields. Fields the term
+        /// can't apply to (a word on a numeric field, a wildcard on a date field) are skipped instead of failing the query.
+        /// </summary>
+        private bool CanSearch(QueryTerm term, string field)
+        {
+            var fieldType = GetFieldType(field, GetMapping(field));
+            if (!IsScalar(fieldType))
+                return true;
+
+            return term.Regex is null && term.Wildcard is null && term.Fuzziness is null && term.Slop is null
+                && IsValidValue(term.Value, fieldType);
         }
 
         private bool IsGeoField(string field) => GetFieldType(field, GetMapping(field)) == FieldType.GeoPoint;
@@ -547,6 +566,9 @@ internal static class ElasticsearchQueryBuilder
             {
                 if (path.Length == 0)
                 {
+                    if (pathFields.Count == 1 && !CanSearch(term, pathFields[0]))
+                        continue;
+
                     var query = pathFields.Count == 1 ? BuildSingleFieldTermQuery(term, pathFields[0], node) : BuildMultiFieldQuery(term, pathFields.ToArray(), node);
                     if (query.Bool is { Should: { } rootShould } && query.Bool.Must is null && query.Bool.Filter is null)
                         should.AddRange(rootShould);
@@ -555,11 +577,14 @@ internal static class ElasticsearchQueryBuilder
                     continue;
                 }
 
-                var branches = pathFields.Select(f => ApplyFilter(BuildSingleFieldTermQuery(term, f, node), context.GetNestedFilter(path, f))).ToList();
-                should.Add(new NestedQuery(path, branches.Count == 1 ? branches[0] : new BoolQuery { Should = branches }));
+                var branches = pathFields.Where(f => CanSearch(term, f))
+                    .Select(f => ApplyFilter(BuildSingleFieldTermQuery(term, f, node), context.GetNestedFilter(path, f)))
+                    .ToList();
+                if (branches.Count > 0)
+                    should.Add(new NestedQuery(path, branches.Count == 1 ? branches[0] : new BoolQuery { Should = branches }));
             }
 
-            return new Part(new BoolQuery { Should = should });
+            return should.Count == 0 ? new Part(new MatchNoneQuery()) : new Part(new BoolQuery { Should = should });
         }
 
         private Query BuildMultiFieldQuery(QueryTerm term, string[] fields, QueryNode node)
@@ -570,9 +595,12 @@ internal static class ElasticsearchQueryBuilder
             {
                 if (IsAnalyzed(field, GetMapping(field)))
                     analyzed.Add(field);
-                else
+                else if (CanSearch(term, field))
                     nonAnalyzed.Add(field);
             }
+
+            if (analyzed.Count == 0 && nonAnalyzed.Count == 0)
+                return new MatchNoneQuery();
 
             if (nonAnalyzed.Count == 0)
                 return BuildAnalyzedFieldsQuery(term, analyzed.ToArray(), node);
@@ -752,6 +780,7 @@ internal static class ElasticsearchQueryBuilder
     {
         return fieldType switch
         {
+            FieldType.Date or FieldType.DateNanos => DateMath.IsValidExpression(value) || long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
             FieldType.Integer or FieldType.Short or FieldType.Byte or FieldType.Long or FieldType.Float or FieldType.HalfFloat
                 or FieldType.Double or FieldType.ScaledFloat or FieldType.TokenCount
                 => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) && double.IsFinite(number),
