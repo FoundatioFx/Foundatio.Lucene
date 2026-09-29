@@ -364,7 +364,18 @@ internal sealed class LuceneLexer
         int column = Column;
         var source = Source;
         while (_position < source.Length && IsModifierValueChar(source[_position]))
+        {
+            if (source[_position] == '\\' && _position + 1 < source.Length)
+            {
+                flags |= TokenFlags.HasEscapes;
+                if (source[_position + 1] == '\n')
+                    NewLine(_position + 1);
+
+                _position++;
+            }
+
             _position++;
+        }
 
         return new Token(TokenType.ModifierValue, _source.Slice(start, _position - start), _line, column, start, _position - start, flags);
     }

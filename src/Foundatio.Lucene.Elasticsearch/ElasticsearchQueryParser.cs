@@ -396,7 +396,7 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
                 .Concat((context.DefaultFields ?? []).Select(f => (Original: f, Resolved: CanonicalField(f, context))));
             foreach (var (original, resolved) in pairs)
             {
-                var mapping = resolver.GetMapping(resolved);
+                var mapping = resolver.GetMapping(resolved, followAlias: true);
                 string? path = mapping.Property is NestedProperty ? mapping.FullPath : mapping.NestedPath;
                 if (path is null)
                     continue;
@@ -475,14 +475,14 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
 
     private static bool IsGeoField(string field, ElasticsearchQueryVisitorContext context)
     {
-        return context.MappingResolver?.GetMapping(field) is { Property: GeoPointProperty }
+        return context.MappingResolver?.GetMapping(field, followAlias: true) is { Property: GeoPointProperty }
             || context.GetRuntimeField(field)?.Type == RuntimeFieldType.GeoPoint;
     }
 
     /// <summary>
     /// Adds mapping-based resolution after the configured field resolver and field map: field names are matched
     /// against the mapping case-insensitively and replaced with their canonical path, and fields that are neither
-    /// mapped nor runtime fields are reported as unresolved.
+    /// mapped nor runtime fields are reported as unresolved (the field resolver or field map result is still used).
     /// </summary>
     private static void InstallMappingResolution(ElasticsearchQueryVisitorContext context)
     {
@@ -502,7 +502,11 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
             if (resolver.GetMapping(resolved) is { Found: true } mapping)
                 return mapping.FullPath;
 
-            return context.GetRuntimeField(resolved) is not null ? resolved : null;
+            if (context.GetRuntimeField(resolved) is { } runtimeField)
+                return runtimeField.Name;
+
+            ctx.ValidationResult.UnresolvedFields.Add(field);
+            return resolved;
         };
     }
 }

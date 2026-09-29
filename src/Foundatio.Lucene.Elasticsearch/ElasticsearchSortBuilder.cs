@@ -24,9 +24,15 @@ internal static class ElasticsearchSortBuilder
                     continue;
             }
 
+            if (field.Field.Contains('^'))
+            {
+                context.ValidationResult.AddError($"Field names cannot contain '^': {field.Field}", field.Position);
+                continue;
+            }
+
             var resolver = context.MappingResolver;
             string sortField = resolver?.GetSortFieldName(field.Field) ?? field.Field;
-            var fieldType = resolver is null ? FieldType.None : ElasticMappingResolver.GetFieldType(resolver.GetMapping(sortField).Property);
+            var fieldType = resolver is null ? FieldType.None : ElasticMappingResolver.GetFieldType(resolver.GetMapping(sortField, followAlias: true).Property);
             if (fieldType == FieldType.None && context.GetRuntimeField(field.Field) is { } runtime)
                 fieldType = runtime.Type switch
                 {
@@ -43,12 +49,13 @@ internal static class ElasticsearchSortBuilder
                 UnmappedType = fieldType == FieldType.None ? FieldType.Keyword : fieldType
             };
 
-            if (context.UseNested && resolver?.GetMapping(field.Field) is { NestedPath: { } nestedPath } mapping)
+            if (context.UseNested && resolver?.GetMapping(field.Field, followAlias: true) is { NestedPath: { } nestedPath } mapping)
                 fieldSort.Nested = BuildNestedSort(mapping.NestedPathChain, context.GetNestedFilter(nestedPath, field.Field));
 
             sorts.Add(new SortOptions { Field = fieldSort });
         }
 
+        context.ValidationResult.ThrowIfInvalid();
         return sorts;
     }
 

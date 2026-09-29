@@ -193,6 +193,8 @@ internal static partial class ElasticsearchQueryBuilder
                 inner.Add(part.Query!.Nested!.Query);
             }
 
+            AddCommonNestedAncestors(groups);
+
             // Fold deeper paths into the nearest ancestor path present in this clause set.
             foreach (string path in groups.Keys.OrderByDescending(p => p.Length).ToList())
             {
@@ -226,6 +228,35 @@ internal static partial class ElasticsearchQueryBuilder
             return merged;
         }
 
+        /// <summary>
+        /// Adds the deepest nested path shared by clauses on sibling nested paths (for example <c>parent</c> for
+        /// <c>parent.a</c> and <c>parent.b</c>) so they are folded into it and must match the same ancestor document.
+        /// </summary>
+        private void AddCommonNestedAncestors(Dictionary<string, List<Query>> groups)
+        {
+            var paths = groups.Keys.ToList();
+            for (int i = 0; i < paths.Count; i++)
+            {
+                for (int j = i + 1; j < paths.Count; j++)
+                {
+                    if (GetCommonNestedAncestor(paths[i], paths[j]) is { } ancestor)
+                        groups.TryAdd(ancestor, []);
+                }
+            }
+        }
+
+        private string? GetCommonNestedAncestor(string first, string second)
+        {
+            for (int dot = first.LastIndexOf('.'); dot > 0; dot = first.LastIndexOf('.', dot - 1))
+            {
+                string prefix = first[..dot];
+                if (second.StartsWith(prefix + ".", StringComparison.Ordinal) && GetMapping(prefix) is { Property: NestedProperty })
+                    return prefix;
+            }
+
+            return null;
+        }
+
         private Query Combine(List<Query> queries, Occur occur)
         {
             if (queries.Count == 1)
@@ -243,6 +274,9 @@ internal static partial class ElasticsearchQueryBuilder
                 return Part.None;
 
             string field = node.Field;
+            if (field.Contains('^'))
+                return Error($"Field names cannot contain '^': {field}", node);
+
             if (context.UseNested && GetMapping(field) is { Property: NestedProperty } mapping)
             {
                 string path = mapping.FullPath;
@@ -429,6 +463,9 @@ internal static partial class ElasticsearchQueryBuilder
             if (field.Length == 0)
                 return Error("Exists and missing queries require a field.", node);
 
+            if (field.Contains('^'))
+                return Error($"Field names cannot contain '^': {field}", node);
+
             string resolved = ResolveDefaultField(field);
             Query query = new ExistsQuery(resolved);
             var part = WrapNested(resolved, query);
@@ -450,7 +487,7 @@ internal static partial class ElasticsearchQueryBuilder
 
             // Inside an explicit nested group, a deeper nested field still needs its own nested query.
             var filter = context.GetNestedFilter(path, field);
-            return new Part(new NestedQuery(path, ApplyFilter(query, filter)), path, IsNestedMergeable: filter is null);
+            return new Part(new NestedQuery(path, ApplyFilter(query, filter)), path, IsNestedMergeable: true);
         }
 
         private static Query ApplyFilter(Query query, Query? filter)
@@ -745,7 +782,7 @@ internal static partial class ElasticsearchQueryBuilder
 
         private ElasticFieldMapping? GetMapping(string field)
         {
-            return context.MappingResolver?.GetMapping(field);
+            return context.MappingResolver?.GetMapping(field, followAlias: true);
         }
 
         private FieldType GetFieldType(string field, ElasticFieldMapping? mapping)

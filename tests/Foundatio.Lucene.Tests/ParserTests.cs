@@ -88,6 +88,8 @@ public class ParserTests
     [InlineData("foo^2", "foo^2")]
     [InlineData("foo^2.5", "foo^2.5")]
     [InlineData("foo~1^2", "foo~1^2")]
+    [InlineData("foo^\\+2", "foo^+2")]
+    [InlineData("foo~AUTO\\:3,6", "foo~AUTO:3,6")]
     [InlineData("\"hello world\"~2^3", "\"hello world\"~2^3")]
     [InlineData("\"say \\\"hi\\\"\"", "\"say \"hi\"\"")]
     [InlineData("/ab[c]+/", "/ab[c]+/")]
@@ -370,7 +372,7 @@ public class ParserTests
             "price:[1 TO 5]", "price:{* TO 5]", "name:[\"a b\" TO \"c d\"]", "price:>=5", "price:<-5",
             "date:<=2024-01-01T10:30:00", "date:[2024-01-01 TO *]^\"America/Chicago\"", "_exists_:a", "_missing_:a",
             "a:*", "*:*", "/re[g]ex/^2", "@include:\"a b\"", "(a)^2", "a:(b c)^3", "\"a\"~", "foo^0.125",
-            "terms:(status @missing:none min:created~5)"
+            "terms:(status @missing:none min:created~5)", "foo~AUTO\\:3,6", "foo^\\+2", "foo~\\\\x"
         ];
 
         foreach (string query in queries)
