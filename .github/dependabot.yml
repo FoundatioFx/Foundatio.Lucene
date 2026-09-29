@@ -4,6 +4,28 @@ updates:
 - package-ecosystem: nuget
   directory: "/"
   schedule:
-    interval: weekly
+    interval: monthly
   cooldown:
     default-days: 7
+  ignore:
+    # net8.0 and net10.0 reference different EF Core majors; dependabot can't tell the conditional references apart
+    - dependency-name: "Microsoft.EntityFrameworkCore*"
+      update-types: ["version-update:semver-major"]
+  groups:
+    efcore:
+      patterns: ["Microsoft.EntityFrameworkCore*"]
+    elasticsearch:
+      patterns: ["Elastic.*"]
+    testing:
+      patterns:
+        - "xunit*"
+        - "Testcontainers*"
+        - "GitHubActionsTestLogger"
+        - "Microsoft.Data.SqlClient"
+        - "Microsoft.Extensions.TimeProvider.Testing"
+    build-tools:
+      patterns:
+        - "AsyncFixer"
+        - "BenchmarkDotNet"
+        - "Microsoft.SourceLink.*"
+        - "MinVer"
