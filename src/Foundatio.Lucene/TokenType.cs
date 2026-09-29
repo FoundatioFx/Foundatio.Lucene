@@ -5,69 +5,79 @@ namespace Foundatio.Lucene;
 /// </summary>
 public enum TokenType
 {
-    // Literals
-    /// <summary>A term (word or phrase without quotes)</summary>
+    /// <summary>A term. The token value is the raw (still escaped) text.</summary>
     Term,
-    /// <summary>A quoted phrase (e.g., "quick brown fox")</summary>
+    /// <summary>A quoted phrase. The token value is the raw text between the quotes.</summary>
     QuotedString,
-    /// <summary>A wildcard term (contains * or ?)</summary>
-    Wildcard,
-    /// <summary>A prefix term (ends with *)</summary>
-    Prefix,
-    /// <summary>A regular expression term (enclosed in /)</summary>
+    /// <summary>A regular expression. The token value is the raw text between the slashes.</summary>
     Regex,
 
-    // Boolean operators
-    /// <summary>AND operator</summary>
+    /// <summary>AND or &amp;&amp; operator.</summary>
     And,
-    /// <summary>OR operator</summary>
+    /// <summary>OR or || operator.</summary>
     Or,
-    /// <summary>NOT operator</summary>
+    /// <summary>NOT keyword or ! prefix.</summary>
     Not,
 
-    // Modifiers
-    /// <summary>Plus sign (+) - required term</summary>
+    /// <summary>Plus sign (+) prefix marking a required clause.</summary>
     Plus,
-    /// <summary>Minus sign (-) - excluded term</summary>
+    /// <summary>Minus sign (-) prefix marking a prohibited clause.</summary>
     Minus,
-    /// <summary>Tilde (~) - fuzzy or proximity</summary>
+    /// <summary>Tilde (~) introducing a fuzzy, proximity, or interval modifier.</summary>
     Tilde,
-    /// <summary>Caret (^) - boost</summary>
+    /// <summary>Caret (^) introducing a boost (or time zone) modifier.</summary>
     Caret,
+    /// <summary>The value of a <see cref="Tilde"/> or <see cref="Caret"/> modifier.</summary>
+    ModifierValue,
 
-    // Structural tokens
-    /// <summary>Colon (:) - field separator</summary>
+    /// <summary>Colon (:) field separator.</summary>
     Colon,
-    /// <summary>Left parenthesis (</summary>
+    /// <summary>Left parenthesis.</summary>
     LeftParen,
-    /// <summary>Right parenthesis )</summary>
+    /// <summary>Right parenthesis.</summary>
     RightParen,
-    /// <summary>Left bracket [</summary>
+    /// <summary>Left bracket, opening an inclusive range.</summary>
     LeftBracket,
-    /// <summary>Right bracket ]</summary>
+    /// <summary>Right bracket, closing an inclusive range.</summary>
     RightBracket,
-    /// <summary>Left brace {</summary>
+    /// <summary>Left brace, opening an exclusive range.</summary>
     LeftBrace,
-    /// <summary>Right brace }</summary>
+    /// <summary>Right brace, closing an exclusive range.</summary>
     RightBrace,
 
-    // Range tokens
-    /// <summary>TO keyword in ranges</summary>
+    /// <summary>TO keyword inside a range.</summary>
     To,
-    /// <summary>Greater than (&gt;)</summary>
+    /// <summary>The <c>..</c> delimiter inside a range.</summary>
+    RangeDots,
+    /// <summary>Greater than (&gt;).</summary>
     GreaterThan,
-    /// <summary>Greater than or equal (&gt;=)</summary>
+    /// <summary>Greater than or equal (&gt;=).</summary>
     GreaterThanOrEqual,
-    /// <summary>Less than (&lt;)</summary>
+    /// <summary>Less than (&lt;).</summary>
     LessThan,
-    /// <summary>Less than or equal (&lt;=)</summary>
+    /// <summary>Less than or equal (&lt;=).</summary>
     LessThanOrEqual,
 
-    // Special tokens
-    /// <summary>Whitespace</summary>
-    Whitespace,
-    /// <summary>End of input</summary>
+    /// <summary>End of input.</summary>
     EndOfFile,
-    /// <summary>Invalid/unrecognized character</summary>
+    /// <summary>An unrecognized character.</summary>
     Invalid
+}
+
+/// <summary>
+/// Additional information about a token's raw text.
+/// </summary>
+[Flags]
+public enum TokenFlags
+{
+    /// <summary>No flags.</summary>
+    None = 0,
+    /// <summary>The token contains backslash escape sequences.</summary>
+    HasEscapes = 1,
+    /// <summary>The token contains an unescaped <c>*</c> or <c>?</c> wildcard.</summary>
+    HasWildcard = 2,
+    /// <summary>The token is a quoted string or regex that is missing its closing delimiter.</summary>
+    Unterminated = 4,
+    /// <summary>The token was preceded by whitespace.</summary>
+    LeadingWhitespace = 8
 }

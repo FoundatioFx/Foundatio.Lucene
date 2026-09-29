@@ -3,98 +3,51 @@ using Foundatio.Lucene.Ast;
 namespace Foundatio.Lucene;
 
 /// <summary>
-/// Represents the result of parsing a Lucene query.
+/// The result of parsing a Lucene query: the (possibly partial) document and any errors.
 /// </summary>
-public class LuceneParseResult
+public sealed class LuceneParseResult
 {
     /// <summary>
-    /// Cached empty error list to avoid allocations for successful parses.
+    /// Creates a parse result.
     /// </summary>
-    private static readonly List<ParseError> EmptyErrors = [];
+    public LuceneParseResult(QueryDocument document, IReadOnlyList<ParseError>? errors = null)
+    {
+        Document = document ?? throw new ArgumentNullException(nameof(document));
+        Errors = errors ?? [];
+    }
 
     /// <summary>
-    /// The parsed query document. Always non-null after parsing, even if errors occurred.
+    /// The parsed query document. Always non-null; when there are errors it contains everything that could be parsed.
     /// </summary>
-    public QueryDocument Document { get; init; }
+    public QueryDocument Document { get; }
 
     /// <summary>
-    /// List of errors encountered during parsing. Empty list means successful parse.
+    /// The errors encountered while parsing. Empty when parsing succeeded.
     /// </summary>
-    public List<ParseError> Errors { get; init; }
+    public IReadOnlyList<ParseError> Errors { get; }
 
     /// <summary>
-    /// Indicates whether the parsing was successful (no errors).
+    /// Whether parsing succeeded without errors.
     /// </summary>
     public bool IsSuccess => Errors.Count == 0;
 
     /// <summary>
-    /// Indicates whether parsing encountered any errors.
+    /// Whether parsing encountered any errors.
     /// </summary>
     public bool HasErrors => Errors.Count > 0;
 
     /// <summary>
-    /// Creates a new LuceneParseResult with an empty document.
+    /// Throws a <see cref="QueryParseException"/> describing the errors when parsing did not succeed.
     /// </summary>
-    public LuceneParseResult()
+    /// <returns>The parsed document.</returns>
+    public QueryDocument GetDocumentOrThrow()
     {
-        Document = new QueryDocument();
-        Errors = EmptyErrors;
-    }
+        if (IsSuccess)
+            return Document;
 
-    /// <summary>
-    /// Creates a parse result with a document and optional errors.
-    /// </summary>
-    public LuceneParseResult(QueryDocument document, List<ParseError>? errors = null)
-    {
-        Document = document ?? new QueryDocument();
-        Errors = errors ?? EmptyErrors;
-    }
-
-    /// <summary>
-    /// Creates a successful parse result with a document and no errors.
-    /// </summary>
-    public static LuceneParseResult Success(QueryDocument document)
-    {
-        return new LuceneParseResult
+        throw new QueryParseException($"Failed to parse query: {string.Join("; ", Errors.Select(e => e.ToString()))}")
         {
-            Document = document ?? new QueryDocument(),
-            Errors = EmptyErrors
-        };
-    }
-
-    /// <summary>
-    /// Creates a partial parse result with a document and errors.
-    /// </summary>
-    public static LuceneParseResult Partial(QueryDocument document, List<ParseError> errors)
-    {
-        return new LuceneParseResult
-        {
-            Document = document ?? new QueryDocument(),
-            Errors = errors ?? EmptyErrors
-        };
-    }
-
-    /// <summary>
-    /// Creates a failed parse result with errors and an empty document.
-    /// </summary>
-    public static LuceneParseResult Failure(List<ParseError> errors)
-    {
-        return new LuceneParseResult
-        {
-            Document = new QueryDocument(),
-            Errors = errors ?? EmptyErrors
-        };
-    }
-
-    /// <summary>
-    /// Creates a failed parse result with a single error and an empty document.
-    /// </summary>
-    public static LuceneParseResult Failure(ParseError error)
-    {
-        return new LuceneParseResult
-        {
-            Document = new QueryDocument(),
-            Errors = [error]
+            Errors = Errors
         };
     }
 }

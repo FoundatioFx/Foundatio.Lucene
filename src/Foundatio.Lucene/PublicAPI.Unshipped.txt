@@ -1,0 +1,856 @@
+#nullable enable
+abstract Foundatio.Lucene.Ast.QueryNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+abstract Foundatio.Lucene.QueryOptionsBase.<Clone>$() -> Foundatio.Lucene.QueryOptionsBase!
+const Foundatio.Lucene.AggregationTypes.Avg = "avg" -> string!
+const Foundatio.Lucene.AggregationTypes.Cardinality = "cardinality" -> string!
+const Foundatio.Lucene.AggregationTypes.DateHistogram = "date" -> string!
+const Foundatio.Lucene.AggregationTypes.ExtendedStats = "exstats" -> string!
+const Foundatio.Lucene.AggregationTypes.GeoGrid = "geogrid" -> string!
+const Foundatio.Lucene.AggregationTypes.Histogram = "histogram" -> string!
+const Foundatio.Lucene.AggregationTypes.Max = "max" -> string!
+const Foundatio.Lucene.AggregationTypes.Min = "min" -> string!
+const Foundatio.Lucene.AggregationTypes.Missing = "missing" -> string!
+const Foundatio.Lucene.AggregationTypes.Percentiles = "percentiles" -> string!
+const Foundatio.Lucene.AggregationTypes.Stats = "stats" -> string!
+const Foundatio.Lucene.AggregationTypes.Sum = "sum" -> string!
+const Foundatio.Lucene.AggregationTypes.Terms = "terms" -> string!
+const Foundatio.Lucene.AggregationTypes.TopHits = "tophits" -> string!
+const Foundatio.Lucene.Ast.TermNode.DefaultFuzzyDistance = -1 -> int
+const Foundatio.Lucene.Ast.TermNode.DefaultFuzzyDistanceValue = 2 -> int
+const Foundatio.Lucene.Extensions.QueryNodeExtensions.OriginalFieldKey = "@OriginalField" -> string!
+const Foundatio.Lucene.QueryOperations.Exists = "exists" -> string!
+const Foundatio.Lucene.QueryOperations.Fuzzy = "fuzzy" -> string!
+const Foundatio.Lucene.QueryOperations.MatchAll = "match_all" -> string!
+const Foundatio.Lucene.QueryOperations.Missing = "missing" -> string!
+const Foundatio.Lucene.QueryOperations.Phrase = "phrase" -> string!
+const Foundatio.Lucene.QueryOperations.Prefix = "prefix" -> string!
+const Foundatio.Lucene.QueryOperations.Range = "range" -> string!
+const Foundatio.Lucene.QueryOperations.Regex = "regex" -> string!
+const Foundatio.Lucene.QueryOperations.Term = "term" -> string!
+const Foundatio.Lucene.QueryOperations.Wildcard = "wildcard" -> string!
+const Foundatio.Lucene.QueryParserConfiguration.FieldResolverVisitorPriority = 10 -> int
+const Foundatio.Lucene.QueryParserConfiguration.IncludeVisitorPriority = 0 -> int
+const Foundatio.Lucene.QueryParserConfiguration.ValidationVisitorPriority = 30 -> int
+const Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.DefaultDateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz" -> string!
+const Foundatio.Lucene.Visitors.IncludeVisitor.IncludeField = "@include" -> string!
+const Foundatio.Lucene.Visitors.IncludeVisitor.IncludeNameKey = "@IncludeName" -> string!
+Foundatio.Lucene.AggregationExpression
+Foundatio.Lucene.AggregationExpression.AggregationExpression(string! type, string! field) -> void
+Foundatio.Lucene.AggregationExpression.Aggregations.get -> System.Collections.Generic.List<Foundatio.Lucene.AggregationExpression!>!
+Foundatio.Lucene.AggregationExpression.BoostText.get -> string?
+Foundatio.Lucene.AggregationExpression.BoostText.set -> void
+Foundatio.Lucene.AggregationExpression.Data.get -> System.Collections.Generic.IDictionary<string!, object?>!
+Foundatio.Lucene.AggregationExpression.Field.get -> string!
+Foundatio.Lucene.AggregationExpression.Field.set -> void
+Foundatio.Lucene.AggregationExpression.GetModifier(string! name) -> Foundatio.Lucene.AggregationModifier?
+Foundatio.Lucene.AggregationExpression.GetModifiers(string! name) -> System.Collections.Generic.IEnumerable<Foundatio.Lucene.AggregationModifier!>!
+Foundatio.Lucene.AggregationExpression.IsGroup.get -> bool
+Foundatio.Lucene.AggregationExpression.IsGroup.set -> void
+Foundatio.Lucene.AggregationExpression.Modifiers.get -> System.Collections.Generic.List<Foundatio.Lucene.AggregationModifier!>!
+Foundatio.Lucene.AggregationExpression.Name.get -> string!
+Foundatio.Lucene.AggregationExpression.Order.get -> Foundatio.Lucene.SortDirection?
+Foundatio.Lucene.AggregationExpression.Order.set -> void
+Foundatio.Lucene.AggregationExpression.OriginalField.get -> string!
+Foundatio.Lucene.AggregationExpression.OriginalField.set -> void
+Foundatio.Lucene.AggregationExpression.Position.get -> int
+Foundatio.Lucene.AggregationExpression.Position.set -> void
+Foundatio.Lucene.AggregationExpression.ProximityText.get -> string?
+Foundatio.Lucene.AggregationExpression.ProximityText.set -> void
+Foundatio.Lucene.AggregationExpression.Type.get -> string!
+Foundatio.Lucene.AggregationExpression.Type.set -> void
+Foundatio.Lucene.AggregationExpressionParser
+Foundatio.Lucene.AggregationModifier
+Foundatio.Lucene.AggregationModifier.<Clone>$() -> Foundatio.Lucene.AggregationModifier!
+Foundatio.Lucene.AggregationModifier.AggregationModifier(string! Name, string! Value, bool IsRegex = false, bool IsExcluded = false, int Position = -1) -> void
+Foundatio.Lucene.AggregationModifier.Deconstruct(out string! Name, out string! Value, out bool IsRegex, out bool IsExcluded, out int Position) -> void
+Foundatio.Lucene.AggregationModifier.Equals(Foundatio.Lucene.AggregationModifier? other) -> bool
+Foundatio.Lucene.AggregationModifier.IsExcluded.get -> bool
+Foundatio.Lucene.AggregationModifier.IsExcluded.init -> void
+Foundatio.Lucene.AggregationModifier.IsRegex.get -> bool
+Foundatio.Lucene.AggregationModifier.IsRegex.init -> void
+Foundatio.Lucene.AggregationModifier.Name.get -> string!
+Foundatio.Lucene.AggregationModifier.Name.init -> void
+Foundatio.Lucene.AggregationModifier.Position.get -> int
+Foundatio.Lucene.AggregationModifier.Position.init -> void
+Foundatio.Lucene.AggregationModifier.Value.get -> string!
+Foundatio.Lucene.AggregationModifier.Value.init -> void
+Foundatio.Lucene.AggregationTypes
+Foundatio.Lucene.Ast.BooleanClause
+Foundatio.Lucene.Ast.BooleanClause.BooleanClause() -> void
+Foundatio.Lucene.Ast.BooleanClause.BooleanClause(Foundatio.Lucene.Ast.QueryNode? query, Foundatio.Lucene.Ast.Occur occur) -> void
+Foundatio.Lucene.Ast.BooleanClause.Clone() -> Foundatio.Lucene.Ast.BooleanClause!
+Foundatio.Lucene.Ast.BooleanClause.Modifier.get -> Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.BooleanClause.Modifier.set -> void
+Foundatio.Lucene.Ast.BooleanClause.Occur.get -> Foundatio.Lucene.Ast.Occur
+Foundatio.Lucene.Ast.BooleanClause.Occur.set -> void
+Foundatio.Lucene.Ast.BooleanClause.Operator.get -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.Ast.BooleanClause.Operator.set -> void
+Foundatio.Lucene.Ast.BooleanClause.Query.get -> Foundatio.Lucene.Ast.QueryNode?
+Foundatio.Lucene.Ast.BooleanClause.Query.set -> void
+Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.Ast.BooleanOperator.And = 1 -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.Ast.BooleanOperator.Implicit = 0 -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.Ast.BooleanOperator.Or = 2 -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.Ast.BooleanQueryNode
+Foundatio.Lucene.Ast.BooleanQueryNode.BooleanQueryNode() -> void
+Foundatio.Lucene.Ast.BooleanQueryNode.Clauses.get -> System.Collections.Generic.List<Foundatio.Lucene.Ast.BooleanClause!>!
+Foundatio.Lucene.Ast.BooleanQueryNode.Clauses.set -> void
+Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.ClauseModifier.Bang = 4 -> Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.ClauseModifier.Minus = 2 -> Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.ClauseModifier.None = 0 -> Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.ClauseModifier.Not = 3 -> Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.ClauseModifier.Plus = 1 -> Foundatio.Lucene.Ast.ClauseModifier
+Foundatio.Lucene.Ast.ExistsNode
+Foundatio.Lucene.Ast.ExistsNode.ExistsNode() -> void
+Foundatio.Lucene.Ast.ExistsNode.Field.get -> string!
+Foundatio.Lucene.Ast.ExistsNode.Field.set -> void
+Foundatio.Lucene.Ast.ExistsNode.FieldMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.ExistsNode.FieldMemory.set -> void
+Foundatio.Lucene.Ast.ExistsNode.IsExistsSyntax.get -> bool
+Foundatio.Lucene.Ast.ExistsNode.IsExistsSyntax.set -> void
+Foundatio.Lucene.Ast.FieldQueryNode
+Foundatio.Lucene.Ast.FieldQueryNode.Field.get -> string!
+Foundatio.Lucene.Ast.FieldQueryNode.Field.set -> void
+Foundatio.Lucene.Ast.FieldQueryNode.FieldMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.FieldQueryNode.FieldMemory.set -> void
+Foundatio.Lucene.Ast.FieldQueryNode.FieldQueryNode() -> void
+Foundatio.Lucene.Ast.FieldQueryNode.IsWildcardField.get -> bool
+Foundatio.Lucene.Ast.FieldQueryNode.Query.get -> Foundatio.Lucene.Ast.QueryNode?
+Foundatio.Lucene.Ast.FieldQueryNode.Query.set -> void
+Foundatio.Lucene.Ast.GroupNode
+Foundatio.Lucene.Ast.GroupNode.Boost.get -> float?
+Foundatio.Lucene.Ast.GroupNode.Boost.set -> void
+Foundatio.Lucene.Ast.GroupNode.BoostText.get -> string?
+Foundatio.Lucene.Ast.GroupNode.BoostText.set -> void
+Foundatio.Lucene.Ast.GroupNode.GroupNode() -> void
+Foundatio.Lucene.Ast.GroupNode.Query.get -> Foundatio.Lucene.Ast.QueryNode?
+Foundatio.Lucene.Ast.GroupNode.Query.set -> void
+Foundatio.Lucene.Ast.IBoostable
+Foundatio.Lucene.Ast.IBoostable.Boost.get -> float?
+Foundatio.Lucene.Ast.IBoostable.Boost.set -> void
+Foundatio.Lucene.Ast.IBoostable.BoostText.get -> string?
+Foundatio.Lucene.Ast.IBoostable.BoostText.set -> void
+Foundatio.Lucene.Ast.IFieldNode
+Foundatio.Lucene.Ast.IFieldNode.Field.get -> string!
+Foundatio.Lucene.Ast.IFieldNode.Field.set -> void
+Foundatio.Lucene.Ast.IFieldNode.FieldMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.IFieldNode.FieldMemory.set -> void
+Foundatio.Lucene.Ast.IProximityModifiable
+Foundatio.Lucene.Ast.IProximityModifiable.ProximityText.get -> string?
+Foundatio.Lucene.Ast.IProximityModifiable.ProximityText.set -> void
+Foundatio.Lucene.Ast.MatchAllNode
+Foundatio.Lucene.Ast.MatchAllNode.MatchAllNode() -> void
+Foundatio.Lucene.Ast.MissingNode
+Foundatio.Lucene.Ast.MissingNode.Field.get -> string!
+Foundatio.Lucene.Ast.MissingNode.Field.set -> void
+Foundatio.Lucene.Ast.MissingNode.FieldMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.MissingNode.FieldMemory.set -> void
+Foundatio.Lucene.Ast.MissingNode.MissingNode() -> void
+Foundatio.Lucene.Ast.NotNode
+Foundatio.Lucene.Ast.NotNode.NotNode() -> void
+Foundatio.Lucene.Ast.NotNode.Query.get -> Foundatio.Lucene.Ast.QueryNode?
+Foundatio.Lucene.Ast.NotNode.Query.set -> void
+Foundatio.Lucene.Ast.Occur
+Foundatio.Lucene.Ast.Occur.Must = 0 -> Foundatio.Lucene.Ast.Occur
+Foundatio.Lucene.Ast.Occur.MustNot = 2 -> Foundatio.Lucene.Ast.Occur
+Foundatio.Lucene.Ast.Occur.Should = 1 -> Foundatio.Lucene.Ast.Occur
+Foundatio.Lucene.Ast.PhraseNode
+Foundatio.Lucene.Ast.PhraseNode.Boost.get -> float?
+Foundatio.Lucene.Ast.PhraseNode.Boost.set -> void
+Foundatio.Lucene.Ast.PhraseNode.BoostText.get -> string?
+Foundatio.Lucene.Ast.PhraseNode.BoostText.set -> void
+Foundatio.Lucene.Ast.PhraseNode.Phrase.get -> string!
+Foundatio.Lucene.Ast.PhraseNode.Phrase.set -> void
+Foundatio.Lucene.Ast.PhraseNode.PhraseMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.PhraseNode.PhraseMemory.set -> void
+Foundatio.Lucene.Ast.PhraseNode.PhraseNode() -> void
+Foundatio.Lucene.Ast.PhraseNode.ProximityText.get -> string?
+Foundatio.Lucene.Ast.PhraseNode.ProximityText.set -> void
+Foundatio.Lucene.Ast.PhraseNode.Slop.get -> int?
+Foundatio.Lucene.Ast.PhraseNode.Slop.set -> void
+Foundatio.Lucene.Ast.QueryDocument
+Foundatio.Lucene.Ast.QueryDocument.CloneDocument() -> Foundatio.Lucene.Ast.QueryDocument!
+Foundatio.Lucene.Ast.QueryDocument.Query.get -> Foundatio.Lucene.Ast.QueryNode?
+Foundatio.Lucene.Ast.QueryDocument.Query.set -> void
+Foundatio.Lucene.Ast.QueryDocument.QueryDocument() -> void
+Foundatio.Lucene.Ast.QueryNode
+Foundatio.Lucene.Ast.QueryNode.CopyCommonTo<T>(T! target) -> T!
+Foundatio.Lucene.Ast.QueryNode.Data.get -> System.Collections.Generic.IDictionary<string!, object?>!
+Foundatio.Lucene.Ast.QueryNode.EndPosition.get -> int
+Foundatio.Lucene.Ast.QueryNode.EndPosition.set -> void
+Foundatio.Lucene.Ast.QueryNode.GetData<T>(string! key) -> T?
+Foundatio.Lucene.Ast.QueryNode.HasData.get -> bool
+Foundatio.Lucene.Ast.QueryNode.QueryNode() -> void
+Foundatio.Lucene.Ast.QueryNode.SetData(string! key, object? value) -> void
+Foundatio.Lucene.Ast.QueryNode.StartColumn.get -> int
+Foundatio.Lucene.Ast.QueryNode.StartColumn.set -> void
+Foundatio.Lucene.Ast.QueryNode.StartLine.get -> int
+Foundatio.Lucene.Ast.QueryNode.StartLine.set -> void
+Foundatio.Lucene.Ast.QueryNode.StartPosition.get -> int
+Foundatio.Lucene.Ast.QueryNode.StartPosition.set -> void
+Foundatio.Lucene.Ast.RangeNode
+Foundatio.Lucene.Ast.RangeNode.Boost.get -> float?
+Foundatio.Lucene.Ast.RangeNode.Boost.set -> void
+Foundatio.Lucene.Ast.RangeNode.BoostText.get -> string?
+Foundatio.Lucene.Ast.RangeNode.BoostText.set -> void
+Foundatio.Lucene.Ast.RangeNode.Max.get -> string?
+Foundatio.Lucene.Ast.RangeNode.Max.set -> void
+Foundatio.Lucene.Ast.RangeNode.MaxInclusive.get -> bool
+Foundatio.Lucene.Ast.RangeNode.MaxInclusive.set -> void
+Foundatio.Lucene.Ast.RangeNode.MaxMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.RangeNode.MaxMemory.set -> void
+Foundatio.Lucene.Ast.RangeNode.Min.get -> string?
+Foundatio.Lucene.Ast.RangeNode.Min.set -> void
+Foundatio.Lucene.Ast.RangeNode.MinInclusive.get -> bool
+Foundatio.Lucene.Ast.RangeNode.MinInclusive.set -> void
+Foundatio.Lucene.Ast.RangeNode.MinMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.RangeNode.MinMemory.set -> void
+Foundatio.Lucene.Ast.RangeNode.Operator.get -> Foundatio.Lucene.Ast.RangeOperator?
+Foundatio.Lucene.Ast.RangeNode.Operator.set -> void
+Foundatio.Lucene.Ast.RangeNode.ProximityText.get -> string?
+Foundatio.Lucene.Ast.RangeNode.ProximityText.set -> void
+Foundatio.Lucene.Ast.RangeNode.RangeNode() -> void
+Foundatio.Lucene.Ast.RangeOperator
+Foundatio.Lucene.Ast.RangeOperator.GreaterThan = 0 -> Foundatio.Lucene.Ast.RangeOperator
+Foundatio.Lucene.Ast.RangeOperator.GreaterThanOrEqual = 1 -> Foundatio.Lucene.Ast.RangeOperator
+Foundatio.Lucene.Ast.RangeOperator.LessThan = 2 -> Foundatio.Lucene.Ast.RangeOperator
+Foundatio.Lucene.Ast.RangeOperator.LessThanOrEqual = 3 -> Foundatio.Lucene.Ast.RangeOperator
+Foundatio.Lucene.Ast.RegexNode
+Foundatio.Lucene.Ast.RegexNode.Boost.get -> float?
+Foundatio.Lucene.Ast.RegexNode.Boost.set -> void
+Foundatio.Lucene.Ast.RegexNode.BoostText.get -> string?
+Foundatio.Lucene.Ast.RegexNode.BoostText.set -> void
+Foundatio.Lucene.Ast.RegexNode.Pattern.get -> string!
+Foundatio.Lucene.Ast.RegexNode.Pattern.set -> void
+Foundatio.Lucene.Ast.RegexNode.PatternMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.RegexNode.PatternMemory.set -> void
+Foundatio.Lucene.Ast.RegexNode.RegexNode() -> void
+Foundatio.Lucene.Ast.TermNode
+Foundatio.Lucene.Ast.TermNode.Boost.get -> float?
+Foundatio.Lucene.Ast.TermNode.Boost.set -> void
+Foundatio.Lucene.Ast.TermNode.BoostText.get -> string?
+Foundatio.Lucene.Ast.TermNode.BoostText.set -> void
+Foundatio.Lucene.Ast.TermNode.FuzzyDistance.get -> int?
+Foundatio.Lucene.Ast.TermNode.FuzzyDistance.set -> void
+Foundatio.Lucene.Ast.TermNode.GetEffectiveFuzzyDistance() -> int?
+Foundatio.Lucene.Ast.TermNode.HasEscapes.get -> bool
+Foundatio.Lucene.Ast.TermNode.IsFuzzy.get -> bool
+Foundatio.Lucene.Ast.TermNode.IsPrefix.get -> bool
+Foundatio.Lucene.Ast.TermNode.IsPrefix.set -> void
+Foundatio.Lucene.Ast.TermNode.IsWildcard.get -> bool
+Foundatio.Lucene.Ast.TermNode.IsWildcard.set -> void
+Foundatio.Lucene.Ast.TermNode.ProximityText.get -> string?
+Foundatio.Lucene.Ast.TermNode.ProximityText.set -> void
+Foundatio.Lucene.Ast.TermNode.Term.get -> string!
+Foundatio.Lucene.Ast.TermNode.Term.set -> void
+Foundatio.Lucene.Ast.TermNode.TermMemory.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Ast.TermNode.TermMemory.set -> void
+Foundatio.Lucene.Ast.TermNode.TermNode() -> void
+Foundatio.Lucene.Ast.TermNode.UnescapedTerm.get -> string!
+Foundatio.Lucene.DateMath
+Foundatio.Lucene.Extensions.QueryDebugExtensions
+Foundatio.Lucene.Extensions.QueryNodeExtensions
+Foundatio.Lucene.Extensions.StringExtensions
+Foundatio.Lucene.FieldMap
+Foundatio.Lucene.FieldMap.Add(string! alias, string! target) -> Foundatio.Lucene.FieldMap!
+Foundatio.Lucene.FieldMap.FieldMap() -> void
+Foundatio.Lucene.FieldMap.FieldMap(System.Collections.Generic.IDictionary<string!, string!>! dictionary) -> void
+Foundatio.Lucene.FieldMap.ReportUnmappedFields.get -> bool
+Foundatio.Lucene.FieldMap.ReportUnmappedFields.set -> void
+Foundatio.Lucene.FieldMap.ResolutionMode.get -> Foundatio.Lucene.FieldResolutionMode
+Foundatio.Lucene.FieldMap.ResolutionMode.set -> void
+Foundatio.Lucene.FieldMap.ResolveField(string? field) -> string?
+Foundatio.Lucene.FieldMap.ResultPrefix.get -> string?
+Foundatio.Lucene.FieldMap.ResultPrefix.set -> void
+Foundatio.Lucene.FieldMapBuilder
+Foundatio.Lucene.FieldMapBuilder.AllowUnmapped() -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.Build() -> Foundatio.Lucene.FieldMap!
+Foundatio.Lucene.FieldMapBuilder.FieldMapBuilder() -> void
+Foundatio.Lucene.FieldMapBuilder.Map(string! alias, string! target) -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.MapFrom(System.Collections.Generic.IDictionary<string!, string!>! mappings) -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.MapMany(string! target, params string![]! aliases) -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.MapNamespace(string! sourcePrefix, string! targetPrefix) -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.ReportUnmapped() -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.UseDirectResolution() -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.UseHierarchicalResolution() -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.WithoutResultPrefix() -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.WithResolutionMode(Foundatio.Lucene.FieldResolutionMode mode) -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilder.WithResultPrefix(string! prefix) -> Foundatio.Lucene.FieldMapBuilder!
+Foundatio.Lucene.FieldMapBuilderExtensions
+Foundatio.Lucene.FieldMapExtensions
+Foundatio.Lucene.FieldResolutionMode
+Foundatio.Lucene.FieldResolutionMode.Direct = 0 -> Foundatio.Lucene.FieldResolutionMode
+Foundatio.Lucene.FieldResolutionMode.Hierarchical = 1 -> Foundatio.Lucene.FieldResolutionMode
+Foundatio.Lucene.LuceneParseResult
+Foundatio.Lucene.LuceneParseResult.Document.get -> Foundatio.Lucene.Ast.QueryDocument!
+Foundatio.Lucene.LuceneParseResult.Errors.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.ParseError>!
+Foundatio.Lucene.LuceneParseResult.GetDocumentOrThrow() -> Foundatio.Lucene.Ast.QueryDocument!
+Foundatio.Lucene.LuceneParseResult.HasErrors.get -> bool
+Foundatio.Lucene.LuceneParseResult.IsSuccess.get -> bool
+Foundatio.Lucene.LuceneParseResult.LuceneParseResult(Foundatio.Lucene.Ast.QueryDocument! document, System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.ParseError>? errors = null) -> void
+Foundatio.Lucene.LuceneParserOptions
+Foundatio.Lucene.LuceneParserOptions.<Clone>$() -> Foundatio.Lucene.LuceneParserOptions!
+Foundatio.Lucene.LuceneParserOptions.DefaultOperator.get -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.LuceneParserOptions.DefaultOperator.init -> void
+Foundatio.Lucene.LuceneParserOptions.Equals(Foundatio.Lucene.LuceneParserOptions? other) -> bool
+Foundatio.Lucene.LuceneParserOptions.LuceneParserOptions() -> void
+Foundatio.Lucene.LuceneParserOptions.MaxDepth.get -> int
+Foundatio.Lucene.LuceneParserOptions.MaxDepth.init -> void
+Foundatio.Lucene.LuceneQuery
+Foundatio.Lucene.ParseError
+Foundatio.Lucene.ParseError.Code.get -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.ParseError.Code.init -> void
+Foundatio.Lucene.ParseError.Column.get -> int
+Foundatio.Lucene.ParseError.Column.init -> void
+Foundatio.Lucene.ParseError.Deconstruct(out string! Message, out int Position, out int Length, out int Line, out int Column, out Foundatio.Lucene.QueryErrorCode Code) -> void
+Foundatio.Lucene.ParseError.EndPosition.get -> int
+Foundatio.Lucene.ParseError.Equals(Foundatio.Lucene.ParseError other) -> bool
+Foundatio.Lucene.ParseError.Length.get -> int
+Foundatio.Lucene.ParseError.Length.init -> void
+Foundatio.Lucene.ParseError.Line.get -> int
+Foundatio.Lucene.ParseError.Line.init -> void
+Foundatio.Lucene.ParseError.Message.get -> string!
+Foundatio.Lucene.ParseError.Message.init -> void
+Foundatio.Lucene.ParseError.ParseError() -> void
+Foundatio.Lucene.ParseError.ParseError(string! Message, int Position, int Length, int Line, int Column, Foundatio.Lucene.QueryErrorCode Code = Foundatio.Lucene.QueryErrorCode.ParseError) -> void
+Foundatio.Lucene.ParseError.Position.get -> int
+Foundatio.Lucene.ParseError.Position.init -> void
+Foundatio.Lucene.QueryBuildException
+Foundatio.Lucene.QueryBuildException.QueryBuildException(string! message) -> void
+Foundatio.Lucene.QueryBuildException.QueryBuildException(string! message, Foundatio.Lucene.QueryErrorCode errorCode) -> void
+Foundatio.Lucene.QueryBuildException.QueryBuildException(string! message, Foundatio.Lucene.QueryErrorCode errorCode, System.Exception! innerException) -> void
+Foundatio.Lucene.QueryBuildException.QueryBuildException(string! message, System.Exception! innerException) -> void
+Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.BuildError = 300 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.ExpressionBuildError = 303 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.FieldNotAllowed = 201 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.FieldRestricted = 202 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.InvalidDateMath = 105 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.InvalidFieldName = 104 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.InvalidRange = 103 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.LeadingWildcardNotAllowed = 206 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.MaxDepthExceeded = 207 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.OperationNotAllowed = 204 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.OperationRestricted = 205 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.ParseError = 100 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.TypeConversionError = 302 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.UnexpectedToken = 101 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.Unknown = 0 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.UnmatchedBracket = 102 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.UnresolvedField = 203 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.UnresolvedInclude = 208 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.UnsupportedQueryType = 301 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryErrorCode.ValidationError = 200 -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryException
+Foundatio.Lucene.QueryException.ErrorCode.get -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryException.FieldName.get -> string?
+Foundatio.Lucene.QueryException.FieldName.init -> void
+Foundatio.Lucene.QueryException.Length.get -> int
+Foundatio.Lucene.QueryException.Length.init -> void
+Foundatio.Lucene.QueryException.Position.get -> int
+Foundatio.Lucene.QueryException.Position.init -> void
+Foundatio.Lucene.QueryException.QueryException(string! message, Foundatio.Lucene.QueryErrorCode errorCode = Foundatio.Lucene.QueryErrorCode.Unknown) -> void
+Foundatio.Lucene.QueryException.QueryException(string! message, Foundatio.Lucene.QueryErrorCode errorCode, System.Exception! innerException) -> void
+Foundatio.Lucene.QueryOperations
+Foundatio.Lucene.QueryOptionsBase
+Foundatio.Lucene.QueryOptionsBase.AsyncFieldResolver.get -> Foundatio.Lucene.Visitors.AsyncQueryFieldResolver?
+Foundatio.Lucene.QueryOptionsBase.AsyncFieldResolver.init -> void
+Foundatio.Lucene.QueryOptionsBase.DefaultFields.get -> string![]?
+Foundatio.Lucene.QueryOptionsBase.DefaultFields.init -> void
+Foundatio.Lucene.QueryOptionsBase.DefaultOperator.get -> Foundatio.Lucene.Ast.BooleanOperator?
+Foundatio.Lucene.QueryOptionsBase.DefaultOperator.init -> void
+Foundatio.Lucene.QueryOptionsBase.FieldMap.get -> Foundatio.Lucene.FieldMap?
+Foundatio.Lucene.QueryOptionsBase.FieldMap.init -> void
+Foundatio.Lucene.QueryOptionsBase.FieldResolver.get -> Foundatio.Lucene.Visitors.QueryFieldResolver?
+Foundatio.Lucene.QueryOptionsBase.FieldResolver.init -> void
+Foundatio.Lucene.QueryOptionsBase.IncludeResolver.get -> Foundatio.Lucene.Visitors.IncludeResolver?
+Foundatio.Lucene.QueryOptionsBase.IncludeResolver.init -> void
+Foundatio.Lucene.QueryOptionsBase.Includes.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Foundatio.Lucene.QueryOptionsBase.Includes.init -> void
+Foundatio.Lucene.QueryOptionsBase.QueryOptionsBase() -> void
+Foundatio.Lucene.QueryOptionsBase.QueryOptionsBase(Foundatio.Lucene.QueryOptionsBase! original) -> void
+Foundatio.Lucene.QueryOptionsBase.ValidationOptions.get -> Foundatio.Lucene.QueryValidationOptions?
+Foundatio.Lucene.QueryOptionsBase.ValidationOptions.init -> void
+Foundatio.Lucene.QueryParseException
+Foundatio.Lucene.QueryParseException.Errors.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.ParseError>!
+Foundatio.Lucene.QueryParseException.Errors.init -> void
+Foundatio.Lucene.QueryParseException.QueryParseException(string! message) -> void
+Foundatio.Lucene.QueryParseException.QueryParseException(string! message, Foundatio.Lucene.QueryErrorCode errorCode) -> void
+Foundatio.Lucene.QueryParseException.QueryParseException(string! message, Foundatio.Lucene.QueryErrorCode errorCode, System.Exception! innerException) -> void
+Foundatio.Lucene.QueryParseException.QueryParseException(string! message, System.Exception! innerException) -> void
+Foundatio.Lucene.QueryParserBase<TContext>
+Foundatio.Lucene.QueryParserBase<TContext>.ApplyOptions(TContext! context, Foundatio.Lucene.QueryOptionsBase? registered, Foundatio.Lucene.QueryOptionsBase? options) -> void
+Foundatio.Lucene.QueryParserBase<TContext>.BaseConfiguration.get -> Foundatio.Lucene.QueryParserConfiguration!
+Foundatio.Lucene.QueryParserBase<TContext>.ProcessAggregations(string! aggregations, TContext! context) -> System.Collections.Generic.List<Foundatio.Lucene.AggregationExpression!>!
+Foundatio.Lucene.QueryParserBase<TContext>.ProcessAggregationsAsync(string! aggregations, TContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.List<Foundatio.Lucene.AggregationExpression!>!>
+Foundatio.Lucene.QueryParserBase<TContext>.ProcessQuery(Foundatio.Lucene.Ast.QueryDocument! document, TContext! context, bool clone) -> Foundatio.Lucene.Ast.QueryDocument!
+Foundatio.Lucene.QueryParserBase<TContext>.ProcessSort(string! sort, TContext! context) -> System.Collections.Generic.List<Foundatio.Lucene.SortField!>!
+Foundatio.Lucene.QueryParserBase<TContext>.ProcessSortAsync(string! sort, TContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.List<Foundatio.Lucene.SortField!>!>
+Foundatio.Lucene.QueryParserBase<TContext>.QueryParserBase(Foundatio.Lucene.QueryParserConfiguration! configuration) -> void
+Foundatio.Lucene.QueryParserBase<TContext>.ResolveQueryAsync(Foundatio.Lucene.Ast.QueryDocument! document, TContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Foundatio.Lucene.QueryParserBase<TContext>.ValidateQuery(string! query, TContext! context) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.QueryParserBase<TContext>.ValidateQueryAsync(string! query, TContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.QueryParserConfiguration
+Foundatio.Lucene.QueryParserConfiguration.AddVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AddVisitorAfter<T>(Foundatio.Lucene.Visitors.IQueryVisitor! visitor) -> void
+Foundatio.Lucene.QueryParserConfiguration.AddVisitorBefore<T>(Foundatio.Lucene.Visitors.IQueryVisitor! visitor) -> void
+Foundatio.Lucene.QueryParserConfiguration.AsyncFieldResolver.get -> Foundatio.Lucene.Visitors.AsyncQueryFieldResolver?
+Foundatio.Lucene.QueryParserConfiguration.AsyncFieldResolver.set -> void
+Foundatio.Lucene.QueryParserConfiguration.DefaultFields.get -> string![]?
+Foundatio.Lucene.QueryParserConfiguration.DefaultFields.set -> void
+Foundatio.Lucene.QueryParserConfiguration.DefaultOperator.get -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.QueryParserConfiguration.DefaultOperator.set -> void
+Foundatio.Lucene.QueryParserConfiguration.FieldMap.get -> Foundatio.Lucene.FieldMap?
+Foundatio.Lucene.QueryParserConfiguration.FieldMap.set -> void
+Foundatio.Lucene.QueryParserConfiguration.FieldResolver.get -> Foundatio.Lucene.Visitors.QueryFieldResolver?
+Foundatio.Lucene.QueryParserConfiguration.FieldResolver.set -> void
+Foundatio.Lucene.QueryParserConfiguration.IncludeResolver.get -> Foundatio.Lucene.Visitors.IncludeResolver?
+Foundatio.Lucene.QueryParserConfiguration.IncludeResolver.set -> void
+Foundatio.Lucene.QueryParserConfiguration.Includes.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Foundatio.Lucene.QueryParserConfiguration.Includes.set -> void
+Foundatio.Lucene.QueryParserConfiguration.ParserOptions.get -> Foundatio.Lucene.LuceneParserOptions!
+Foundatio.Lucene.QueryParserConfiguration.ParserOptions.set -> void
+Foundatio.Lucene.QueryParserConfiguration.QueryParserConfiguration() -> void
+Foundatio.Lucene.QueryParserConfiguration.QueryVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
+Foundatio.Lucene.QueryParserConfiguration.RemoveVisitor<T>() -> void
+Foundatio.Lucene.QueryParserConfiguration.ReplaceVisitor<T>(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int? priority = null) -> void
+Foundatio.Lucene.QueryParserConfiguration.ShouldSkipInclude.get -> Foundatio.Lucene.Visitors.ShouldSkipIncludeFunc?
+Foundatio.Lucene.QueryParserConfiguration.ShouldSkipInclude.set -> void
+Foundatio.Lucene.QueryParserConfiguration.TimeProvider.get -> System.TimeProvider!
+Foundatio.Lucene.QueryParserConfiguration.TimeProvider.set -> void
+Foundatio.Lucene.QueryParserConfiguration.ValidationOptions.get -> Foundatio.Lucene.QueryValidationOptions?
+Foundatio.Lucene.QueryParserConfiguration.ValidationOptions.set -> void
+Foundatio.Lucene.QueryResult
+Foundatio.Lucene.QueryResult<T>
+Foundatio.Lucene.QueryResult<T>.Deconstruct(out bool isSuccess, out T? value, out Foundatio.Lucene.QueryException? error) -> void
+Foundatio.Lucene.QueryResult<T>.Error.get -> Foundatio.Lucene.QueryException?
+Foundatio.Lucene.QueryResult<T>.ErrorCode.get -> Foundatio.Lucene.QueryErrorCode?
+Foundatio.Lucene.QueryResult<T>.ErrorMessage.get -> string?
+Foundatio.Lucene.QueryResult<T>.GetValueOrDefault() -> T?
+Foundatio.Lucene.QueryResult<T>.GetValueOrDefault(T defaultValue) -> T
+Foundatio.Lucene.QueryResult<T>.GetValueOrThrow() -> T
+Foundatio.Lucene.QueryResult<T>.IsFailure.get -> bool
+Foundatio.Lucene.QueryResult<T>.IsSuccess.get -> bool
+Foundatio.Lucene.QueryResult<T>.Map<TNew>(System.Func<T, TNew>! mapper) -> Foundatio.Lucene.QueryResult<TNew>
+Foundatio.Lucene.QueryResult<T>.OnFailure(System.Action<Foundatio.Lucene.QueryException!>! action) -> Foundatio.Lucene.QueryResult<T>
+Foundatio.Lucene.QueryResult<T>.OnSuccess(System.Action<T>! action) -> Foundatio.Lucene.QueryResult<T>
+Foundatio.Lucene.QueryResult<T>.QueryResult() -> void
+Foundatio.Lucene.QueryResult<T>.TryGetValue(out T? value) -> bool
+Foundatio.Lucene.QueryResult<T>.Value.get -> T
+Foundatio.Lucene.QueryStringBuilder
+Foundatio.Lucene.QueryStringBuilder.Build(Foundatio.Lucene.Ast.QueryNode! node) -> string!
+Foundatio.Lucene.QueryStringBuilder.QueryStringBuilder() -> void
+Foundatio.Lucene.QueryStringBuilder.QueryStringBuilder(Foundatio.Lucene.Ast.BooleanOperator defaultOperator, int capacity = 256) -> void
+Foundatio.Lucene.QueryText
+Foundatio.Lucene.QueryValidationError
+Foundatio.Lucene.QueryValidationError.<Clone>$() -> Foundatio.Lucene.QueryValidationError!
+Foundatio.Lucene.QueryValidationError.Code.get -> Foundatio.Lucene.QueryErrorCode
+Foundatio.Lucene.QueryValidationError.Code.init -> void
+Foundatio.Lucene.QueryValidationError.Deconstruct(out string! Message, out int Position, out Foundatio.Lucene.QueryErrorCode Code) -> void
+Foundatio.Lucene.QueryValidationError.Equals(Foundatio.Lucene.QueryValidationError? other) -> bool
+Foundatio.Lucene.QueryValidationError.Message.get -> string!
+Foundatio.Lucene.QueryValidationError.Message.init -> void
+Foundatio.Lucene.QueryValidationError.Position.get -> int
+Foundatio.Lucene.QueryValidationError.Position.init -> void
+Foundatio.Lucene.QueryValidationError.QueryValidationError(string! Message, int Position = -1, Foundatio.Lucene.QueryErrorCode Code = Foundatio.Lucene.QueryErrorCode.ValidationError) -> void
+Foundatio.Lucene.QueryValidationException
+Foundatio.Lucene.QueryValidationException.Errors.get -> System.Collections.Generic.ICollection<Foundatio.Lucene.QueryValidationError!>!
+Foundatio.Lucene.QueryValidationException.QueryValidationException(string! message, Foundatio.Lucene.QueryErrorCode errorCode, Foundatio.Lucene.QueryValidationResult? result = null) -> void
+Foundatio.Lucene.QueryValidationException.QueryValidationException(string! message, Foundatio.Lucene.QueryValidationResult? result = null, System.Exception? inner = null) -> void
+Foundatio.Lucene.QueryValidationException.Result.get -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.QueryValidationExtensions
+Foundatio.Lucene.QueryValidationOptions
+Foundatio.Lucene.QueryValidationOptions.AllowedFields.get -> System.Collections.Generic.ICollection<string!>!
+Foundatio.Lucene.QueryValidationOptions.AllowedMaxNodeDepth.get -> int
+Foundatio.Lucene.QueryValidationOptions.AllowedMaxNodeDepth.set -> void
+Foundatio.Lucene.QueryValidationOptions.AllowedMaxSortFields.get -> int
+Foundatio.Lucene.QueryValidationOptions.AllowedMaxSortFields.set -> void
+Foundatio.Lucene.QueryValidationOptions.AllowedOperations.get -> System.Collections.Generic.ICollection<string!>!
+Foundatio.Lucene.QueryValidationOptions.AllowLeadingWildcards.get -> bool
+Foundatio.Lucene.QueryValidationOptions.AllowLeadingWildcards.set -> void
+Foundatio.Lucene.QueryValidationOptions.AllowUnresolvedFields.get -> bool
+Foundatio.Lucene.QueryValidationOptions.AllowUnresolvedFields.set -> void
+Foundatio.Lucene.QueryValidationOptions.AllowUnresolvedIncludes.get -> bool
+Foundatio.Lucene.QueryValidationOptions.AllowUnresolvedIncludes.set -> void
+Foundatio.Lucene.QueryValidationOptions.MaxIncludeDepth.get -> int
+Foundatio.Lucene.QueryValidationOptions.MaxIncludeDepth.set -> void
+Foundatio.Lucene.QueryValidationOptions.MaxIncludeExpansions.get -> int
+Foundatio.Lucene.QueryValidationOptions.MaxIncludeExpansions.set -> void
+Foundatio.Lucene.QueryValidationOptions.QueryValidationOptions() -> void
+Foundatio.Lucene.QueryValidationOptions.RestrictedFields.get -> System.Collections.Generic.ICollection<string!>!
+Foundatio.Lucene.QueryValidationOptions.RestrictedOperations.get -> System.Collections.Generic.ICollection<string!>!
+Foundatio.Lucene.QueryValidationOptions.ShouldThrow.get -> bool
+Foundatio.Lucene.QueryValidationOptions.ShouldThrow.set -> void
+Foundatio.Lucene.QueryValidationResult
+Foundatio.Lucene.QueryValidationResult.AddError(string! message, int position = -1, Foundatio.Lucene.QueryErrorCode code = Foundatio.Lucene.QueryErrorCode.ValidationError) -> void
+Foundatio.Lucene.QueryValidationResult.AddOperation(string! operation, string? field) -> void
+Foundatio.Lucene.QueryValidationResult.IsValid.get -> bool
+Foundatio.Lucene.QueryValidationResult.MaxNodeDepth.get -> int
+Foundatio.Lucene.QueryValidationResult.MaxNodeDepth.set -> void
+Foundatio.Lucene.QueryValidationResult.Message.get -> string!
+Foundatio.Lucene.QueryValidationResult.Operations.get -> System.Collections.Generic.IDictionary<string!, System.Collections.Generic.ISet<string!>!>!
+Foundatio.Lucene.QueryValidationResult.QueryType.get -> Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.QueryValidationResult.QueryType.set -> void
+Foundatio.Lucene.QueryValidationResult.QueryValidationResult() -> void
+Foundatio.Lucene.QueryValidationResult.ReferencedFields.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.QueryValidationResult.ReferencedIncludes.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.QueryValidationResult.ResolvedFields.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.QueryValidationResult.ThrowIfInvalid() -> void
+Foundatio.Lucene.QueryValidationResult.UnresolvedFields.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.QueryValidationResult.UnresolvedIncludes.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.QueryValidationResult.ValidationErrors.get -> System.Collections.Generic.List<Foundatio.Lucene.QueryValidationError!>!
+Foundatio.Lucene.QueryValidator
+Foundatio.Lucene.SortDirection
+Foundatio.Lucene.SortDirection.Ascending = 0 -> Foundatio.Lucene.SortDirection
+Foundatio.Lucene.SortDirection.Descending = 1 -> Foundatio.Lucene.SortDirection
+Foundatio.Lucene.SortExpression
+Foundatio.Lucene.SortField
+Foundatio.Lucene.SortField.Data.get -> System.Collections.Generic.IDictionary<string!, object?>!
+Foundatio.Lucene.SortField.Direction.get -> Foundatio.Lucene.SortDirection
+Foundatio.Lucene.SortField.Direction.set -> void
+Foundatio.Lucene.SortField.Field.get -> string!
+Foundatio.Lucene.SortField.Field.set -> void
+Foundatio.Lucene.SortField.OriginalField.get -> string!
+Foundatio.Lucene.SortField.OriginalField.set -> void
+Foundatio.Lucene.SortField.Position.get -> int
+Foundatio.Lucene.SortField.Position.set -> void
+Foundatio.Lucene.SortField.SortField(string! field, Foundatio.Lucene.SortDirection direction = Foundatio.Lucene.SortDirection.Ascending) -> void
+Foundatio.Lucene.Token
+Foundatio.Lucene.Token.Column.get -> int
+Foundatio.Lucene.Token.Column.init -> void
+Foundatio.Lucene.Token.Deconstruct(out Foundatio.Lucene.TokenType Type, out System.ReadOnlyMemory<char> Value, out int Line, out int Column, out int Position, out int Length, out Foundatio.Lucene.TokenFlags Flags) -> void
+Foundatio.Lucene.Token.EndPosition.get -> int
+Foundatio.Lucene.Token.Equals(Foundatio.Lucene.Token other) -> bool
+Foundatio.Lucene.Token.Flags.get -> Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.Token.Flags.init -> void
+Foundatio.Lucene.Token.GetString() -> string!
+Foundatio.Lucene.Token.HasEscapes.get -> bool
+Foundatio.Lucene.Token.HasLeadingWhitespace.get -> bool
+Foundatio.Lucene.Token.HasWildcard.get -> bool
+Foundatio.Lucene.Token.Length.get -> int
+Foundatio.Lucene.Token.Length.init -> void
+Foundatio.Lucene.Token.Line.get -> int
+Foundatio.Lucene.Token.Line.init -> void
+Foundatio.Lucene.Token.Position.get -> int
+Foundatio.Lucene.Token.Position.init -> void
+Foundatio.Lucene.Token.Span.get -> System.ReadOnlySpan<char>
+Foundatio.Lucene.Token.Token() -> void
+Foundatio.Lucene.Token.Token(Foundatio.Lucene.TokenType Type, System.ReadOnlyMemory<char> Value, int Line, int Column, int Position, int Length, Foundatio.Lucene.TokenFlags Flags = Foundatio.Lucene.TokenFlags.None) -> void
+Foundatio.Lucene.Token.Type.get -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.Token.Type.init -> void
+Foundatio.Lucene.Token.Value.get -> System.ReadOnlyMemory<char>
+Foundatio.Lucene.Token.Value.init -> void
+Foundatio.Lucene.Token.ValueEquals(string! other) -> bool
+Foundatio.Lucene.Token.ValueEqualsIgnoreCase(string! other) -> bool
+Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.TokenFlags.HasEscapes = 1 -> Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.TokenFlags.HasWildcard = 2 -> Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.TokenFlags.LeadingWhitespace = 8 -> Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.TokenFlags.None = 0 -> Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.TokenFlags.Unterminated = 4 -> Foundatio.Lucene.TokenFlags
+Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.And = 3 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Caret = 9 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Colon = 11 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.EndOfFile = 24 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.GreaterThan = 20 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.GreaterThanOrEqual = 21 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Invalid = 25 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.LeftBrace = 16 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.LeftBracket = 14 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.LeftParen = 12 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.LessThan = 22 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.LessThanOrEqual = 23 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Minus = 7 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.ModifierValue = 10 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Not = 5 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Or = 4 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Plus = 6 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.QuotedString = 1 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.RangeDots = 19 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Regex = 2 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.RightBrace = 17 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.RightBracket = 15 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.RightParen = 13 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Term = 0 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.Tilde = 8 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.TokenType.To = 18 -> Foundatio.Lucene.TokenType
+Foundatio.Lucene.Visitors.AsyncQueryFieldResolver
+Foundatio.Lucene.Visitors.ChainedQueryVisitor
+Foundatio.Lucene.Visitors.ChainedQueryVisitor.ChainedQueryVisitor() -> void
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.Accept(Foundatio.Lucene.Ast.QueryNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.AddVisitor(Foundatio.Lucene.Visitors.IQueryVisitor<TContext>! visitor, int priority = 0) -> Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>!
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.AddVisitorAfter<T>(Foundatio.Lucene.Visitors.IQueryVisitor<TContext>! visitor) -> Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>!
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.AddVisitorBefore<T>(Foundatio.Lucene.Visitors.IQueryVisitor<TContext>! visitor) -> Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>!
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.ChainedQueryVisitor() -> void
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.RemoveVisitor<T>() -> Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>!
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.ReplaceVisitor<T>(Foundatio.Lucene.Visitors.IQueryVisitor<TContext>! visitor, int? newPriority = null) -> Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>!
+Foundatio.Lucene.Visitors.ChainedQueryVisitor<TContext>.Visitors.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.Visitors.IQueryVisitor<TContext>!>!
+Foundatio.Lucene.Visitors.CleanupQueryVisitor
+Foundatio.Lucene.Visitors.CleanupQueryVisitor.Accept(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+Foundatio.Lucene.Visitors.CleanupQueryVisitor.CleanupQueryVisitor() -> void
+Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor
+Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.DateMathEvaluatorVisitor(System.DateTimeOffset now, System.TimeZoneInfo? timeZone = null, string! dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz") -> void
+Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.DateMathEvaluatorVisitor(System.TimeProvider? timeProvider = null, System.TimeZoneInfo? timeZone = null, System.Func<string!, bool>? isDateField = null, string! dateFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz") -> void
+Foundatio.Lucene.Visitors.FieldResolverQueryVisitor
+Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.FieldResolverQueryVisitor() -> void
+Foundatio.Lucene.Visitors.IncludeExtensions
+Foundatio.Lucene.Visitors.IncludeResolver
+Foundatio.Lucene.Visitors.IncludeVisitor
+Foundatio.Lucene.Visitors.IncludeVisitor.IncludeVisitor() -> void
+Foundatio.Lucene.Visitors.InvertQueryVisitor
+Foundatio.Lucene.Visitors.InvertQueryVisitor.Accept(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+Foundatio.Lucene.Visitors.InvertQueryVisitor.AlternateInvertedCriteria.get -> Foundatio.Lucene.Ast.QueryNode?
+Foundatio.Lucene.Visitors.InvertQueryVisitor.InvertQueryVisitor(System.Collections.Generic.IEnumerable<string!>? nonInvertedFields = null, Foundatio.Lucene.Ast.QueryNode? alternateInvertedCriteria = null) -> void
+Foundatio.Lucene.Visitors.InvertQueryVisitor.NonInvertedFields.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.Visitors.IQueryVisitor
+Foundatio.Lucene.Visitors.IQueryVisitor<TContext>
+Foundatio.Lucene.Visitors.IQueryVisitor<TContext>.Accept(Foundatio.Lucene.Ast.QueryNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+Foundatio.Lucene.Visitors.IQueryVisitorContext
+Foundatio.Lucene.Visitors.IQueryVisitorContext.Data.get -> System.Collections.Generic.IDictionary<string!, object?>!
+Foundatio.Lucene.Visitors.IQueryVisitorContext.DefaultFields.get -> string![]?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.DefaultFields.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.FieldMap.get -> Foundatio.Lucene.FieldMap?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.FieldMap.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.FieldResolver.get -> Foundatio.Lucene.Visitors.QueryFieldResolver?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.FieldResolver.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.GetValue<T>(string! key) -> T?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.Includes.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.Includes.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ParserOptions.get -> Foundatio.Lucene.LuceneParserOptions!
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ParserOptions.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.QueryType.get -> Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.Visitors.IQueryVisitorContext.QueryType.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.SetValue(string! key, object? value) -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ShouldSkipInclude.get -> Foundatio.Lucene.Visitors.ShouldSkipIncludeFunc?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ShouldSkipInclude.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.TimeProvider.get -> System.TimeProvider!
+Foundatio.Lucene.Visitors.IQueryVisitorContext.TimeProvider.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ValidationOptions.get -> Foundatio.Lucene.QueryValidationOptions?
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ValidationOptions.set -> void
+Foundatio.Lucene.Visitors.IQueryVisitorContext.ValidationResult.get -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.Visitors.QueryFieldResolver
+Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.Visitors.QueryType.Aggregation = 2 -> Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.Visitors.QueryType.Query = 0 -> Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.Visitors.QueryType.Sort = 1 -> Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.Visitors.QueryVisitor
+Foundatio.Lucene.Visitors.QueryVisitor.QueryVisitor() -> void
+Foundatio.Lucene.Visitors.QueryVisitor<TContext>
+Foundatio.Lucene.Visitors.QueryVisitor<TContext>.QueryVisitor() -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext
+Foundatio.Lucene.Visitors.QueryVisitorContext.AsyncFieldResolver.get -> Foundatio.Lucene.Visitors.AsyncQueryFieldResolver?
+Foundatio.Lucene.Visitors.QueryVisitorContext.AsyncFieldResolver.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.Data.get -> System.Collections.Generic.IDictionary<string!, object?>!
+Foundatio.Lucene.Visitors.QueryVisitorContext.DefaultFields.get -> string![]?
+Foundatio.Lucene.Visitors.QueryVisitorContext.DefaultFields.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.DefaultOperator.get -> Foundatio.Lucene.Ast.BooleanOperator
+Foundatio.Lucene.Visitors.QueryVisitorContext.DefaultOperator.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.FieldMap.get -> Foundatio.Lucene.FieldMap?
+Foundatio.Lucene.Visitors.QueryVisitorContext.FieldMap.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.FieldResolver.get -> Foundatio.Lucene.Visitors.QueryFieldResolver?
+Foundatio.Lucene.Visitors.QueryVisitorContext.FieldResolver.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.GetValue<T>(string! key) -> T?
+Foundatio.Lucene.Visitors.QueryVisitorContext.IncludeResolver.get -> Foundatio.Lucene.Visitors.IncludeResolver?
+Foundatio.Lucene.Visitors.QueryVisitorContext.IncludeResolver.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.Includes.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Foundatio.Lucene.Visitors.QueryVisitorContext.Includes.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.IsResolved.get -> bool
+Foundatio.Lucene.Visitors.QueryVisitorContext.IsResolved.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.ParserOptions.get -> Foundatio.Lucene.LuceneParserOptions!
+Foundatio.Lucene.Visitors.QueryVisitorContext.ParserOptions.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.QueryType.get -> Foundatio.Lucene.Visitors.QueryType
+Foundatio.Lucene.Visitors.QueryVisitorContext.QueryType.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.QueryVisitorContext() -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.SetValue(string! key, object? value) -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.ShouldSkipInclude.get -> Foundatio.Lucene.Visitors.ShouldSkipIncludeFunc?
+Foundatio.Lucene.Visitors.QueryVisitorContext.ShouldSkipInclude.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.TimeProvider.get -> System.TimeProvider!
+Foundatio.Lucene.Visitors.QueryVisitorContext.TimeProvider.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.ValidationOptions.get -> Foundatio.Lucene.QueryValidationOptions?
+Foundatio.Lucene.Visitors.QueryVisitorContext.ValidationOptions.set -> void
+Foundatio.Lucene.Visitors.QueryVisitorContext.ValidationResult.get -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.Visitors.QueryVisitorExtensions
+Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor
+Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor.Accept(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor.RemoveFieldsQueryVisitor(System.Collections.Generic.IEnumerable<string!>! fieldsToRemove) -> void
+Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor.RemoveFieldsQueryVisitor(System.Func<string!, bool>! shouldRemoveField) -> void
+Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor.ShouldRemoveField.get -> System.Func<string!, bool>!
+Foundatio.Lucene.Visitors.ShouldSkipIncludeFunc
+Foundatio.Lucene.Visitors.ValidationVisitor
+Foundatio.Lucene.Visitors.ValidationVisitor.ValidationVisitor() -> void
+override Foundatio.Lucene.AggregationExpression.ToString() -> string!
+override Foundatio.Lucene.AggregationModifier.Equals(object? obj) -> bool
+override Foundatio.Lucene.AggregationModifier.GetHashCode() -> int
+override Foundatio.Lucene.AggregationModifier.ToString() -> string!
+override Foundatio.Lucene.Ast.BooleanClause.ToString() -> string!
+override Foundatio.Lucene.Ast.BooleanQueryNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.ExistsNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.FieldQueryNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.GroupNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.MatchAllNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.MissingNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.NotNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.PhraseNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.QueryDocument.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.RangeNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.RegexNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Ast.TermNode.Clone() -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.LuceneParserOptions.Equals(object? obj) -> bool
+override Foundatio.Lucene.LuceneParserOptions.GetHashCode() -> int
+override Foundatio.Lucene.LuceneParserOptions.ToString() -> string!
+override Foundatio.Lucene.ParseError.GetHashCode() -> int
+override Foundatio.Lucene.ParseError.ToString() -> string!
+override Foundatio.Lucene.QueryException.ToString() -> string!
+override Foundatio.Lucene.QueryOptionsBase.Equals(object? obj) -> bool
+override Foundatio.Lucene.QueryOptionsBase.GetHashCode() -> int
+override Foundatio.Lucene.QueryOptionsBase.ToString() -> string!
+override Foundatio.Lucene.QueryValidationError.Equals(object? obj) -> bool
+override Foundatio.Lucene.QueryValidationError.GetHashCode() -> int
+override Foundatio.Lucene.QueryValidationError.ToString() -> string!
+override Foundatio.Lucene.SortField.ToString() -> string!
+override Foundatio.Lucene.Token.GetHashCode() -> int
+override Foundatio.Lucene.Token.ToString() -> string!
+override Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.Accept(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.Visit(Foundatio.Lucene.Ast.FieldQueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.Visit(Foundatio.Lucene.Ast.RangeNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.Visit(Foundatio.Lucene.Ast.TermNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.Visit(Foundatio.Lucene.Ast.ExistsNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.Visit(Foundatio.Lucene.Ast.FieldQueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.Visit(Foundatio.Lucene.Ast.MissingNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.IncludeVisitor.Visit(Foundatio.Lucene.Ast.FieldQueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Accept(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.ExistsNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.FieldQueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.GroupNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.MatchAllNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.MissingNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.PhraseNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.RangeNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.RegexNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+override Foundatio.Lucene.Visitors.ValidationVisitor.Visit(Foundatio.Lucene.Ast.TermNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> Foundatio.Lucene.Ast.QueryNode!
+static Foundatio.Lucene.AggregationExpressionParser.FromDocument(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.QueryValidationResult! result) -> System.Collections.Generic.List<Foundatio.Lucene.AggregationExpression!>!
+static Foundatio.Lucene.AggregationExpressionParser.Parse(string! aggregations, Foundatio.Lucene.QueryValidationResult! result, Foundatio.Lucene.LuceneParserOptions? options = null) -> System.Collections.Generic.List<Foundatio.Lucene.AggregationExpression!>!
+static Foundatio.Lucene.AggregationModifier.operator !=(Foundatio.Lucene.AggregationModifier? left, Foundatio.Lucene.AggregationModifier? right) -> bool
+static Foundatio.Lucene.AggregationModifier.operator ==(Foundatio.Lucene.AggregationModifier? left, Foundatio.Lucene.AggregationModifier? right) -> bool
+static Foundatio.Lucene.AggregationTypes.IsBucket(string! type) -> bool
+static Foundatio.Lucene.AggregationTypes.IsKnown(string! type) -> bool
+static Foundatio.Lucene.DateMath.AddTimeUnit(System.DateTimeOffset dateTime, int amount, string! unit) -> System.DateTimeOffset
+static Foundatio.Lucene.DateMath.ApplyOperations(System.DateTimeOffset baseTime, string! operations, bool isUpperLimit = false) -> System.DateTimeOffset
+static Foundatio.Lucene.DateMath.IsDateMath(string? expression) -> bool
+static Foundatio.Lucene.DateMath.IsValidExpression(string? expression) -> bool
+static Foundatio.Lucene.DateMath.Parse(string! expression, System.DateTimeOffset now, System.TimeZoneInfo! timeZone, bool isUpperLimit = false) -> System.DateTimeOffset
+static Foundatio.Lucene.DateMath.Parse(string! expression, System.DateTimeOffset relativeBaseTime, bool isUpperLimit = false) -> System.DateTimeOffset
+static Foundatio.Lucene.DateMath.Parse(string! expression, System.TimeZoneInfo! timeZone, bool isUpperLimit = false) -> System.DateTimeOffset
+static Foundatio.Lucene.DateMath.RoundToUnit(System.DateTimeOffset dateTime, string! unit, bool isUpperLimit = false) -> System.DateTimeOffset
+static Foundatio.Lucene.DateMath.TryParse(string! expression, System.DateTimeOffset now, System.TimeZoneInfo! timeZone, bool isUpperLimit, out System.DateTimeOffset result) -> bool
+static Foundatio.Lucene.DateMath.TryParse(string! expression, System.DateTimeOffset relativeBaseTime, bool isUpperLimit, out System.DateTimeOffset result) -> bool
+static Foundatio.Lucene.DateMath.TryParse(string! expression, System.TimeZoneInfo! timeZone, bool isUpperLimit, out System.DateTimeOffset result) -> bool
+static Foundatio.Lucene.Extensions.QueryDebugExtensions.ToDebugString(this Foundatio.Lucene.Ast.QueryNode? node) -> string!
+static Foundatio.Lucene.Extensions.QueryNodeExtensions.GetOriginalField<T>(this T! node) -> string!
+static Foundatio.Lucene.Extensions.QueryNodeExtensions.GetReferencedFields(this Foundatio.Lucene.Ast.QueryNode! node, bool includeSpecialFields = false) -> System.Collections.Generic.ISet<string!>!
+static Foundatio.Lucene.Extensions.QueryNodeExtensions.SetOriginalField<T>(this T! node, string! originalField) -> void
+static Foundatio.Lucene.Extensions.QueryNodeExtensions.Walk(this Foundatio.Lucene.Ast.QueryNode! node, System.Action<Foundatio.Lucene.Ast.QueryNode!>! action) -> void
+static Foundatio.Lucene.Extensions.StringExtensions.Escape(this string? input) -> string?
+static Foundatio.Lucene.Extensions.StringExtensions.Unescape(this string? input) -> string?
+static Foundatio.Lucene.FieldMapBuilder.Create() -> Foundatio.Lucene.FieldMapBuilder!
+static Foundatio.Lucene.FieldMapBuilder.From(Foundatio.Lucene.FieldMap! fieldMap) -> Foundatio.Lucene.FieldMapBuilder!
+static Foundatio.Lucene.FieldMapBuilderExtensions.ToBuilder(this Foundatio.Lucene.FieldMap! fieldMap) -> Foundatio.Lucene.FieldMapBuilder!
+static Foundatio.Lucene.FieldMapExtensions.GetValueOrNull(this System.Collections.Generic.IDictionary<string!, string!>! map, string? field) -> string?
+static Foundatio.Lucene.LuceneParserOptions.Default.get -> Foundatio.Lucene.LuceneParserOptions!
+static Foundatio.Lucene.LuceneParserOptions.operator !=(Foundatio.Lucene.LuceneParserOptions? left, Foundatio.Lucene.LuceneParserOptions? right) -> bool
+static Foundatio.Lucene.LuceneParserOptions.operator ==(Foundatio.Lucene.LuceneParserOptions? left, Foundatio.Lucene.LuceneParserOptions? right) -> bool
+static Foundatio.Lucene.LuceneQuery.Parse(string! query, Foundatio.Lucene.Ast.BooleanOperator defaultOperator) -> Foundatio.Lucene.LuceneParseResult!
+static Foundatio.Lucene.LuceneQuery.Parse(string! query, Foundatio.Lucene.LuceneParserOptions? options = null) -> Foundatio.Lucene.LuceneParseResult!
+static Foundatio.Lucene.LuceneQuery.Parse(System.ReadOnlyMemory<char> query, Foundatio.Lucene.LuceneParserOptions? options = null) -> Foundatio.Lucene.LuceneParseResult!
+static Foundatio.Lucene.LuceneQuery.Tokenize(string! query) -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.Token>!
+static Foundatio.Lucene.LuceneQuery.TryParse(string! query, out Foundatio.Lucene.LuceneParseResult! result, Foundatio.Lucene.LuceneParserOptions? options = null) -> bool
+static Foundatio.Lucene.ParseError.operator !=(Foundatio.Lucene.ParseError left, Foundatio.Lucene.ParseError right) -> bool
+static Foundatio.Lucene.ParseError.operator ==(Foundatio.Lucene.ParseError left, Foundatio.Lucene.ParseError right) -> bool
+static Foundatio.Lucene.QueryOptionsBase.operator !=(Foundatio.Lucene.QueryOptionsBase? left, Foundatio.Lucene.QueryOptionsBase? right) -> bool
+static Foundatio.Lucene.QueryOptionsBase.operator ==(Foundatio.Lucene.QueryOptionsBase? left, Foundatio.Lucene.QueryOptionsBase? right) -> bool
+static Foundatio.Lucene.QueryParserBase<TContext>.ParseQuery(string! query, TContext! context) -> Foundatio.Lucene.Ast.QueryDocument!
+static Foundatio.Lucene.QueryResult.Failure<T>(Foundatio.Lucene.QueryException! error) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryResult.Failure<T>(string! message, Foundatio.Lucene.QueryErrorCode errorCode = Foundatio.Lucene.QueryErrorCode.Unknown) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryResult.Success<T>(T value) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryResult.Try<T>(System.Func<T>! operation) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryResult.TryAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! operation) -> System.Threading.Tasks.Task<Foundatio.Lucene.QueryResult<T>>!
+static Foundatio.Lucene.QueryResult<T>.Failure(Foundatio.Lucene.QueryException! error) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryResult<T>.Failure(string! message, Foundatio.Lucene.QueryErrorCode errorCode = Foundatio.Lucene.QueryErrorCode.Unknown) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryResult<T>.implicit operator bool(Foundatio.Lucene.QueryResult<T> result) -> bool
+static Foundatio.Lucene.QueryResult<T>.Success(T value) -> Foundatio.Lucene.QueryResult<T>
+static Foundatio.Lucene.QueryStringBuilder.ToQueryString(Foundatio.Lucene.Ast.QueryNode! node) -> string!
+static Foundatio.Lucene.QueryStringBuilder.ToQueryString(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Ast.BooleanOperator defaultOperator) -> string!
+static Foundatio.Lucene.QueryText.Escape(string! text) -> string!
+static Foundatio.Lucene.QueryText.EscapePhrase(string! text) -> string!
+static Foundatio.Lucene.QueryText.Unescape(string! text) -> string!
+static Foundatio.Lucene.QueryValidationError.operator !=(Foundatio.Lucene.QueryValidationError? left, Foundatio.Lucene.QueryValidationError? right) -> bool
+static Foundatio.Lucene.QueryValidationError.operator ==(Foundatio.Lucene.QueryValidationError? left, Foundatio.Lucene.QueryValidationError? right) -> bool
+static Foundatio.Lucene.QueryValidationExtensions.Validate(this Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.QueryValidationExtensions.Validate(this Foundatio.Lucene.LuceneParseResult! result, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.QueryValidationResult.implicit operator bool(Foundatio.Lucene.QueryValidationResult! result) -> bool
+static Foundatio.Lucene.QueryValidator.Validate(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.QueryValidator.ValidateAggregations(string! aggregations, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.QueryValidator.ValidateQuery(string! query, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.QueryValidator.ValidateQueryAndThrow(string! query, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.QueryValidator.ValidateSort(string! sort, Foundatio.Lucene.QueryValidationOptions? options = null, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.SortExpression.FromDocument(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.QueryValidationResult! result) -> System.Collections.Generic.List<Foundatio.Lucene.SortField!>!
+static Foundatio.Lucene.SortExpression.Parse(string! sort, Foundatio.Lucene.QueryValidationResult! result, Foundatio.Lucene.LuceneParserOptions? options = null) -> System.Collections.Generic.List<Foundatio.Lucene.SortField!>!
+static Foundatio.Lucene.Token.operator !=(Foundatio.Lucene.Token left, Foundatio.Lucene.Token right) -> bool
+static Foundatio.Lucene.Token.operator ==(Foundatio.Lucene.Token left, Foundatio.Lucene.Token right) -> bool
+static Foundatio.Lucene.Visitors.CleanupQueryVisitor.Instance.get -> Foundatio.Lucene.Visitors.CleanupQueryVisitor!
+static Foundatio.Lucene.Visitors.CleanupQueryVisitor.Run(string! query, Foundatio.Lucene.LuceneParserOptions? options = null) -> string!
+static Foundatio.Lucene.Visitors.DateMathEvaluatorVisitor.Evaluate(Foundatio.Lucene.Ast.QueryNode! query, System.DateTimeOffset now, System.TimeZoneInfo? timeZone = null) -> Foundatio.Lucene.Ast.QueryNode!
+static Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.Instance.get -> Foundatio.Lucene.Visitors.FieldResolverQueryVisitor!
+static Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.Run(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.FieldMap! fieldMap, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.Ast.QueryDocument!
+static Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.Run(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.Visitors.QueryFieldResolver! resolver, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.Ast.QueryDocument!
+static Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.TryResolveField(string! field, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, out string! resolved) -> bool
+static Foundatio.Lucene.Visitors.IncludeExtensions.ExpandIncludes(this Foundatio.Lucene.Ast.QueryDocument! document, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! includes, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.Ast.QueryDocument!
+static Foundatio.Lucene.Visitors.IncludeVisitor.ExpandIncludes(Foundatio.Lucene.Ast.QueryDocument! document, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! includes, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.Ast.QueryDocument!
+static Foundatio.Lucene.Visitors.IncludeVisitor.GetIncludeName(Foundatio.Lucene.Ast.FieldQueryNode! node) -> string?
+static Foundatio.Lucene.Visitors.IncludeVisitor.Instance.get -> Foundatio.Lucene.Visitors.IncludeVisitor!
+static Foundatio.Lucene.Visitors.IncludeVisitor.IsInclude(Foundatio.Lucene.Ast.FieldQueryNode! node) -> bool
+static Foundatio.Lucene.Visitors.InvertQueryVisitor.Run(string! query, System.Collections.Generic.IEnumerable<string!>? nonInvertedFields = null, string? alternateInvertedCriteria = null, Foundatio.Lucene.LuceneParserOptions? options = null) -> string!
+static Foundatio.Lucene.Visitors.QueryVisitorExtensions.Run(this Foundatio.Lucene.Visitors.IQueryVisitor! visitor, Foundatio.Lucene.Ast.QueryNode! node) -> Foundatio.Lucene.Ast.QueryNode!
+static Foundatio.Lucene.Visitors.QueryVisitorExtensions.Run<TContext>(this Foundatio.Lucene.Visitors.IQueryVisitor<TContext>! visitor, Foundatio.Lucene.Ast.QueryNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+static Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor.Run(string! query, System.Collections.Generic.IEnumerable<string!>! fieldsToRemove, Foundatio.Lucene.LuceneParserOptions? options = null) -> string!
+static Foundatio.Lucene.Visitors.RemoveFieldsQueryVisitor.Run(string! query, System.Func<string!, bool>! shouldRemoveField, Foundatio.Lucene.LuceneParserOptions? options = null) -> string!
+static Foundatio.Lucene.Visitors.ValidationVisitor.ApplyRestrictions(Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> void
+static Foundatio.Lucene.Visitors.ValidationVisitor.Instance.get -> Foundatio.Lucene.Visitors.ValidationVisitor!
+static Foundatio.Lucene.Visitors.ValidationVisitor.Run(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.QueryValidationOptions! options, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+static Foundatio.Lucene.Visitors.ValidationVisitor.Run(Foundatio.Lucene.Ast.QueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext? context = null) -> Foundatio.Lucene.QueryValidationResult!
+virtual Foundatio.Lucene.QueryOptionsBase.EqualityContract.get -> System.Type!
+virtual Foundatio.Lucene.QueryOptionsBase.Equals(Foundatio.Lucene.QueryOptionsBase? other) -> bool
+virtual Foundatio.Lucene.QueryOptionsBase.PrintMembers(System.Text.StringBuilder! builder) -> bool
+virtual Foundatio.Lucene.QueryParserBase<TContext>.OnResolveAsync(Foundatio.Lucene.Visitors.QueryType type, Foundatio.Lucene.Ast.QueryDocument! document, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! fields, TContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+virtual Foundatio.Lucene.QueryParserBase<TContext>.RequiresResolution(TContext! context) -> bool
+virtual Foundatio.Lucene.Visitors.AsyncQueryFieldResolver.Invoke(string! field, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<string?>
+virtual Foundatio.Lucene.Visitors.IncludeResolver.Invoke(string! name, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<string?>
+virtual Foundatio.Lucene.Visitors.QueryFieldResolver.Invoke(string! field, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> string?
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Accept(Foundatio.Lucene.Ast.QueryNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.BooleanQueryNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.ExistsNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.FieldQueryNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.GroupNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.MatchAllNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.MissingNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.NotNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.PhraseNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.QueryDocument! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.RangeNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.RegexNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.QueryVisitor<TContext>.Visit(Foundatio.Lucene.Ast.TermNode! node, TContext context) -> Foundatio.Lucene.Ast.QueryNode!
+virtual Foundatio.Lucene.Visitors.ShouldSkipIncludeFunc.Invoke(Foundatio.Lucene.Ast.FieldQueryNode! node, Foundatio.Lucene.Visitors.IQueryVisitorContext! context) -> bool
+~override Foundatio.Lucene.ParseError.Equals(object obj) -> bool
+~override Foundatio.Lucene.Token.Equals(object obj) -> bool
+Foundatio.Lucene.AggregationExpression.GetData<T>(string! key) -> T?
+Foundatio.Lucene.QueryParserConfiguration.AddAggregationVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AddQueryVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AddSortVisitor(Foundatio.Lucene.Visitors.IQueryVisitor! visitor, int priority = 0) -> void
+Foundatio.Lucene.QueryParserConfiguration.AggregationVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
+Foundatio.Lucene.QueryParserConfiguration.SortVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
+Foundatio.Lucene.SortField.GetData<T>(string! key) -> T?
+Foundatio.Lucene.SortField.Value.get -> string?
+Foundatio.Lucene.SortField.Value.set -> void

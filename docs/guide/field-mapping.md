@@ -1,268 +1,148 @@
 # Field Mapping
 
-Field mapping allows you to create user-friendly aliases for your actual field names. This provides security by hiding internal field structures and improves usability by offering intuitive names.
+Field mapping lets users query with friendly names while the data store uses its own. The parsers resolve every field in queries, sorts, and aggregations before building, and remember the name the user wrote (for example to name aggregations and to validate allowed fields).
 
-## Basic Field Mapping
+## Field maps
 
-Use `FieldMap` to define aliases:
+A `FieldMap` maps names users write to real field names. Lookups are case-insensitive.
 
 ```csharp
-using Foundatio.Lucene;
-using Foundatio.Lucene.Visitors;
-
 var fieldMap = new FieldMap
 {
     { "user", "account.username" },
-    { "email", "account.emailAddress" },
-    { "created", "metadata.createdAt" },
-    { "updated", "metadata.updatedAt" }
+    { "created", "metadata.timestamp" }
 };
 
-var result = LuceneQuery.Parse("user:john AND created:[2024-01-01 TO *]");
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-var resolved = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "account.username:john AND metadata.createdAt:[2024-01-01 TO *]"
+var parser = new ElasticsearchQueryParser(c => c.FieldMap = fieldMap);
+var query = parser.BuildQuery("user:john created:>now-1d");
+// fields: account.username, metadata.timestamp
 ```
 
-## Case Insensitivity
+Fields that aren't in the map pass through unchanged.
 
-`FieldMap` is case-insensitive by default:
+### Hierarchical resolution
+
+By default (`FieldResolutionMode.Hierarchical`) a mapping also applies to sub-fields by the longest matching prefix:
 
 ```csharp
-var fieldMap = new FieldMap
-{
-    { "user", "account.username" }
-};
-
-// All of these work:
-// "user:john"  -> "account.username:john"
-// "User:john"  -> "account.username:john"
-// "USER:john"  -> "account.username:john"
+var fieldMap = new FieldMap { { "data", "idx.data" } };
+// data.browser → idx.data.browser
 ```
 
-## Hierarchical Field Resolution
+Use `FieldResolutionMode.Direct` to resolve only exact names.
 
-`FieldMap.ResolutionMode` is `Hierarchical` by default, so nested field structures resolve by the
-longest matching prefix — no extra setup required:
+### Reporting unmapped fields
+
+Set `ReportUnmappedFields = true` to treat fields that aren't in the map as unresolved. Combined with `QueryValidationOptions.AllowUnresolvedFields = false`, only mapped fields can be queried:
 
 ```csharp
-var fieldMap = new FieldMap
+var fieldMap = new FieldMap { ReportUnmappedFields = true };
+fieldMap.Add("title", "document.title");
+
+var validation = new QueryValidationOptions { AllowUnresolvedFields = false };
+var parser = new ElasticsearchQueryParser(c =>
 {
-    { "data", "payload" },
-    { "data.user", "payload.account.username" },
-    { "data.created", "payload.metadata.createdAt" }
-};
+    c.FieldMap = fieldMap;
+    c.ValidationOptions = validation;
+});
 
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-// "data.user:john" -> "payload.account.username:john"
-// "data.status:active" -> "payload.status:active" (partial match on "data")
+parser.BuildQuery("title:x");   // OK
+parser.BuildQuery("secret:x");  // QueryValidationException: field (secret) can't be resolved
 ```
 
-Set `fieldMap.ResolutionMode = FieldResolutionMode.Direct` to require exact matches only.
-
-## Validation with Field Mapping
-
-Combine field mapping with validation to restrict allowed fields:
+### Building maps fluently
 
 ```csharp
-var fieldMap = new FieldMap
-{
-    { "name", "fullName" },
-    { "dept", "department.name" },
-    { "salary", "compensation.baseSalary" }
-};
-
-var validationOptions = new QueryValidationOptions();
-validationOptions.AllowedFields.AddRange(fieldMap.Keys);
-
-// First resolve aliases
-var result = LuceneQuery.Parse(userQuery);
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-// Then validate
-var validation = QueryValidator.Validate(result.Document, validationOptions);
+var fieldMap = FieldMapBuilder.Create()
+    .Map("user", "account.username")
+    .MapMany("account.email", "email", "mail")
+    .MapNamespace("meta", "document.metadata")
+    .ReportUnmapped()
+    .Build();
 ```
 
-## Dynamic Field Mapping
+## Field resolvers
 
-Create field mappings dynamically based on user permissions:
-
-```csharp
-public FieldMap GetFieldMapForUser(User user)
-{
-    var fieldMap = new FieldMap
-    {
-        { "name", "fullName" },
-        { "email", "emailAddress" },
-        { "dept", "department.name" }
-    };
-
-    // Add sensitive fields only for admins
-    if (user.IsAdmin)
-    {
-        fieldMap.Add("salary", "compensation.baseSalary");
-        fieldMap.Add("ssn", "personalInfo.socialSecurityNumber");
-    }
-
-    return fieldMap;
-}
-```
-
-## Custom Field Resolvers
-
-For complex scenarios, implement a custom resolver function:
+For dynamic fields, give the parser a resolver. It runs before the field map; return null when the resolver doesn't know the field.
 
 ```csharp
-Func<string, string?> customResolver = field =>
+var parser = new ElasticsearchQueryParser(c =>
 {
-    // Handle dynamic prefixes
-    if (field.StartsWith("custom."))
-    {
-        return $"customFields.{field[7..]}";
-    }
-
-    // Use static mappings
-    return field switch
-    {
-        "name" => "fullName",
-        "email" => "emailAddress",
-        _ => null  // Return null to keep original field
-    };
-};
-
-FieldResolverQueryVisitor.Run(result.Document, customResolver);
-```
-
-## Field Mapping in Parsers
-
-Both Entity Framework and Elasticsearch parsers support field mapping:
-
-### Entity Framework
-
-```csharp
-var parser = new EntityFrameworkQueryParser();
-
-var fieldMap = new FieldMap
-{
-    { "name", "FullName" },
-    { "dept", "Department.Name" }
-};
-
-var filter = parser.BuildFilter<Employee>(query, fieldMap);
-```
-
-### Elasticsearch
-
-```csharp
-var parser = new ElasticsearchQueryParser(config =>
-{
-    config.FieldMap = new FieldMap
-    {
-        { "author", "metadata.author" },
-        { "date", "metadata.publishedAt" }
-    };
+    c.FieldResolver = (field, context) => field.StartsWith("custom.", StringComparison.OrdinalIgnoreCase)
+        ? "custom_fields." + field["custom.".Length..].ToLowerInvariant()
+        : null;
 });
 ```
 
-## Exposing Available Fields
-
-Document available fields for API consumers:
+When the mapping lives in a database, use an async resolver. It runs once per distinct field in the resolution phase of the `Async` methods:
 
 ```csharp
-[HttpGet("search/fields")]
-public IActionResult GetSearchFields()
+var parser = new ElasticsearchQueryParser(c =>
 {
-    return Ok(new
+    c.AsyncFieldResolver = async (field, context, cancellationToken) =>
+        await customFields.GetStorageNameAsync(field, cancellationToken);
+});
+
+var query = await parser.BuildQueryAsync("color:red");
+```
+
+Resolver exceptions become validation errors instead of escaping.
+
+## Per-request maps
+
+Field maps often differ per tenant. Pass them per request instead of creating parsers:
+
+```csharp
+var tenantOptions = new ElasticsearchQueryOptions
+{
+    FieldMap = new FieldMap { { "priority", $"tenant_{tenantId}.priority" } }
+};
+
+var query = parser.BuildQuery("priority:high", tenantOptions);
+```
+
+Options are immutable, so cache them per tenant.
+
+## Elasticsearch mappings
+
+With a mapping configured (`UseMappings`), the Elasticsearch provider also resolves field names against it: `TITLE:x` resolves to `title`, and a field that is neither mapped nor a runtime field is reported as unresolved. See [Elasticsearch](./elasticsearch).
+
+## The original field name
+
+Resolution records the name the user wrote on the node:
+
+```csharp
+var document = LuceneQuery.Parse("user:john").Document;
+FieldResolverQueryVisitor.Run(document, new FieldMap { { "user", "account.username" } });
+
+var field = (FieldQueryNode)document.Query!;
+// field.Field == "account.username", field.GetOriginalField() == "user"
+```
+
+`QueryValidationOptions.AllowedFields` is checked against the original names — the names your users see — while `RestrictedFields` is checked against both. See [Validation](./validation).
+
+## Exposing available fields
+
+Keep the list of fields users may query in one place and use it for the field map, the allowed fields, and your UI:
+
+```csharp
+public static class SearchFields
+{
+    public static readonly IReadOnlyDictionary<string, string> Fields = new Dictionary<string, string>
     {
-        Fields = new[]
-        {
-            new { Name = "name", Description = "Employee full name", Examples = new[] { "name:john", "name:john*" } },
-            new { Name = "dept", Description = "Department name", Examples = new[] { "dept:engineering" } },
-            new { Name = "hired", Description = "Hire date", Examples = new[] { "hired:[2024-01-01 TO *]", "hired:now-1y" } },
-            new { Name = "salary", Description = "Base salary", Examples = new[] { "salary:[50000 TO 100000]" } },
-            new { Name = "status", Description = "Employment status", Examples = new[] { "status:active", "status:(active OR leave)" } }
-        }
-    });
+        ["title"] = "document.title",
+        ["author"] = "document.author.name",
+        ["created"] = "document.createdUtc"
+    };
+
+    public static FieldMap CreateFieldMap() => new(Fields.ToDictionary(f => f.Key, f => f.Value));
+
+    public static QueryValidationOptions CreateValidationOptions()
+    {
+        var options = new QueryValidationOptions();
+        foreach (string field in Fields.Keys)
+            options.AllowedFields.Add(field);
+        return options;
+    }
 }
 ```
-
-## Best Practices
-
-### 1. Use Consistent Naming
-
-```csharp
-// Good - consistent, lowercase, intuitive
-var fieldMap = new FieldMap
-{
-    { "name", "fullName" },
-    { "email", "emailAddress" },
-    { "created", "createdAt" },
-    { "updated", "updatedAt" }
-};
-
-// Avoid - inconsistent naming
-var fieldMap = new FieldMap
-{
-    { "Name", "fullName" },           // Mixed case
-    { "user_email", "emailAddress" }, // Snake case
-    { "createdDate", "createdAt" }    // Verbose
-};
-```
-
-### 2. Hide Implementation Details
-
-```csharp
-// Good - hides internal structure
-var fieldMap = new FieldMap
-{
-    { "author", "document.metadata.author.fullName" },
-    { "date", "document.metadata.timestamps.publishedAt" }
-};
-
-// Users write: author:john AND date:[2024-01-01 TO *]
-// Instead of: document.metadata.author.fullName:john AND ...
-```
-
-### 3. Protect Sensitive Fields
-
-```csharp
-// Only expose fields users should access
-var publicFieldMap = new FieldMap
-{
-    { "name", "fullName" },
-    { "dept", "department.name" },
-    { "location", "office.city" }
-};
-
-// Internal fields like SSN, salary, etc. are not exposed
-```
-
-### 4. Document Your Mappings
-
-```csharp
-/// <summary>
-/// Field mappings for the Employee search API.
-/// </summary>
-/// <remarks>
-/// Available fields:
-/// - name: Maps to FullName (supports wildcards)
-/// - dept: Maps to Department.Name
-/// - hired: Maps to HireDate (supports date ranges)
-/// - manager: Maps to Manager.FullName
-/// </remarks>
-public static readonly FieldMap EmployeeFieldMap = new()
-{
-    { "name", "FullName" },
-    { "dept", "Department.Name" },
-    { "hired", "HireDate" },
-    { "manager", "Manager.FullName" }
-};
-```
-
-## Next Steps
-
-- [Validation](./validation) - Validate queries
-- [Visitors](./visitors) - Custom transformations
-- [Entity Framework](./entity-framework) - EF Core integration

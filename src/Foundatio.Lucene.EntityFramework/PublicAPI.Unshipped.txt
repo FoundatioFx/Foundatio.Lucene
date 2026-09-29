@@ -1,0 +1,236 @@
+#nullable enable
+const Foundatio.Lucene.EntityFramework.EntityFrameworkQueryNodeExtensions.FilterExpressionKey = "@EntityFrameworkFilter" -> string!
+Foundatio.Lucene.EntityFramework.CustomFieldContext
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Any(System.Linq.Expressions.Expression! collection, System.Linq.Expressions.LambdaExpression! predicate) -> System.Linq.Expressions.Expression!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.BuildDefault(System.Linq.Expressions.Expression! member) -> System.Linq.Expressions.Expression!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Context.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Field.get -> Foundatio.Lucene.EntityFramework.EntityFieldInfo!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Instance.get -> System.Linq.Expressions.Expression!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.IsPrefix.get -> bool
+Foundatio.Lucene.EntityFramework.CustomFieldContext.IsWildcard.get -> bool
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Node.get -> Foundatio.Lucene.Ast.QueryNode!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Parameter.get -> System.Linq.Expressions.ParameterExpression!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Parameterize(object? value, System.Type! type) -> System.Linq.Expressions.Expression!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Parameterize<T>(T value) -> System.Linq.Expressions.Expression!
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Range.get -> Foundatio.Lucene.Ast.RangeNode?
+Foundatio.Lucene.EntityFramework.CustomFieldContext.Term.get -> string?
+Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder
+Foundatio.Lucene.EntityFramework.EntityFieldInfo
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.ClrType.get -> System.Type!
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.ClrType.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Data.get -> System.Collections.Generic.IReadOnlyDictionary<string!, object?>!
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Data.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.ElementType.get -> System.Type?
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.ElementType.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.EntityFieldInfo() -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.FullName.get -> string!
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.FullName.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsBoolean.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsCollection.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsDate.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsFullTextSearch.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsFullTextSearch.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsNavigation.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsNumber.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.IsString.get -> bool
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Kind.get -> Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Kind.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Metadata.get -> Microsoft.EntityFrameworkCore.Metadata.IPropertyBase?
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Metadata.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Name.get -> string!
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Name.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Parent.get -> Foundatio.Lucene.EntityFramework.EntityFieldInfo?
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.Parent.init -> void
+Foundatio.Lucene.EntityFramework.EntityFieldInfo.ValueType.get -> System.Type!
+Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFieldKind.ComplexProperty = 4 -> Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFieldKind.Custom = 0 -> Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFieldKind.Navigation = 2 -> Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFieldKind.Property = 1 -> Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFieldKind.SkipNavigation = 3 -> Foundatio.Lucene.EntityFramework.EntityFieldKind
+Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryNodeExtensions
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.AdditionalFields.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.EntityFramework.EntityFieldInfo!>?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.AdditionalFields.init -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.CustomFieldExpressionBuilder.get -> Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.CustomFieldExpressionBuilder.init -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.DefaultSearchOperator.get -> Foundatio.Lucene.EntityFramework.SearchOperator?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.DefaultSearchOperator.init -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.EntityFrameworkQueryOptions() -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Equals(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? other) -> bool
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Model.get -> Microsoft.EntityFrameworkCore.Metadata.IModel?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Model.init -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.DefaultTimeZone.get -> System.TimeZoneInfo?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.DefaultTimeZone.init -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.Build() -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.EntityFrameworkQueryOptionsBuilder() -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithAdditionalField(string! name, System.Type! clrType, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithAdditionalFields(params System.Collections.Generic.IEnumerable<Foundatio.Lucene.EntityFramework.EntityFieldInfo!>! fields) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithAsyncFieldResolver(Foundatio.Lucene.Visitors.AsyncQueryFieldResolver! resolver) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithBooleanField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithCustomFieldExpressionBuilder(Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder! builder) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDateTimeField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDecimalField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDefaultFields(params string![]! fields) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDefaultOperator(Foundatio.Lucene.Ast.BooleanOperator op) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDefaultSearchOperator(Foundatio.Lucene.EntityFramework.SearchOperator searchOperator) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithFieldMap(Foundatio.Lucene.FieldMap! fieldMap) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithFieldMap(System.Action<Foundatio.Lucene.FieldMapBuilder!>! configure) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithFieldResolver(Foundatio.Lucene.Visitors.QueryFieldResolver! resolver) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithIncludeResolver(Foundatio.Lucene.Visitors.IncludeResolver! resolver) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithIncludes(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! includes) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithIntField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithModel(Microsoft.EntityFrameworkCore.Metadata.IModel! model) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithStringField(string! name, System.Collections.Generic.IReadOnlyDictionary<string!, object?>? data = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithDefaultTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithValidationOptions(Foundatio.Lucene.QueryValidationOptions! options) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder.WithValidationOptions(System.Action<Foundatio.Lucene.QueryValidationOptions!>! configure) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.BuildFilter(System.Type! entityType, string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> System.Linq.Expressions.LambdaExpression!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.BuildFilter<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> System.Linq.Expressions.Expression<System.Func<T!, bool>!>!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.BuildFilterAsync(System.Type! entityType, string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Linq.Expressions.LambdaExpression!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.BuildFilterAsync<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Linq.Expressions.Expression<System.Func<T!, bool>!>!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.BuildSort<T>(string! sort, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T!>!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.BuildSortAsync<T>(string! sort, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T!>!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ClearOptions() -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.Configuration.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.EntityFrameworkQueryParser(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration! configuration) -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.EntityFrameworkQueryParser(System.Action<Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!>? configure = null) -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.GetField<T>(string! field, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.EntityFramework.EntityFieldInfo?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.GetOptions(System.Type! entityType) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.GetOptions<TEntity>() -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.RegisteredEntityTypes.get -> System.Collections.Generic.IEnumerable<System.Type!>!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.RemoveOptions(System.Type! entityType) -> bool
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.RemoveOptions<TEntity>() -> bool
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.SetOptions(System.Type! entityType, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions! options) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.SetOptions<TEntity>(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions! options) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.SetOptions<TEntity>(System.Action<Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!>! configure) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.TryBuildFilter<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.QueryResult<System.Linq.Expressions.Expression<System.Func<T!, bool>!>!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.TryBuildFilterAsync<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryResult<System.Linq.Expressions.Expression<System.Func<T!, bool>!>!>>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateQuery(System.Type! entityType, string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateQuery<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateQueryAsync(System.Type! entityType, string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateQueryAsync<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateSort<T>(string! sort, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.AddFullTextFields(params string![]! fields) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.ComplexPropertyFilter.get -> Foundatio.Lucene.EntityFramework.EntityTypeComplexPropertyFilter?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.ComplexPropertyFilter.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.CustomFieldExpressionBuilder.get -> Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.CustomFieldExpressionBuilder.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DateTimeStorageTimeZone.get -> System.TimeZoneInfo!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DateTimeStorageTimeZone.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DefaultSearchOperator.get -> Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DefaultSearchOperator.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.EntityFrameworkQueryParserConfiguration() -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.FullTextFields.get -> System.Collections.Generic.ISet<string!>!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.MaxFieldDepth.get -> int
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.MaxFieldDepth.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.Model.get -> Microsoft.EntityFrameworkCore.Metadata.IModel?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.Model.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.NavigationFilter.get -> Foundatio.Lucene.EntityFramework.EntityTypeNavigationFilter?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.NavigationFilter.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.PropertyFilter.get -> Foundatio.Lucene.EntityFramework.EntityTypePropertyFilter?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.PropertyFilter.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.RegexExpressionBuilder.get -> Foundatio.Lucene.EntityFramework.RegexExpressionBuilder?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.RegexExpressionBuilder.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SearchTokenizer.get -> Foundatio.Lucene.EntityFramework.SearchTokenizer?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SearchTokenizer.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDateTimeStorageTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultFields(params string![]! fields) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultFields(string![]! fields, Foundatio.Lucene.EntityFramework.SearchOperator searchOperator) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultOperator(Foundatio.Lucene.Ast.BooleanOperator op) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultSearchOperator(Foundatio.Lucene.EntityFramework.SearchOperator searchOperator) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetMaxFieldDepth(int maxDepth) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetTimeProvider(System.TimeProvider! timeProvider) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SetDefaultTimeZone(System.TimeZoneInfo! timeZone) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SkipNavigationFilter.get -> Foundatio.Lucene.EntityFramework.EntityTypeSkipNavigationFilter?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.SkipNavigationFilter.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DefaultTimeZone.get -> System.TimeZoneInfo!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.DefaultTimeZone.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseCustomFieldExpressionBuilder(Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder! builder) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseEntityTypeComplexPropertyFilter(Foundatio.Lucene.EntityFramework.EntityTypeComplexPropertyFilter! filter) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseEntityTypeNavigationFilter(Foundatio.Lucene.EntityFramework.EntityTypeNavigationFilter! filter) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseEntityTypePropertyFilter(Foundatio.Lucene.EntityFramework.EntityTypePropertyFilter! filter) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseEntityTypeSkipNavigationFilter(Foundatio.Lucene.EntityFramework.EntityTypeSkipNavigationFilter! filter) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseFieldMap(Foundatio.Lucene.FieldMap! fieldMap) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseIncludes(System.Collections.Generic.IReadOnlyDictionary<string!, string!>! includes) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseModel(Microsoft.EntityFrameworkCore.Metadata.IModel! model) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseRegex(Foundatio.Lucene.EntityFramework.RegexExpressionBuilder! builder) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseSearchTokenizer(Foundatio.Lucene.EntityFramework.SearchTokenizer! tokenizer) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration.UseValidationOptions(Foundatio.Lucene.QueryValidationOptions! options) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.AdditionalFields.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.EntityFramework.EntityFieldInfo!>!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.AdditionalFields.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.Configuration.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.CustomFieldExpressionBuilder.get -> Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.CustomFieldExpressionBuilder.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultSearchOperator.get -> Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultSearchOperator.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.EntityType.get -> Microsoft.EntityFrameworkCore.Metadata.IEntityType!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.Options.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions?
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultTimeZone.get -> System.TimeZoneInfo!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.DefaultTimeZone.set -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryVisitorContext.TryGetField(string! name, out Foundatio.Lucene.EntityFramework.EntityFieldInfo? field) -> bool
+Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T>
+Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T>.Apply(System.Linq.IQueryable<T!>! source) -> System.Linq.IOrderedQueryable<T!>!
+Foundatio.Lucene.EntityFramework.EntityFrameworkSort<T>.Fields.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.SortField!>!
+Foundatio.Lucene.EntityFramework.EntityTypeComplexPropertyFilter
+Foundatio.Lucene.EntityFramework.EntityTypeNavigationFilter
+Foundatio.Lucene.EntityFramework.EntityTypePropertyFilter
+Foundatio.Lucene.EntityFramework.EntityTypeSkipNavigationFilter
+Foundatio.Lucene.EntityFramework.LuceneQueryOptionsExtension
+Foundatio.Lucene.EntityFramework.LuceneQueryOptionsExtension.ApplyServices(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
+Foundatio.Lucene.EntityFramework.LuceneQueryOptionsExtension.Info.get -> Microsoft.EntityFrameworkCore.Infrastructure.DbContextOptionsExtensionInfo!
+Foundatio.Lucene.EntityFramework.LuceneQueryOptionsExtension.LuceneQueryOptionsExtension(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser! parser) -> void
+Foundatio.Lucene.EntityFramework.LuceneQueryOptionsExtension.Parser.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser!
+Foundatio.Lucene.EntityFramework.LuceneQueryOptionsExtension.Validate(Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options) -> void
+Foundatio.Lucene.EntityFramework.RegexExpressionBuilder
+Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.SearchOperator.Contains = 1 -> Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.SearchOperator.Equals = 0 -> Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.SearchOperator.StartsWith = 2 -> Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.SearchTerm
+Foundatio.Lucene.EntityFramework.SearchTerm.Field.get -> Foundatio.Lucene.EntityFramework.EntityFieldInfo!
+Foundatio.Lucene.EntityFramework.SearchTerm.Field.init -> void
+Foundatio.Lucene.EntityFramework.SearchTerm.Operator.get -> Foundatio.Lucene.EntityFramework.SearchOperator
+Foundatio.Lucene.EntityFramework.SearchTerm.Operator.set -> void
+Foundatio.Lucene.EntityFramework.SearchTerm.SearchTerm() -> void
+Foundatio.Lucene.EntityFramework.SearchTerm.Term.get -> string!
+Foundatio.Lucene.EntityFramework.SearchTerm.Term.init -> void
+Foundatio.Lucene.EntityFramework.SearchTerm.Tokens.get -> System.Collections.Generic.IList<string!>?
+Foundatio.Lucene.EntityFramework.SearchTerm.Tokens.set -> void
+Foundatio.Lucene.EntityFramework.SearchTokenizer
+override Foundatio.Lucene.EntityFramework.EntityFieldInfo.ToString() -> string!
+override Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.<Clone>$() -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions!
+override Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Equals(object? obj) -> bool
+override Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.GetHashCode() -> int
+override Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.ToString() -> string!
+override sealed Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Equals(Foundatio.Lucene.QueryOptionsBase? other) -> bool
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.AddLuceneQuery(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser! parser) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.AddLuceneQuery(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, System.Action<Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!>? configure = null) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.AddLuceneQuery<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser! parser) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.AddLuceneQuery<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, System.Action<Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParserConfiguration!>? configure = null) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.GetQueryParser(this Microsoft.EntityFrameworkCore.DbContext! context) -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser?
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.OrderBy<T>(this System.Linq.IQueryable<T!>! source, string! sort, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser! parser, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> System.Linq.IOrderedQueryable<T!>!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.Where<T>(this Microsoft.EntityFrameworkCore.DbSet<T!>! source, string? query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> System.Linq.IQueryable<T!>!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.Where<T>(this System.Linq.IQueryable<T!>! source, string? query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser! parser, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> System.Linq.IQueryable<T!>!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkExtensions.WhereAsync<T>(this System.Linq.IQueryable<T!>! source, string? query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser! parser, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Linq.IQueryable<T!>!>
+static Foundatio.Lucene.EntityFramework.EntityFrameworkQueryNodeExtensions.GetFilterExpression(this Foundatio.Lucene.Ast.QueryNode! node) -> System.Linq.Expressions.LambdaExpression?
+static Foundatio.Lucene.EntityFramework.EntityFrameworkQueryNodeExtensions.SetFilterExpression(this Foundatio.Lucene.Ast.QueryNode! node, System.Linq.Expressions.LambdaExpression! filter) -> void
+static Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.CreateBuilder() -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptionsBuilder!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.Empty.get -> Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions!
+static Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.operator !=(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? left, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? right) -> bool
+static Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions.operator ==(Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? left, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? right) -> bool
+virtual Foundatio.Lucene.EntityFramework.CustomFieldExpressionBuilder.Invoke(Foundatio.Lucene.EntityFramework.CustomFieldContext! context) -> System.Linq.Expressions.Expression?
+virtual Foundatio.Lucene.EntityFramework.EntityTypeComplexPropertyFilter.Invoke(Microsoft.EntityFrameworkCore.Metadata.IComplexProperty! property) -> bool
+virtual Foundatio.Lucene.EntityFramework.EntityTypeNavigationFilter.Invoke(Microsoft.EntityFrameworkCore.Metadata.INavigation! navigation) -> bool
+virtual Foundatio.Lucene.EntityFramework.EntityTypePropertyFilter.Invoke(Microsoft.EntityFrameworkCore.Metadata.IProperty! property) -> bool
+virtual Foundatio.Lucene.EntityFramework.EntityTypeSkipNavigationFilter.Invoke(Microsoft.EntityFrameworkCore.Metadata.ISkipNavigation! navigation) -> bool
+virtual Foundatio.Lucene.EntityFramework.RegexExpressionBuilder.Invoke(System.Linq.Expressions.Expression! field, System.Linq.Expressions.Expression! pattern) -> System.Linq.Expressions.Expression!
+virtual Foundatio.Lucene.EntityFramework.SearchTokenizer.Invoke(Foundatio.Lucene.EntityFramework.SearchTerm! term) -> void
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ValidateSortAsync<T>(string! sort, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.Parse<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null) -> Foundatio.Lucene.Ast.QueryDocument!
+Foundatio.Lucene.EntityFramework.EntityFrameworkQueryParser.ParseAsync<T>(string! query, Foundatio.Lucene.EntityFramework.EntityFrameworkQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.Ast.QueryDocument!>

@@ -1,202 +1,117 @@
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 
 namespace Foundatio.Lucene.Visitors;
 
 /// <summary>
-/// A visitor that resolves field names using a FieldMap.
-/// This allows using field aliases that are mapped to their actual field names.
+/// Replaces field names with the names returned by the context's <see cref="IQueryVisitorContext.FieldResolver"/>
+/// and <see cref="IQueryVisitorContext.FieldMap"/>, recording the original name on each node
+/// (see <see cref="QueryNodeExtensions.GetOriginalField{T}"/>). Fields that cannot be resolved are added to
+/// <see cref="QueryValidationResult.UnresolvedFields"/>. Fields starting with <c>@</c> are left alone.
 /// </summary>
 public class FieldResolverQueryVisitor : QueryVisitor
 {
-    private readonly FieldMap? _fieldMap;
-
     /// <summary>
-    /// Creates a new FieldResolverQueryVisitor with no field map.
-    /// A FieldMap can be set on the context instead.
+    /// A shared instance. The visitor is stateless.
     /// </summary>
-    public FieldResolverQueryVisitor()
-    {
-    }
+    public static FieldResolverQueryVisitor Instance { get; } = new();
 
-    /// <summary>
-    /// Creates a new FieldResolverQueryVisitor with the specified field map.
-    /// </summary>
-    /// <param name="fieldMap">The field map to use when resolving field names.</param>
-    public FieldResolverQueryVisitor(FieldMap? fieldMap)
-    {
-        _fieldMap = fieldMap;
-    }
-
-    /// <summary>
-    /// Visits a FieldQueryNode and resolves the field name.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
-        // First visit children
-        base.Visit(node, context);
-
-        // Then resolve the field
-        ResolveField(node, context);
-
-        return node;
+        Resolve(node, context);
+        return base.Visit(node, context);
     }
 
-    /// <summary>
-    /// Visits an ExistsNode and resolves the field name.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
     {
-        ResolveExistsField(node, context);
+        Resolve(node, context);
         return node;
     }
 
-    /// <summary>
-    /// Visits a MissingNode and resolves the field name.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
     {
-        ResolveMissingField(node, context);
+        Resolve(node, context);
         return node;
     }
 
-    /// <summary>
-    /// Visits a RangeNode and resolves the field name.
-    /// </summary>
-    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
+    private static void Resolve<T>(T node, IQueryVisitorContext context) where T : QueryNode, IFieldNode
     {
-        ResolveRangeField(node, context);
-        return node;
-    }
-
-    private FieldMap? GetEffectiveFieldMap(IQueryVisitorContext context)
-    {
-        // Context field map takes precedence
-        var contextFieldMap = context.GetFieldMap();
-        return contextFieldMap ?? _fieldMap;
-    }
-
-    private void ResolveField(FieldQueryNode node, IQueryVisitorContext context)
-    {
-        if (string.IsNullOrEmpty(node.Field))
+        string field = node.Field;
+        if (field.Length == 0 || field[0] == '@' || node.Data.ContainsKey(QueryNodeExtensions.OriginalFieldKey))
             return;
 
-        var fieldMap = GetEffectiveFieldMap(context);
-        if (fieldMap is null)
-            return;
-
-        var resolvedField = fieldMap.ResolveField(node.Field);
-        if (resolvedField is null)
+        if (!TryResolveField(field, context, out string resolved))
         {
-            // Add to unresolved fields list
-            context.GetValidationResult().UnresolvedFields.Add(node.Field);
+            context.ValidationResult.UnresolvedFields.Add(field);
             return;
         }
 
-        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
+        if (!string.Equals(resolved, field, StringComparison.Ordinal))
         {
-            node.SetOriginalField(context, node.Field);
-            node.Field = resolvedField;
+            node.SetOriginalField(field);
+            node.Field = resolved;
         }
     }
-
-    private void ResolveExistsField(ExistsNode node, IQueryVisitorContext context)
-    {
-        if (string.IsNullOrEmpty(node.Field))
-            return;
-
-        var fieldMap = GetEffectiveFieldMap(context);
-        if (fieldMap is null)
-            return;
-
-        var resolvedField = fieldMap.ResolveField(node.Field);
-        if (resolvedField is null)
-        {
-            context.GetValidationResult().UnresolvedFields.Add(node.Field);
-            return;
-        }
-
-        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-        {
-            node.SetOriginalField(context, node.Field);
-            node.Field = resolvedField;
-        }
-    }
-
-    private void ResolveMissingField(MissingNode node, IQueryVisitorContext context)
-    {
-        if (string.IsNullOrEmpty(node.Field))
-            return;
-
-        var fieldMap = GetEffectiveFieldMap(context);
-        if (fieldMap is null)
-            return;
-
-        var resolvedField = fieldMap.ResolveField(node.Field);
-        if (resolvedField is null)
-        {
-            context.GetValidationResult().UnresolvedFields.Add(node.Field);
-            return;
-        }
-
-        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-        {
-            node.SetOriginalField(context, node.Field);
-            node.Field = resolvedField;
-        }
-    }
-
-    private void ResolveRangeField(RangeNode node, IQueryVisitorContext context)
-    {
-        if (string.IsNullOrEmpty(node.Field))
-            return;
-
-        var fieldMap = GetEffectiveFieldMap(context);
-        if (fieldMap is null)
-            return;
-
-        var resolvedField = fieldMap.ResolveField(node.Field);
-        if (resolvedField is null)
-        {
-            context.GetValidationResult().UnresolvedFields.Add(node.Field);
-            return;
-        }
-
-        if (!resolvedField.Equals(node.Field, StringComparison.Ordinal))
-        {
-            node.SetOriginalField(context, node.Field);
-            node.Field = resolvedField;
-        }
-    }
-
-    #region Static Run Methods
 
     /// <summary>
-    /// Runs the field resolver visitor on a query document using the specified field map.
+    /// Resolves a field name using the context's field resolver, then its field map. When neither is configured the
+    /// field resolves to itself.
     /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="fieldMap">The field map to use for resolution.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document.</returns>
+    /// <returns>False when a resolver is configured but none could resolve the field.</returns>
+    public static bool TryResolveField(string field, IQueryVisitorContext context, out string resolved)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (context.FieldResolver is null && context.FieldMap is null)
+        {
+            resolved = field;
+            return true;
+        }
+
+        string? result;
+        try
+        {
+            result = context.FieldResolver?.Invoke(field, context);
+        }
+        catch (Exception ex)
+        {
+            context.ValidationResult.AddError($"Error in field resolver callback when resolving field ({field}): {ex.Message}", code: QueryErrorCode.UnresolvedField);
+            resolved = field;
+            return false;
+        }
+
+        result ??= context.FieldMap?.ResolveField(field);
+        resolved = result ?? field;
+        return result is not null;
+    }
+
+    /// <summary>
+    /// Resolves field aliases in a document using the specified field map.
+    /// </summary>
     public static QueryDocument Run(QueryDocument document, FieldMap fieldMap, IQueryVisitorContext? context = null)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(fieldMap);
+
         context ??= new QueryVisitorContext();
-        context.SetFieldMap(fieldMap);
-        return new FieldResolverQueryVisitor().Run(document, context);
+        context.FieldMap = fieldMap;
+        return (QueryDocument)Instance.Accept(document, context);
     }
 
     /// <summary>
-    /// Runs the field resolver visitor on a query document using a dictionary as field map.
-    /// Uses hierarchical field resolution for nested field paths.
+    /// Resolves field names in a document using the specified resolver.
     /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="map">The field map dictionary to use for resolution.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document.</returns>
-    public static QueryDocument Run(QueryDocument document, IDictionary<string, string> map, IQueryVisitorContext? context = null)
+    public static QueryDocument Run(QueryDocument document, QueryFieldResolver resolver, IQueryVisitorContext? context = null)
     {
-        var fieldMap = new FieldMap(map);
-        return Run(document, fieldMap, context);
-    }
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(resolver);
 
-    #endregion
+        context ??= new QueryVisitorContext();
+        context.FieldResolver = resolver;
+        return (QueryDocument)Instance.Accept(document, context);
+    }
 }

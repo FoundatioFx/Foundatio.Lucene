@@ -1,705 +1,446 @@
+using System.Globalization;
+
 namespace Foundatio.Lucene.Tests;
 
-/// <summary>
-/// Comprehensive tests for the DateMath utility class, covering all parsing scenarios,
-/// edge cases, timezone handling, and error conditions.
-/// </summary>
 public class DateMathTests
 {
-    private readonly DateTimeOffset _baseTime = new(2023, 6, 15, 14, 30, 45, 123, TimeSpan.FromHours(5));
+    private static readonly DateTimeOffset Now = new(2024, 6, 15, 14, 30, 45, 123, TimeSpan.Zero);
+    private static readonly TimeZoneInfo Chicago = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+    private static readonly TimeZoneInfo NewYork = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
 
     [Theory]
-    [InlineData("now", false)]
-    [InlineData("now", true)]
-    public void Parse_Now_ReturnsBaseTime(string expression, bool isUpperLimit)
+    [InlineData("now", "2024-06-15T14:30:45.123+00:00")]
+    [InlineData("now+1h", "2024-06-15T15:30:45.123+00:00")]
+    [InlineData("now+1H", "2024-06-15T15:30:45.123+00:00")]
+    [InlineData("now-2d", "2024-06-13T14:30:45.123+00:00")]
+    [InlineData("now+d", "2024-06-16T14:30:45.123+00:00")]
+    [InlineData("now+1M", "2024-07-15T14:30:45.123+00:00")]
+    [InlineData("now-1y", "2023-06-15T14:30:45.123+00:00")]
+    [InlineData("now+1w", "2024-06-22T14:30:45.123+00:00")]
+    [InlineData("now+30m", "2024-06-15T15:00:45.123+00:00")]
+    [InlineData("now-15s", "2024-06-15T14:30:30.123+00:00")]
+    [InlineData("now+1d+2h-30m", "2024-06-16T16:00:45.123+00:00")]
+    [InlineData("now-1d/d", "2024-06-14T00:00:00+00:00")]
+    [InlineData("now/y", "2024-01-01T00:00:00+00:00")]
+    [InlineData("now/M", "2024-06-01T00:00:00+00:00")]
+    [InlineData("now/w", "2024-06-10T00:00:00+00:00")]
+    [InlineData("now/d", "2024-06-15T00:00:00+00:00")]
+    [InlineData("now/h", "2024-06-15T14:00:00+00:00")]
+    [InlineData("now/H", "2024-06-15T14:00:00+00:00")]
+    [InlineData("now/m", "2024-06-15T14:30:00+00:00")]
+    [InlineData("now/s", "2024-06-15T14:30:45+00:00")]
+    public void Parse_RelativeToNow_ReturnsExpectedDate(string expression, string expected)
     {
-        var result = DateMath.Parse(expression, _baseTime, isUpperLimit);
+        var result = DateMath.Parse(expression, Now);
 
-        Assert.Equal(_baseTime, result);
+        AssertDate(expected, result);
     }
 
     [Theory]
-    [InlineData("now+1h", 1)]
-    [InlineData("now+2h", 2)]
-    [InlineData("now+24h", 24)]
-    [InlineData("now+1H", 1)] // Both h and H are valid Elastic units for hours
-    [InlineData("now-1h", -1)]
-    [InlineData("now-12h", -12)]
-    public void Parse_HourOperations_ReturnsCorrectResult(string expression, int hours)
+    [InlineData("now", "2024-06-15T14:30:45.123+00:00")]
+    [InlineData("now/y", "2024-12-31T23:59:59.9999999+00:00")]
+    [InlineData("now/M", "2024-06-30T23:59:59.9999999+00:00")]
+    [InlineData("now/w", "2024-06-16T23:59:59.9999999+00:00")]
+    [InlineData("now/d", "2024-06-15T23:59:59.9999999+00:00")]
+    [InlineData("now-1d/d", "2024-06-14T23:59:59.9999999+00:00")]
+    [InlineData("now/h", "2024-06-15T14:59:59.9999999+00:00")]
+    [InlineData("now/m", "2024-06-15T14:30:59.9999999+00:00")]
+    [InlineData("now/s", "2024-06-15T14:30:45.9999999+00:00")]
+    [InlineData("now+1d", "2024-06-16T14:30:45.123+00:00")]
+    public void Parse_UpperLimit_RoundsToEndOfPeriod(string expression, string expected)
     {
-        var expected = _baseTime.AddHours(hours);
+        var result = DateMath.Parse(expression, Now, isUpperLimit: true);
 
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(expected, result);
+        AssertDate(expected, result);
     }
 
     [Theory]
-    [InlineData("now+1d", 1)]
-    [InlineData("now+7d", 7)]
-    [InlineData("now-1d", -1)]
-    [InlineData("now-30d", -30)]
-    public void Parse_DayOperations_ReturnsCorrectResult(string expression, int days)
+    [InlineData("2024-06-16T10:00:00Z", "2024-06-10T00:00:00+00:00")]
+    [InlineData("2024-06-10T10:00:00Z", "2024-06-10T00:00:00+00:00")]
+    [InlineData("2024-06-09T10:00:00Z", "2024-06-03T00:00:00+00:00")]
+    public void Parse_WeekRounding_RoundsToMonday(string now, string expected)
     {
-        var expected = _baseTime.AddDays(days);
+        var result = DateMath.Parse("now/w", DateTimeOffset.Parse(now, CultureInfo.InvariantCulture));
 
-        var result = DateMath.Parse(expression, _baseTime);
+        Assert.Equal(DayOfWeek.Monday, result.DayOfWeek);
+        AssertDate(expected, result);
+    }
 
-        Assert.Equal(expected, result);
+    [Fact]
+    public void Parse_BaseTimeWithOffset_UsesThatOffset()
+    {
+        var now = new DateTimeOffset(2024, 6, 15, 1, 0, 0, TimeSpan.FromHours(2));
+
+        AssertDate("2024-06-15T00:00:00+02:00", DateMath.Parse("now/d", now));
+        AssertDate("2024-01-15T00:00:00+02:00", DateMath.Parse("2024-01-15", now));
     }
 
     [Theory]
-    [InlineData("now+1M", 1)]
-    [InlineData("now+6M", 6)]
-    [InlineData("now-1M", -1)]
-    [InlineData("now-12M", -12)]
-    public void Parse_MonthOperations_ReturnsCorrectResult(string expression, int months)
+    [InlineData("2024-01-15", false, "2024-01-15T00:00:00+00:00")]
+    [InlineData("2024-01-15", true, "2024-01-15T23:59:59.9999999+00:00")]
+    [InlineData("2024-01", false, "2024-01-01T00:00:00+00:00")]
+    [InlineData("2024-01", true, "2024-01-31T23:59:59.9999999+00:00")]
+    [InlineData("2024-02", true, "2024-02-29T23:59:59.9999999+00:00")]
+    [InlineData("2024", false, "2024-01-01T00:00:00+00:00")]
+    [InlineData("2024", true, "2024-12-31T23:59:59.9999999+00:00")]
+    [InlineData("2024-01-15T10", true, "2024-01-15T10:59:59.9999999+00:00")]
+    [InlineData("2024-01-15T10:30", true, "2024-01-15T10:30:59.9999999+00:00")]
+    [InlineData("2024-01-15T10:30:45", true, "2024-01-15T10:30:45.9999999+00:00")]
+    [InlineData("2024-01-15T10:30:45.5", true, "2024-01-15T10:30:45.5+00:00")]
+    [InlineData("2024-01-15T10:30:45,25", false, "2024-01-15T10:30:45.25+00:00")]
+    [InlineData("2024-01-15T10:30:45.123456789", false, "2024-01-15T10:30:45.1234567+00:00")]
+    [InlineData("2024-01-15 10:30:45", false, "2024-01-15T10:30:45+00:00")]
+    [InlineData("20240115", false, "2024-01-15T00:00:00+00:00")]
+    [InlineData("2024-01-15||", true, "2024-01-15T23:59:59.9999999+00:00")]
+    [InlineData("2024-01-15||+1M/d", false, "2024-02-15T00:00:00+00:00")]
+    [InlineData("2024-01-15||+1d", true, "2024-01-16T00:00:00+00:00")]
+    [InlineData("2024-01-15||/M", true, "2024-01-31T23:59:59.9999999+00:00")]
+    [InlineData("2024-01-15T10:30:00Z", false, "2024-01-15T10:30:00+00:00")]
+    [InlineData("2024-01-15T10:30:00+05:30", false, "2024-01-15T10:30:00+05:30")]
+    [InlineData("2024-01-15T10:30:00-0800", false, "2024-01-15T10:30:00-08:00")]
+    [InlineData("2024-01-15T10:30:00+05", false, "2024-01-15T10:30:00+05:00")]
+    [InlineData("2024-01-15T10:30:00+05:30||+1d/d", false, "2024-01-16T00:00:00+05:30")]
+    [InlineData("2024-01-31||+1M", false, "2024-02-29T00:00:00+00:00")]
+    [InlineData("2024-02-29||+1y", false, "2025-02-28T00:00:00+00:00")]
+    [InlineData("2024-02-29||-4y", false, "2020-02-29T00:00:00+00:00")]
+    [InlineData("2024-12-31||+1d", false, "2025-01-01T00:00:00+00:00")]
+    public void Parse_ExplicitDate_ReturnsExpectedDate(string expression, bool isUpperLimit, string expected)
     {
-        var expected = _baseTime.AddMonths(months);
+        var result = DateMath.Parse(expression, Now, isUpperLimit);
 
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(expected, result);
-    }
-
-    [Theory]
-    [InlineData("now+1y", 1)]
-    [InlineData("now+5y", 5)]
-    [InlineData("now-1y", -1)]
-    [InlineData("now-10y", -10)]
-    public void Parse_YearOperations_ReturnsCorrectResult(string expression, int years)
-    {
-        var expected = _baseTime.AddYears(years);
-
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(expected, result);
-    }
-
-    [Theory]
-    [InlineData("now+1w", 7)]
-    [InlineData("now+2w", 14)]
-    [InlineData("now-1w", -7)]
-    [InlineData("now-4w", -28)]
-    public void Parse_WeekOperations_ReturnsCorrectResult(string expression, int days)
-    {
-        var expected = _baseTime.AddDays(days);
-
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(expected, result);
-    }
-
-    [Theory]
-    [InlineData("now+1m", 1)]
-    [InlineData("now+30m", 30)]
-    [InlineData("now-1m", -1)]
-    [InlineData("now-60m", -60)]
-    public void Parse_MinuteOperations_ReturnsCorrectResult(string expression, int minutes)
-    {
-        var expected = _baseTime.AddMinutes(minutes);
-
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(expected, result);
-    }
-
-    [Theory]
-    [InlineData("now+1s", 1)]
-    [InlineData("now+30s", 30)]
-    [InlineData("now-1s", -1)]
-    [InlineData("now-3600s", -3600)]
-    public void Parse_SecondOperations_ReturnsCorrectResult(string expression, int seconds)
-    {
-        var expected = _baseTime.AddSeconds(seconds);
-
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(expected, result);
-    }
-
-    [Theory]
-    [InlineData("now/d", false)]
-    [InlineData("now/d", true)]
-    [InlineData("now/h", false)]
-    [InlineData("now/h", true)]
-    [InlineData("now/m", false)]
-    [InlineData("now/m", true)]
-    public void Parse_RoundingOperations_ReturnsCorrectResult(string expression, bool isUpperLimit)
-    {
-        var result = DateMath.Parse(expression, _baseTime, isUpperLimit);
-
-        if (expression.EndsWith("/d"))
-        {
-            if (isUpperLimit)
-            {
-                var expectedEnd = new DateTimeOffset(_baseTime.Year, _baseTime.Month, _baseTime.Day, 23, 59, 59, 999, _baseTime.Offset).AddTicks(9999);
-                Assert.Equal(expectedEnd, result);
-            }
-            else
-            {
-                var expectedStart = new DateTimeOffset(_baseTime.Year, _baseTime.Month, _baseTime.Day, 0, 0, 0, 0, _baseTime.Offset);
-                Assert.Equal(expectedStart, result);
-            }
-        }
-        else if (expression.EndsWith("/h"))
-        {
-            if (isUpperLimit)
-            {
-                var expectedEnd = new DateTimeOffset(_baseTime.Year, _baseTime.Month, _baseTime.Day, _baseTime.Hour, 59, 59, 999, _baseTime.Offset).AddTicks(9999);
-                Assert.Equal(expectedEnd, result);
-            }
-            else
-            {
-                var expectedStart = new DateTimeOffset(_baseTime.Year, _baseTime.Month, _baseTime.Day, _baseTime.Hour, 0, 0, 0, _baseTime.Offset);
-                Assert.Equal(expectedStart, result);
-            }
-        }
-        else if (expression.EndsWith("/m"))
-        {
-            if (isUpperLimit)
-            {
-                var expectedEnd = new DateTimeOffset(_baseTime.Year, _baseTime.Month, _baseTime.Day, _baseTime.Hour, _baseTime.Minute, 59, 999, _baseTime.Offset).AddTicks(9999);
-                Assert.Equal(expectedEnd, result);
-            }
-            else
-            {
-                var expectedStart = new DateTimeOffset(_baseTime.Year, _baseTime.Month, _baseTime.Day, _baseTime.Hour, _baseTime.Minute, 0, 0, _baseTime.Offset);
-                Assert.Equal(expectedStart, result);
-            }
-        }
-    }
-
-    [Theory]
-    [InlineData("now+1d+2h")]
-    [InlineData("now-1d+12h")]
-    [InlineData("now+1M+1d")]
-    [InlineData("now+1y-1M")]
-    public void Parse_MultipleOperations_ReturnsCorrectResult(string expression)
-    {
-        var result = DateMath.Parse(expression, _baseTime);
-
-        if (expression == "now+1d+2h")
-        {
-            var expected = _baseTime.AddDays(1).AddHours(2);
-            Assert.Equal(expected, result);
-        }
-        else if (expression == "now-1d+12h")
-        {
-            var expected = _baseTime.AddDays(-1).AddHours(12);
-            Assert.Equal(expected, result);
-        }
-        else
-        {
-            Assert.NotEqual(_baseTime, result);
-        }
-    }
-
-    [Theory]
-    [InlineData("2023-06-15||")]
-    [InlineData("2023-06-15T10:30:00||")]
-    [InlineData("2023-06-15T10:30:00.123||")]
-    public void Parse_ExplicitDateFormats_ReturnsCorrectResult(string expression)
-    {
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.Equal(2023, result.Year);
-        Assert.Equal(6, result.Month);
-        Assert.Equal(15, result.Day);
-        Assert.Equal(_baseTime.Offset, result.Offset);
-    }
-
-    [Theory]
-    [InlineData("2023-06-15T10:30:00Z||", 0)]
-    [InlineData("2023-06-15T10:30:00+02:00||", 2)]
-    [InlineData("2023-06-15T10:30:00-05:00||", -5)]
-    [InlineData("2023-06-15T10:30:00+09:30||", 9.5)]
-    public void Parse_ExplicitTimezones_PreservesTimezone(string expression, double offsetHours)
-    {
-        var result = DateMath.Parse(expression, _baseTime);
-        var expectedOffset = TimeSpan.FromHours(offsetHours);
-
-        Assert.Equal(2023, result.Year);
-        Assert.Equal(6, result.Month);
-        Assert.Equal(15, result.Day);
-        Assert.Equal(10, result.Hour);
-        Assert.Equal(30, result.Minute);
-        Assert.Equal(expectedOffset, result.Offset);
-    }
-
-    [Theory]
-    [InlineData("2023-06-15||+1M")]
-    [InlineData("2023-06-15T10:30:00||+2d")]
-    [InlineData("2023-06-15T10:30:00Z||+1h")]
-    [InlineData("2023-06-15T10:30:00+02:00||-1d/d")]
-    public void Parse_ExplicitDateWithOperations_ReturnsCorrectResult(string expression)
-    {
-        var result = DateMath.Parse(expression, _baseTime);
-
-        Assert.NotEqual(_baseTime, result);
-
-        if (expression.Contains("+1M"))
-        {
-            Assert.Equal(7, result.Month);
-        }
-        else if (expression.Contains("+2d"))
-        {
-            Assert.Equal(17, result.Day);
-        }
-        else if (expression.Contains("+1h"))
-        {
-            Assert.Equal(11, result.Hour);
-        }
+        AssertDate(expected, result);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("invalid")]
+    [InlineData("now+")]
     [InlineData("now+1x")]
-    [InlineData("||+1d")]
-    [InlineData("now/x")]
-    [InlineData("2023-13-01||")]
-    [InlineData("2023-01-32||")]
-    [InlineData("2001.02.01||")]
     [InlineData("now/d+1h")]
-    [InlineData("now/d/d")]
-    [InlineData("now+1h/d+2m")]
-    [InlineData("Now")]
-    [InlineData("NOW")]
-    [InlineData("NOW+1h")]
-    [InlineData("Now-1d/d")]
-    public void Parse_InvalidExpressions_ThrowsArgumentException(string expression)
+    [InlineData("now/1d")]
+    [InlineData("now+1D")]
+    [InlineData("now+1Y")]
+    [InlineData("now-1W")]
+    [InlineData("now+1S")]
+    [InlineData("2024-13-01")]
+    [InlineData("2024-00-10")]
+    [InlineData("2024-02-30")]
+    [InlineData("2023-02-29")]
+    [InlineData("2024-01-15T25:00")]
+    [InlineData("2024-01-15T10:60")]
+    [InlineData("2024-01-15T10:30:00+19:00")]
+    [InlineData("Jan 15")]
+    [InlineData("12345")]
+    public void TryParse_InvalidExpression_ReturnsFalse(string expression)
     {
-        var exception = Assert.Throws<ArgumentException>(() => DateMath.Parse(expression, _baseTime));
+        Assert.False(DateMath.TryParse(expression, Now, false, out _));
+        Assert.False(DateMath.TryParse(expression, Now, true, out _));
+        Assert.False(DateMath.TryParse(expression, Now, Chicago, false, out _));
+        Assert.False(DateMath.IsValidExpression(expression));
+    }
 
-        Assert.Contains("Invalid date math expression", exception.Message);
+    [Theory]
+    [InlineData("now+999999999y")]
+    [InlineData("now-999999999y")]
+    [InlineData("now+999999999M")]
+    [InlineData("now+999999999w")]
+    [InlineData("now-999999999d")]
+    [InlineData("now+999999999h")]
+    [InlineData("9999-12-31||+1d")]
+    [InlineData("0001-01-01||-1d")]
+    public void TryParse_ResultOutOfRange_ReturnsFalse(string expression)
+    {
+        Assert.False(DateMath.TryParse(expression, Now, false, out _));
+        Assert.False(DateMath.TryParse(expression, Now, NewYork, false, out _));
     }
 
     [Fact]
-    public void Parse_NullExpression_ThrowsArgumentException()
+    public void Parse_InvalidExpression_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => DateMath.Parse(null!, _baseTime));
-    }
+        var exception = Assert.Throws<ArgumentException>(() => DateMath.Parse("now+1x", Now));
 
-    [Theory]
-    [InlineData("now")]
-    [InlineData("now+1h")]
-    [InlineData("now-1d/d")]
-    [InlineData("2023-06-15")]
-    [InlineData("2023-06-15||")]
-    [InlineData("2023-06-15||+1M/d")]
-    [InlineData("2025-01-01T01:25:35Z||+3d/d")]
-    public void TryParse_ValidExpressions_ReturnsTrueAndCorrectResult(string expression)
-    {
-        bool success = DateMath.TryParse(expression, _baseTime, false, out var result);
-
-        Assert.True(success);
-        Assert.NotEqual(default, result);
-
-        var parseResult = DateMath.Parse(expression, _baseTime, false);
-        Assert.Equal(parseResult, result);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("invalid")]
-    [InlineData("now+")]
-    [InlineData("||+1d")]
-    [InlineData("2001.02.01||")]
-    [InlineData("now/d+1h")]
-    [InlineData("now/d/d")]
-    [InlineData("Now+1h")]
-    [InlineData("NOW-1d")]
-    public void TryParse_InvalidExpressions_ReturnsFalse(string expression)
-    {
-        bool success = DateMath.TryParse(expression, _baseTime, false, out var result);
-
-        Assert.False(success);
-        Assert.Equal(default, result);
+        Assert.Contains("now+1x", exception.Message);
+        Assert.Throws<ArgumentException>(() => DateMath.Parse("bogus", Now, Chicago));
     }
 
     [Fact]
     public void TryParse_NullExpression_ReturnsFalse()
     {
-        bool success = DateMath.TryParse(null!, _baseTime, false, out var result);
-
-        Assert.False(success);
-        Assert.Equal(default, result);
+        Assert.False(DateMath.TryParse(null!, Now, false, out _));
+        Assert.False(DateMath.IsValidExpression(null));
     }
 
     [Fact]
-    public void TryParse_FallbackExplicitDate_AppliesBaseOffset()
+    public void TryParse_NullTimeZone_ThrowsArgumentNullException()
     {
-        const string expression = "2023-04-01";
-
-        bool success = DateMath.TryParse(expression, _baseTime, false, out var result);
-
-        Assert.True(success);
-        var expected = new DateTimeOffset(2023, 4, 1, 0, 0, 0, _baseTime.Offset);
-        Assert.Equal(expected, result);
+        Assert.Throws<ArgumentNullException>(() => DateMath.TryParse("now", Now, null!, false, out _));
+        Assert.Throws<ArgumentNullException>(() => DateMath.Parse("now", Now, (TimeZoneInfo)null!));
     }
 
     [Fact]
-    public void TryParse_FallbackExplicitDateUpperLimit_AdjustsToEndOfDay()
+    public void Parse_UppercaseAndLowercaseM_AreMonthsAndMinutes()
     {
-        // Note: "2023-07-10" matches the main parser regex (as an explicit date without operations),
-        // so it goes through TryParseExplicitDate, not the fallback path. The main path does not
-        // apply end-of-day adjustment — isUpperLimit only affects rounding operations.
-        const string expression = "2023-07-10";
-
-        bool success = DateMath.TryParse(expression, _baseTime, true, out var result);
-
-        Assert.True(success);
-        var expected = new DateTimeOffset(2023, 7, 10, 0, 0, 0, _baseTime.Offset);
-        Assert.Equal(expected, result);
-    }
-
-    [Fact]
-    public void TryParse_FallbackExplicitDateWithTimezone_PreservesOffset()
-    {
-        const string expression = "2023-05-05T18:45:00-07:00";
-
-        bool success = DateMath.TryParse(expression, _baseTime, false, out var result);
-
-        Assert.True(success);
-        Assert.Equal(new DateTimeOffset(2023, 5, 5, 18, 45, 0, TimeSpan.FromHours(-7)), result);
-    }
-
-    [Fact]
-    public void TryParse_FallbackExplicitDateWithTimeZoneInfo_UsesProvidedOffset()
-    {
-        const string expression = "2023-09-15";
-        var customZone = TimeZoneInfo.CreateCustomTimeZone("TestPlusThree", TimeSpan.FromHours(3), "Test +3", "Test +3");
-
-        bool success = DateMath.TryParse(expression, customZone, false, out var result);
-
-        Assert.True(success);
-        Assert.Equal(new DateTimeOffset(2023, 9, 15, 0, 0, 0, customZone.BaseUtcOffset), result);
+        AssertDate("2024-07-15T14:30:45.123+00:00", DateMath.Parse("now+1M", Now));
+        AssertDate("2024-06-15T14:31:45.123+00:00", DateMath.Parse("now+1m", Now));
     }
 
     [Theory]
-    [InlineData("now+1h", false)]
-    [InlineData("now-1d/d", true)]
-    [InlineData("2023-06-15", false)]
-    [InlineData("2023-06-15||+1M", false)]
-    [InlineData("2025-01-01T01:25:35Z||+3d/d", true)]
-    public void Parse_And_TryParse_ReturnSameResults(string expression, bool isUpperLimit)
+    [InlineData("01/15/2024", false, "2024-01-15T00:00:00+00:00")]
+    [InlineData("01/15/2024", true, "2024-01-15T23:59:59.9999999+00:00")]
+    [InlineData("01/15/2024 10:30", true, "2024-01-15T10:30:00+00:00")]
+    [InlineData("January 15, 2024", false, "2024-01-15T00:00:00+00:00")]
+    [InlineData("15 Jan 2024", false, "2024-01-15T00:00:00+00:00")]
+    [InlineData("Mon, 15 Jan 2024 10:30:00 GMT", false, "2024-01-15T10:30:00+00:00")]
+    [InlineData("2024-01-15 10:30:00 -05:00", false, "2024-01-15T10:30:00-05:00")]
+    [InlineData("2024-01-15 00:00:00 -05:00", true, "2024-01-15T23:59:59.9999999-05:00")]
+    public void Parse_OtherDateFormats_UsesInvariantFallback(string expression, bool isUpperLimit, string expected)
     {
-        var parseResult = DateMath.Parse(expression, _baseTime, isUpperLimit);
-        bool tryParseSuccess = DateMath.TryParse(expression, _baseTime, isUpperLimit, out var tryParseResult);
+        var result = DateMath.Parse(expression, Now, isUpperLimit);
 
-        Assert.True(tryParseSuccess);
-        Assert.Equal(parseResult, tryParseResult);
+        AssertDate(expected, result);
+    }
+
+    [Fact]
+    public void Parse_FallbackWithTimeZone_UsesZoneOffsetForThatDate()
+    {
+        AssertDate("2024-01-15T00:00:00-06:00", DateMath.Parse("01/15/2024", Now, Chicago));
+        AssertDate("2024-07-15T00:00:00-05:00", DateMath.Parse("07/15/2024", Now, Chicago));
     }
 
     [Theory]
-    [InlineData("now/d")]
-    [InlineData("now/h")]
-    [InlineData("now/m")]
-    [InlineData("now+1d/d")]
-    [InlineData("now-1M/d")]
-    public void Parse_UpperLimitVsLowerLimit_ProducesDifferentResults(string expression)
+    [InlineData("de-DE")]
+    [InlineData("th-TH")]
+    [InlineData("ar-SA")]
+    [InlineData("fa-IR")]
+    public void Parse_NonInvariantCurrentCulture_IsCultureInvariant(string culture)
     {
-        var lowerResult = DateMath.Parse(expression, _baseTime, false);
-        var upperResult = DateMath.Parse(expression, _baseTime, true);
+        // Arrange
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo(culture);
+        try
+        {
+            // Act
+            var iso = DateMath.Parse("2024-01-15||+1M/d", Now);
+            var fallback = DateMath.Parse("01/02/2024", Now);
 
-        Assert.True(upperResult > lowerResult,
-            $"Upper limit ({upperResult}) should be greater than lower limit ({lowerResult})");
-    }
-
-    [Fact]
-    public void Parse_EdgeCase_LeapYear()
-    {
-        var leapYearDate = new DateTimeOffset(2024, 2, 28, 12, 0, 0, _baseTime.Offset);
-        const string expression = "now+1d";
-
-        var result = DateMath.Parse(expression, leapYearDate);
-
-        Assert.Equal(29, result.Day);
-        Assert.Equal(2, result.Month);
-    }
-
-    [Fact]
-    public void Parse_EdgeCase_MonthOverflow()
-    {
-        var endOfMonth = new DateTimeOffset(2023, 1, 31, 12, 0, 0, _baseTime.Offset);
-        const string expression = "now+1M";
-
-        var result = DateMath.Parse(expression, endOfMonth);
-
-        Assert.Equal(2, result.Month);
-        Assert.True(result.Day <= 29);
-    }
-
-    [Fact]
-    public void Parse_EdgeCase_YearOverflow()
-    {
-        var endOfYear = new DateTimeOffset(2023, 12, 31, 23, 59, 59, _baseTime.Offset);
-        const string expression = "now+1d";
-
-        var result = DateMath.Parse(expression, endOfYear);
-
-        Assert.Equal(2024, result.Year);
-        Assert.Equal(1, result.Month);
-        Assert.Equal(1, result.Day);
-    }
-
-    [Fact]
-    public void Parse_ComplexExpression_MultipleOperationsWithRounding()
-    {
-        const string expression = "now+1M-2d+3h/h";
-
-        var result = DateMath.Parse(expression, _baseTime, false);
-
-        Assert.Equal(0, result.Minute);
-        Assert.Equal(0, result.Second);
-        Assert.Equal(0, result.Millisecond);
-        Assert.NotEqual(_baseTime, result);
-    }
-
-    [Fact]
-    public void ParseTimeZone_Now_ReturnsCurrentTimeInSpecifiedTimezone()
-    {
-        var utcTimeZone = TimeZoneInfo.Utc;
-        const string expression = "now";
-
-        var result = DateMath.Parse(expression, utcTimeZone);
-
-        var utcNow = DateTimeOffset.UtcNow;
-        Assert.True(Math.Abs((result - utcNow).TotalSeconds) < 5,
-            $"Result {result} should be within 5 seconds of UTC now {utcNow}");
-        Assert.Equal(TimeSpan.Zero, result.Offset);
+            // Assert
+            AssertDate("2024-02-15T00:00:00+00:00", iso);
+            AssertDate("2024-01-02T00:00:00+00:00", fallback);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 
     [Theory]
-    [InlineData("UTC")]
-    [InlineData("America/New_York")]
-    [InlineData("America/Los_Angeles")]
-    public void ParseTimeZone_Now_ReturnsCorrectTimezone(string timeZoneId)
+    [InlineData("now", "2024-06-15T09:30:45.123-05:00")]
+    [InlineData("now/d", "2024-06-15T00:00:00-05:00")]
+    [InlineData("now-1d/d", "2024-06-14T00:00:00-05:00")]
+    [InlineData("now/M", "2024-06-01T00:00:00-05:00")]
+    [InlineData("now-6M/M", "2023-12-01T00:00:00-06:00")]
+    [InlineData("2024-01-15", "2024-01-15T00:00:00-06:00")]
+    [InlineData("2024-07-15T12:00", "2024-07-15T12:00:00-05:00")]
+    [InlineData("2024-01-15T10:00:00Z", "2024-01-15T10:00:00+00:00")]
+    [InlineData("2024-01-15T10:00:00+01:00||/d", "2024-01-15T00:00:00+01:00")]
+    public void Parse_TimeZone_UsesWallClockAndPerDateOffsets(string expression, string expected)
     {
-        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        const string expression = "now";
+        var result = DateMath.Parse(expression, Now, Chicago);
 
-        var result = DateMath.Parse(expression, timeZone);
-
-        Assert.Equal(timeZone.GetUtcOffset(DateTime.UtcNow), result.Offset);
+        AssertDate(expected, result);
     }
 
     [Fact]
-    public void ParseTimeZone_ExplicitDateWithoutTimezone_UsesSpecifiedTimezone()
+    public void Parse_TimeZoneUpperLimit_RoundsToEndOfLocalPeriod()
     {
-        var easternTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-        const string expression = "2023-06-15T14:30:00";
-
-        var result = DateMath.Parse(expression, easternTimeZone);
-
-        Assert.Equal(2023, result.Year);
-        Assert.Equal(6, result.Month);
-        Assert.Equal(15, result.Day);
-        Assert.Equal(14, result.Hour);
-        Assert.Equal(30, result.Minute);
-        Assert.Equal(0, result.Second);
-
-        // The implementation uses timeZone.GetUtcOffset(DateTime.UtcNow) to determine the offset,
-        // so the result reflects the current timezone offset (which depends on DST at the time
-        // of test execution), not the offset for the parsed date.
-        var expectedOffset = easternTimeZone.GetUtcOffset(DateTime.UtcNow);
-        Assert.Equal(expectedOffset, result.Offset);
+        AssertDate("2024-06-15T23:59:59.9999999-05:00", DateMath.Parse("now/d", Now, Chicago, isUpperLimit: true));
+        AssertDate("2024-01-31T23:59:59.9999999-06:00", DateMath.Parse("2024-01", Now, Chicago, isUpperLimit: true));
     }
 
     [Fact]
-    public void ParseTimeZone_ExplicitDateWithTimezone_PreservesOriginalTimezone()
+    public void Parse_HalfHourTimeZone_RoundsToLocalMidnight()
     {
-        var pacificTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
-        const string expression = "2023-06-15T14:30:00+05:00";
+        var kolkata = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata");
+        var now = new DateTimeOffset(2024, 6, 15, 20, 0, 0, TimeSpan.Zero);
 
-        var result = DateMath.Parse(expression, pacificTimeZone);
-
-        Assert.Equal(2023, result.Year);
-        Assert.Equal(6, result.Month);
-        Assert.Equal(15, result.Day);
-        Assert.Equal(14, result.Hour);
-        Assert.Equal(30, result.Minute);
-        Assert.Equal(0, result.Second);
-        Assert.Equal(TimeSpan.FromHours(5), result.Offset);
+        AssertDate("2024-06-16T00:00:00+05:30", DateMath.Parse("now/d", now, kolkata));
     }
 
     [Theory]
-    [InlineData("now+1h", 1)]
-    [InlineData("now+6h", 6)]
-    [InlineData("now-2h", -2)]
-    [InlineData("now+24h", 24)]
-    public void ParseTimeZone_HourOperations_ReturnsCorrectResult(string expression, int hours)
+    [InlineData("2024-03-10", false, "2024-03-10T00:00:00-05:00")]
+    [InlineData("2024-03-10", true, "2024-03-10T23:59:59.9999999-04:00")]
+    [InlineData("2024-03-10T01:59", false, "2024-03-10T01:59:00-05:00")]
+    [InlineData("2024-03-10T03:00", false, "2024-03-10T03:00:00-04:00")]
+    [InlineData("2024-03-10T12:00", false, "2024-03-10T12:00:00-04:00")]
+    [InlineData("2024-03-10T02:30", false, "2024-03-10T03:30:00-04:00")]
+    [InlineData("2024-03-09T12:00||+1d", false, "2024-03-10T12:00:00-04:00")]
+    [InlineData("2024-03-09T02:30||+1d", false, "2024-03-10T03:30:00-04:00")]
+    [InlineData("2024-03-11T12:00||-1d", false, "2024-03-10T12:00:00-04:00")]
+    [InlineData("2024-03-10T12:00||-1d", false, "2024-03-09T12:00:00-05:00")]
+    [InlineData("2024-03-10T12:00||/d", false, "2024-03-10T00:00:00-05:00")]
+    [InlineData("2024-11-03", false, "2024-11-03T00:00:00-04:00")]
+    [InlineData("2024-11-03", true, "2024-11-03T23:59:59.9999999-05:00")]
+    [InlineData("2024-11-03T00:59", false, "2024-11-03T00:59:00-04:00")]
+    [InlineData("2024-11-03T01:30", false, "2024-11-03T01:30:00-04:00")]
+    [InlineData("2024-11-03T02:00", false, "2024-11-03T02:00:00-05:00")]
+    [InlineData("2024-11-03T12:00", false, "2024-11-03T12:00:00-05:00")]
+    [InlineData("2024-11-02T12:00||+1d", false, "2024-11-03T12:00:00-05:00")]
+    [InlineData("2024-11-02T01:30||+1d", false, "2024-11-03T01:30:00-04:00")]
+    [InlineData("2024-11-03T12:00||/d", false, "2024-11-03T00:00:00-04:00")]
+    public void Parse_NewYorkDaylightSavingBoundaries_UsesCorrectOffsets(string expression, bool isUpperLimit, string expected)
     {
-        var utcTimeZone = TimeZoneInfo.Utc;
+        var result = DateMath.Parse(expression, Now, NewYork, isUpperLimit);
 
-        var result = DateMath.Parse(expression, utcTimeZone);
-        var utcNow = DateTimeOffset.UtcNow;
-        var expected = utcNow.AddHours(hours);
-
-        Assert.True(Math.Abs((result - expected).TotalSeconds) < 5,
-            $"Result {result} should be within 5 seconds of expected {expected}");
-        Assert.Equal(TimeSpan.Zero, result.Offset);
+        AssertDate(expected, result);
     }
 
     [Theory]
-    [InlineData("now/d", false)]
+    [InlineData("2024-03-10T16:00:00Z", "now", "2024-03-10T12:00:00-04:00")]
+    [InlineData("2024-03-10T16:00:00Z", "now/d", "2024-03-10T00:00:00-05:00")]
+    [InlineData("2024-03-10T16:00:00Z", "now-1d", "2024-03-09T12:00:00-05:00")]
+    [InlineData("2024-03-10T16:00:00Z", "now-12h", "2024-03-09T23:00:00-05:00")]
+    [InlineData("2024-03-10T06:30:00Z", "now+1h", "2024-03-10T03:30:00-04:00")]
+    [InlineData("2024-03-10T06:30:00Z", "now+30m", "2024-03-10T03:00:00-04:00")]
+    [InlineData("2024-03-10T06:30:00Z", "now+1d", "2024-03-11T01:30:00-04:00")]
+    [InlineData("2024-11-03T05:30:00Z", "now", "2024-11-03T01:30:00-04:00")]
+    [InlineData("2024-11-03T05:30:00Z", "now+1h", "2024-11-03T01:30:00-05:00")]
+    [InlineData("2024-11-03T05:30:00Z", "now/h", "2024-11-03T01:00:00-04:00")]
+    [InlineData("2024-11-03T05:30:00Z", "now/d", "2024-11-03T00:00:00-04:00")]
+    [InlineData("2024-11-03T06:30:00Z", "now", "2024-11-03T01:30:00-05:00")]
+    [InlineData("2024-11-03T06:30:00Z", "now/h", "2024-11-03T01:00:00-05:00")]
+    [InlineData("2024-11-03T06:30:00Z", "now-1h", "2024-11-03T01:30:00-04:00")]
+    [InlineData("2024-11-02T05:30:00Z", "now+1d", "2024-11-03T01:30:00-04:00")]
+    [InlineData("2024-11-03T17:00:00Z", "now-1d", "2024-11-02T12:00:00-04:00")]
+    public void Parse_NewYorkDaylightSavingBoundariesRelativeToNow_UsesCorrectOffsets(string now, string expression, string expected)
+    {
+        var result = DateMath.Parse(expression, DateTimeOffset.Parse(now, CultureInfo.InvariantCulture), NewYork);
+
+        AssertDate(expected, result);
+    }
+
+    [Fact]
+    public void Parse_NowInTimeZone_IsSameInstantAsNow()
+    {
+        foreach (string id in new[] { "America/New_York", "America/Chicago", "Europe/London", "Australia/Sydney", "Asia/Kolkata" })
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(id);
+            for (var instant = new DateTimeOffset(2024, 1, 1, 0, 30, 0, TimeSpan.Zero); instant.Year == 2024; instant = instant.AddHours(7))
+            {
+                var result = DateMath.Parse("now", instant, zone);
+
+                Assert.Equal(instant, result);
+                Assert.Equal(zone.GetUtcOffset(instant), result.Offset);
+            }
+        }
+    }
+
+    [Fact]
+    public void Parse_DaylightSavingStartsAtMidnight_RoundsToFirstInstantOfDay()
+    {
+        // Arrange
+        var saoPaulo = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+        var now = new DateTimeOffset(2018, 11, 4, 15, 0, 0, TimeSpan.Zero);
+
+        // Act
+        var start = DateMath.Parse("now/d", now, saoPaulo);
+        var previousEnd = DateMath.Parse("now-1d/d", now, saoPaulo, isUpperLimit: true);
+
+        // Assert
+        AssertDate("2018-11-04T01:00:00-02:00", start);
+        AssertDate("2018-11-03T23:59:59.9999999-03:00", previousEnd);
+        Assert.Equal(TimeSpan.FromTicks(1), start - previousEnd);
+    }
+
+    [Fact]
+    public void Parse_TimeZoneWithSystemClock_UsesCurrentTime()
+    {
+        var before = DateTimeOffset.UtcNow;
+
+        var result = DateMath.Parse("now", Chicago);
+
+        Assert.InRange(result, before, DateTimeOffset.UtcNow);
+        Assert.Equal(Chicago.GetUtcOffset(result), result.Offset);
+        Assert.True(DateMath.TryParse("now/d", Chicago, false, out var rounded));
+        Assert.Equal(TimeSpan.Zero, rounded.TimeOfDay);
+    }
+
+    [Theory]
+    [InlineData("now", true)]
+    [InlineData("now-1d", true)]
     [InlineData("now/d", true)]
-    [InlineData("now/h", false)]
-    [InlineData("now/h", true)]
-    [InlineData("now/M", false)]
-    [InlineData("now/M", true)]
-    public void ParseTimeZone_RoundingOperations_ReturnsCorrectResult(string expression, bool isUpperLimit)
+    [InlineData("2024-01-01||+1d", true)]
+    [InlineData("2024-01-01||", true)]
+    [InlineData("2024-01-01+1d", true)]
+    [InlineData("2024-01-01/M", true)]
+    [InlineData("2024-01-01", false)]
+    [InlineData("2024-01-01T10:00:00Z", false)]
+    [InlineData("nowhere", false)]
+    [InlineData("now+1x", false)]
+    [InlineData("hello", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsDateMath_Expression_ReturnsExpected(string? expression, bool expected)
     {
-        var centralTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
-
-        var result = DateMath.Parse(expression, centralTimeZone, isUpperLimit);
-
-        var expectedOffset = centralTimeZone.GetUtcOffset(DateTime.UtcNow);
-        Assert.Equal(expectedOffset, result.Offset);
-
-        if (expression.EndsWith("/d"))
-        {
-            if (isUpperLimit)
-            {
-                Assert.Equal(23, result.Hour);
-                Assert.Equal(59, result.Minute);
-                Assert.Equal(59, result.Second);
-            }
-            else
-            {
-                Assert.Equal(0, result.Hour);
-                Assert.Equal(0, result.Minute);
-                Assert.Equal(0, result.Second);
-            }
-        }
-        else if (expression.EndsWith("/h"))
-        {
-            if (isUpperLimit)
-            {
-                Assert.Equal(59, result.Minute);
-                Assert.Equal(59, result.Second);
-            }
-            else
-            {
-                Assert.Equal(0, result.Minute);
-                Assert.Equal(0, result.Second);
-            }
-        }
-    }
-
-    [Fact]
-    public void TryParseTimeZone_ValidExpression_ReturnsTrue()
-    {
-        var mountainTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Denver");
-        const string expression = "now+2d";
-
-        bool success = DateMath.TryParse(expression, mountainTimeZone, false, out DateTimeOffset result);
-
-        Assert.True(success);
-        Assert.NotEqual(default(DateTimeOffset), result);
-
-        var expectedOffset = mountainTimeZone.GetUtcOffset(DateTime.UtcNow);
-        Assert.Equal(expectedOffset, result.Offset);
-    }
-
-    [Fact]
-    public void TryParseTimeZone_InvalidExpression_ReturnsFalse()
-    {
-        var utcTimeZone = TimeZoneInfo.Utc;
-        const string expression = "invalid_expression";
-
-        bool success = DateMath.TryParse(expression, utcTimeZone, false, out DateTimeOffset result);
-
-        Assert.False(success);
-        Assert.Equal(default(DateTimeOffset), result);
-    }
-
-    [Fact]
-    public void ParseTimeZone_ComplexExpression_WorksCorrectly()
-    {
-        var utcTimeZone = TimeZoneInfo.Utc;
-        const string expression = "now+1M-2d+3h/h";
-
-        var result = DateMath.Parse(expression, utcTimeZone, false);
-
-        Assert.Equal(TimeSpan.Zero, result.Offset);
-        Assert.Equal(0, result.Minute);
-        Assert.Equal(0, result.Second);
-        Assert.Equal(0, result.Millisecond);
-    }
-
-    [Fact]
-    public void ParseTimeZone_NullTimeZone_ThrowsArgumentNullException()
-    {
-        const string expression = "now";
-
-        Assert.Throws<ArgumentNullException>(() => DateMath.Parse(expression, (TimeZoneInfo)null!));
-    }
-
-    [Fact]
-    public void TryParseTimeZone_NullTimeZone_ThrowsArgumentNullException()
-    {
-        const string expression = "now";
-
-        Assert.Throws<ArgumentNullException>(() => DateMath.TryParse(expression, (TimeZoneInfo)null!, false, out _));
-    }
-
-    /// <summary>
-    /// Per Elasticsearch docs, valid date-math units are case-sensitive:
-    /// y, M, w, d, h, H, m, s. Uppercase D, Y, W, S are NOT valid units.
-    /// https://www.elastic.co/docs/reference/elasticsearch/rest-apis/common-options
-    /// </summary>
-    [Theory]
-    [InlineData("now-7D")]
-    [InlineData("now-1D")]
-    [InlineData("now-30D")]
-    [InlineData("now+1D")]
-    [InlineData("now-1Y")]
-    [InlineData("now-1W")]
-    [InlineData("now-1S")]
-    [InlineData("now/D")]
-    public void Parse_UppercaseInvalidUnits_ThrowsArgumentException(string expression)
-    {
-        Assert.Throws<ArgumentException>(() => DateMath.Parse(expression, _baseTime));
+        Assert.Equal(expected, DateMath.IsDateMath(expression));
     }
 
     [Theory]
-    [InlineData("now-7D")]
-    [InlineData("now-1D")]
-    [InlineData("now+1D")]
-    public void TryParse_UppercaseInvalidUnits_ReturnsFalse(string expression)
+    [InlineData("now", true)]
+    [InlineData("now-1d/d", true)]
+    [InlineData("2024-01-01", true)]
+    [InlineData("January 1, 2024", true)]
+    [InlineData("now+1x", false)]
+    [InlineData("nowhere", false)]
+    public void IsValidExpression_Expression_ReturnsExpected(string expression, bool expected)
     {
-        bool success = DateMath.TryParse(expression, _baseTime, false, out var result);
-
-        Assert.False(success);
-        Assert.Equal(default, result);
+        Assert.Equal(expected, DateMath.IsValidExpression(expression));
     }
 
     [Fact]
-    public void Parse_UppercaseAndLowercaseM_ProduceDifferentResults()
+    public void ApplyOperations_Operations_AppliesInDateOffset()
     {
-        var minuteExpression = "now-1m";
-        var monthExpression = "now+1M";
+        var date = new DateTimeOffset(2024, 1, 31, 10, 0, 0, TimeSpan.FromHours(-6));
 
-        var minuteResult = DateMath.Parse(minuteExpression, _baseTime);
-        var monthResult = DateMath.Parse(monthExpression, _baseTime);
-
-        Assert.Equal(_baseTime.AddMinutes(-1), minuteResult);
-        Assert.Equal(_baseTime.AddMonths(1), monthResult);
+        AssertDate("2024-02-29T00:00:00-06:00", DateMath.ApplyOperations(date, "+1M/d"));
+        AssertDate("2024-02-29T23:59:59.9999999-06:00", DateMath.ApplyOperations(date, "+1M/d", isUpperLimit: true));
+        Assert.Equal(date, DateMath.ApplyOperations(date, ""));
+        Assert.Throws<ArgumentException>(() => DateMath.ApplyOperations(date, "+1x"));
+        Assert.Throws<ArgumentException>(() => DateMath.ApplyOperations(date, "/d+1h"));
+        Assert.Throws<ArgumentNullException>(() => DateMath.ApplyOperations(date, null!));
     }
 
     [Fact]
-    public void IsValidExpression_CaseSensitiveInputs_ValidatesCorrectly()
+    public void AddTimeUnit_AndRoundToUnit_UseDateOffset()
     {
-        Assert.True(DateMath.IsValidExpression("now-7d"));
-        Assert.True(DateMath.IsValidExpression("now-1d/d"));
+        var date = new DateTimeOffset(2024, 6, 15, 14, 30, 0, TimeSpan.FromHours(2));
 
-        Assert.False(DateMath.IsValidExpression("now-7D"));
-        Assert.False(DateMath.IsValidExpression("now-1D/D"));
+        AssertDate("2024-06-15T16:30:00+02:00", DateMath.AddTimeUnit(date, 2, "h"));
+        AssertDate("2024-06-01T00:00:00+02:00", DateMath.RoundToUnit(date, "M"));
+        AssertDate("2024-06-30T23:59:59.9999999+02:00", DateMath.RoundToUnit(date, "M", isUpperLimit: true));
+        Assert.Throws<ArgumentException>(() => DateMath.AddTimeUnit(date, 1, "x"));
+        Assert.Throws<ArgumentException>(() => DateMath.AddTimeUnit(DateTimeOffset.MaxValue, 1, "d"));
+        Assert.Throws<ArgumentException>(() => DateMath.RoundToUnit(date, "q"));
+    }
 
-        Assert.False(DateMath.IsValidExpression("Now-7d"));
-        Assert.False(DateMath.IsValidExpression("NOW-7d"));
+    [Fact]
+    public void TryParse_ConcurrentCalls_ProduceConsistentResults()
+    {
+        var failures = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        Parallel.For(0, 2000, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i =>
+        {
+            var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero).AddHours(i);
+            if (!DateMath.TryParse("now-1d/d", now, NewYork, false, out var result) || result != DateMath.Parse("now-1d/d", now, NewYork))
+                failures.Add(now.ToString("o", CultureInfo.InvariantCulture));
+        });
+
+        Assert.Empty(failures);
+    }
+
+    private static void AssertDate(string expected, DateTimeOffset actual)
+    {
+        var expectedDate = DateTimeOffset.Parse(expected, CultureInfo.InvariantCulture);
+        Assert.Equal(expectedDate.ToString("o", CultureInfo.InvariantCulture), actual.ToString("o", CultureInfo.InvariantCulture));
     }
 }

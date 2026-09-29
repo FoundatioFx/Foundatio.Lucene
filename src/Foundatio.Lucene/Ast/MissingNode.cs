@@ -1,27 +1,30 @@
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Represents a missing query (_missing_:field).
+/// Represents a missing query (<c>_missing_:field</c>).
 /// </summary>
-public class MissingNode : QueryNode
+public class MissingNode : QueryNode, IFieldNode
 {
-    private ReadOnlyMemory<char> _field;
+    private TextValue _field;
 
     /// <summary>
-    /// The field that must be missing as a memory slice (zero allocation).
+    /// The field that must be missing as a memory slice.
     /// </summary>
     public ReadOnlyMemory<char> FieldMemory
     {
-        get => _field;
-        set => _field = value;
+        get => _field.Memory;
+        set => _field.Memory = value;
     }
 
     /// <summary>
-    /// The field that must be missing as a string. Use FieldMemory for zero-allocation access.
+    /// The field that must be missing.
     /// </summary>
     public string Field
     {
-        get => _field.Span.ToString();
-        set => _field = value.AsMemory();
+        get => _field.GetString();
+        set => _field.SetString(value);
     }
+
+    /// <inheritdoc/>
+    public override QueryNode Clone() => CopyCommonTo(new MissingNode { FieldMemory = FieldMemory });
 }
