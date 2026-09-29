@@ -6,19 +6,19 @@
 
 ```csharp
 // Server mapping of an index, alias, or pattern (uses the client's synchronous and asynchronous APIs)
-using var resolver = ElasticMappingResolver.Create(client, "employees");
+using var serverResolver = ElasticMappingResolver.Create(client, "employees");
 
 // Code mapping merged with the server mapping of the index inferred for Employee
-using var resolver = ElasticMappingResolver.Create<Employee>(m => m.Properties(p => p
+using var mergedResolver = ElasticMappingResolver.Create<Employee>(m => m.Properties(p => p
     .Text(e => e.Name, t => t.AddKeywordAndSortFields())
     .Keyword(e => e.Status)), client);
 
 // Code mapping only, no I/O (useful in unit tests)
-using var resolver = ElasticMappingResolver.Create(new TypeMapping { Properties = properties });
+using var codeResolver = ElasticMappingResolver.Create(new TypeMapping { Properties = properties });
 
 // Custom loaders
-using var resolver = ElasticMappingResolver.CreateWithAsyncLoader(ct => LoadMappingAsync(ct), client.Infer);
-using var resolver = ElasticMappingResolver.CreateWithLoaders(LoadMapping, ct => LoadMappingAsync(ct), client.Infer);
+using var asyncResolver = ElasticMappingResolver.CreateWithAsyncLoader(ct => LoadMappingAsync(ct), client.Infer);
+using var customResolver = ElasticMappingResolver.CreateWithLoaders(LoadMapping, ct => LoadMappingAsync(ct), client.Infer);
 ```
 
 `ElasticMappingResolver.NullInstance` has an empty mapping: every field is unmapped and nothing is ever loaded.
@@ -32,7 +32,7 @@ Loading is asynchronous and explicit; lookups are synchronous and lock-free:
 bool allMapped = await resolver.EnsureFieldsAsync(["name", "status"], cancellationToken);
 
 // Build phase: synchronous lookups against the loaded mapping
-FieldMapping mapping = resolver.GetMapping("Name");   // FullPath == "name", Found == true
+ElasticFieldMapping mapping = resolver.GetMapping("Name");   // FullPath == "name", Found == true
 string sortField = resolver.GetSortFieldName("name");  // "name.sort"
 string aggField = resolver.GetAggregationsFieldName("name"); // "name.keyword"
 bool nested = resolver.IsNestedPropertyType("children");

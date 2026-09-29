@@ -418,7 +418,7 @@ internal enum SnapshotKind
 internal sealed class MappingSnapshot
 {
     private readonly Lazy<MergedProperties?> _properties;
-    private readonly ConcurrentDictionary<string, FieldMapping> _fields;
+    private readonly ConcurrentDictionary<string, ElasticFieldMapping> _fields;
 
     public MappingSnapshot(long version, SnapshotKind kind, bool hasServerMapping, Func<TypeMapping?, MergedProperties?> merge,
         TypeMapping? serverMapping, DateTime createdUtc, string? serverRevision)
@@ -429,7 +429,7 @@ internal sealed class MappingSnapshot
         CreatedUtc = createdUtc;
         ServerRevision = serverRevision;
         _properties = new Lazy<MergedProperties?>(() => merge(serverMapping), LazyThreadSafetyMode.ExecutionAndPublication);
-        _fields = new ConcurrentDictionary<string, FieldMapping>(StringComparer.Ordinal);
+        _fields = new ConcurrentDictionary<string, ElasticFieldMapping>(StringComparer.Ordinal);
     }
 
     private MappingSnapshot(MappingSnapshot previous, long version, DateTime createdUtc, bool isInvalidated, string? serverRevision)
@@ -467,13 +467,13 @@ internal sealed class MappingSnapshot
 
     public MappingSnapshot Invalidate(long version) => new(this, version, CreatedUtc, isInvalidated: true, serverRevision: null);
 
-    public bool TryGetField(string field, out FieldMapping mapping) => _fields.TryGetValue(field, out mapping!);
+    public bool TryGetField(string field, out ElasticFieldMapping mapping) => _fields.TryGetValue(field, out mapping!);
 
     /// <summary>
     /// Memoizes successful resolutions by canonical path, which keeps the cache bounded by the mapping itself no
     /// matter how many distinct spellings callers ask for. Unknown names are caller controlled and stay uncached.
     /// </summary>
-    public void CacheField(FieldMapping mapping)
+    public void CacheField(ElasticFieldMapping mapping)
     {
         if (mapping.Found)
             _fields.TryAdd(mapping.FullPath, mapping);

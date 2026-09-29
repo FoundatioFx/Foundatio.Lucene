@@ -380,7 +380,7 @@ internal static class ElasticsearchAggregationBuilder
             return resolver.GetAggregationsFieldName(field);
         }
 
-        private FieldMapping? GetMapping(string field)
+        private ElasticFieldMapping? GetMapping(string field)
         {
             if (field is "_" or "")
                 return null;

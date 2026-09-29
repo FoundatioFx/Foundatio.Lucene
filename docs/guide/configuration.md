@@ -78,7 +78,7 @@ Some settings need I/O: include text in a database, field names from a custom fi
 ```csharp
 var parser = new ElasticsearchQueryParser(c =>
 {
-    c.IncludeResolver = async (name, context, cancellationToken) => await savedQueries.GetQueryAsync(name, cancellationToken);
+    c.IncludeResolver = async (name, context, cancellationToken) => await savedQueryStore.GetQueryAsync(name, cancellationToken);
     c.AsyncFieldResolver = async (field, context, cancellationToken) => await customFields.GetStorageNameAsync(field, cancellationToken);
 });
 

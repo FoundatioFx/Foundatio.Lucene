@@ -3,18 +3,18 @@ using Elastic.Clients.Elasticsearch.Mapping;
 namespace Foundatio.Lucene.Elasticsearch;
 
 /// <summary>The result of resolving a field name against an Elasticsearch mapping.</summary>
-public sealed class FieldMapping
+public sealed class ElasticFieldMapping
 {
     /// <summary>Creates a field mapping.</summary>
     /// <param name="fullPath">The canonical field path.</param>
     /// <param name="property">The mapped property, or <see langword="null"/> when the field is not mapped.</param>
     /// <param name="nestedPathChain">The canonical paths of the <c>nested</c> ancestors of the field, outermost first.</param>
-    public FieldMapping(string fullPath, IProperty? property, IReadOnlyList<string>? nestedPathChain = null)
+    public ElasticFieldMapping(string fullPath, IProperty? property, IReadOnlyList<string>? nestedPathChain = null)
         : this(fullPath, property, null, nestedPathChain)
     {
     }
 
-    internal FieldMapping(string fullPath, IProperty? property, MergedProperties? children, IReadOnlyList<string>? nestedPathChain)
+    internal ElasticFieldMapping(string fullPath, IProperty? property, MergedProperties? children, IReadOnlyList<string>? nestedPathChain)
     {
         ArgumentNullException.ThrowIfNull(fullPath);
 

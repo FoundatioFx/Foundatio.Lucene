@@ -923,7 +923,7 @@ public class ElasticMappingResolverLoadingTests(ITestOutputHelper output) : Mapp
         Assert.True(fetchStarted.Wait(TimeSpan.FromSeconds(10), TestCancellationToken));
 
         // Act
-        FieldMapping timedOutLookup;
+        ElasticFieldMapping timedOutLookup;
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -1084,7 +1084,7 @@ public class ElasticMappingResolverLoadingTests(ITestOutputHelper output) : Mapp
         return logger.Entries.Count(e => e.Level == LogLevel.Warning && e.Message.Contains("Unable to resolve mapping for field"));
     }
 
-    private static async ValueTask<FieldMapping> ResolveAsync(ElasticMappingResolver resolver, string field, bool asynchronous)
+    private static async ValueTask<ElasticFieldMapping> ResolveAsync(ElasticMappingResolver resolver, string field, bool asynchronous)
     {
         return asynchronous
             ? await resolver.GetMappingAsync(field, cancellationToken: TestCancellationToken)

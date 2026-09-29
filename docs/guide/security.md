@@ -66,5 +66,5 @@ Building throws `QueryParseException` for syntax errors and `QueryValidationExce
 ```csharp
 var result = parser.TryBuildQuery(userQuery);
 if (!result.IsSuccess)
-    return BadRequest(result.ErrorMessage);
+    return Results.BadRequest(new { error = result.ErrorMessage });
 ```

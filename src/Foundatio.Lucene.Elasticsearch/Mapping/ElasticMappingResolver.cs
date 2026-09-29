@@ -291,14 +291,14 @@ public sealed class ElasticMappingResolver : IDisposable
     /// </summary>
     /// <param name="field">The field name, using dots for sub-fields and object properties.</param>
     /// <param name="followAlias">Whether to return the target of a field alias instead of the alias itself.</param>
-    /// <returns>The mapping; <see cref="FieldMapping.Found"/> is <see langword="false"/> when the field is not mapped.</returns>
+    /// <returns>The mapping; <see cref="ElasticFieldMapping.Found"/> is <see langword="false"/> when the field is not mapped.</returns>
     /// <exception cref="InvalidOperationException">The mapping has not been loaded and the resolver has no synchronous loader.</exception>
-    public FieldMapping GetMapping(string field, bool followAlias = false)
+    public ElasticFieldMapping GetMapping(string field, bool followAlias = false)
     {
         ArgumentNullException.ThrowIfNull(field);
 
         if (string.IsNullOrWhiteSpace(field))
-            return new FieldMapping(field, null);
+            return new ElasticFieldMapping(field, null);
 
         var snapshot = _cache.Current;
         if (!snapshot.RequiresLoad && snapshot.TryGetField(field, out var cached))
@@ -308,18 +308,18 @@ public sealed class ElasticMappingResolver : IDisposable
     }
 
     /// <inheritdoc cref="GetMapping(string, bool)"/>
-    public FieldMapping GetMapping(Field field, bool followAlias = false) => GetMapping(InferFieldName(field), followAlias);
+    public ElasticFieldMapping GetMapping(Field field, bool followAlias = false) => GetMapping(InferFieldName(field), followAlias);
 
     /// <summary>
     /// Ensures the field is loaded as <see cref="EnsureFieldsAsync"/> does and resolves it against the resulting
     /// mapping. Completes synchronously when the field is already resolvable.
     /// </summary>
-    public ValueTask<FieldMapping> GetMappingAsync(string field, bool followAlias = false, CancellationToken cancellationToken = default)
+    public ValueTask<ElasticFieldMapping> GetMappingAsync(string field, bool followAlias = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(field);
 
         if (string.IsNullOrWhiteSpace(field))
-            return ValueTask.FromResult(new FieldMapping(field, null));
+            return ValueTask.FromResult(new ElasticFieldMapping(field, null));
 
         var snapshot = _cache.Current;
         if (!snapshot.RequiresLoad)
@@ -332,7 +332,7 @@ public sealed class ElasticMappingResolver : IDisposable
         return LoadAndGetMappingAsync(field, followAlias, cancellationToken);
     }
 
-    private async ValueTask<FieldMapping> LoadAndGetMappingAsync(string field, bool followAlias, CancellationToken cancellationToken)
+    private async ValueTask<ElasticFieldMapping> LoadAndGetMappingAsync(string field, bool followAlias, CancellationToken cancellationToken)
     {
         await EnsureFieldsAsync([field], cancellationToken).ConfigureAwait(false);
         return LookupInSnapshot(field, followAlias, _cache.Current);
@@ -600,7 +600,7 @@ public sealed class ElasticMappingResolver : IDisposable
         _cache.Dispose();
     }
 
-    private FieldMapping ResolveSynchronously(string field, bool followAlias, MappingSnapshot snapshot)
+    private ElasticFieldMapping ResolveSynchronously(string field, bool followAlias, MappingSnapshot snapshot)
     {
         var loadResult = LoadResult.Unavailable;
         bool loaded = false;
@@ -650,7 +650,7 @@ public sealed class ElasticMappingResolver : IDisposable
         return FollowAlias(mapping, followAlias);
     }
 
-    private FieldMapping FollowAlias(FieldMapping mapping, bool followAlias)
+    private ElasticFieldMapping FollowAlias(ElasticFieldMapping mapping, bool followAlias)
     {
         if (!followAlias || mapping.Property is not FieldAliasProperty alias)
             return mapping;
@@ -692,7 +692,7 @@ public sealed class ElasticMappingResolver : IDisposable
     }
 
     /// <summary>Resolves a field against one snapshot without loading.</summary>
-    private FieldMapping LookupInSnapshot(string field, bool followAlias, MappingSnapshot snapshot)
+    private ElasticFieldMapping LookupInSnapshot(string field, bool followAlias, MappingSnapshot snapshot)
     {
         var mapping = Lookup(field, snapshot);
         if (!followAlias || mapping.Property is not FieldAliasProperty alias)
@@ -702,7 +702,7 @@ public sealed class ElasticMappingResolver : IDisposable
         return string.IsNullOrWhiteSpace(target) ? CreateUnmapped(mapping) : Lookup(target, snapshot);
     }
 
-    private static FieldMapping Lookup(string field, MappingSnapshot snapshot)
+    private static ElasticFieldMapping Lookup(string field, MappingSnapshot snapshot)
     {
         if (snapshot.TryGetField(field, out var cached))
             return cached;
@@ -716,7 +716,7 @@ public sealed class ElasticMappingResolver : IDisposable
     /// Walks a dotted field name through the merged property tree, resolving each part to its canonical name. Parts
     /// past the deepest resolvable one are appended unchanged so callers still get a usable path for an unmapped field.
     /// </summary>
-    private static FieldMapping Resolve(string field, MergedProperties? properties)
+    private static ElasticFieldMapping Resolve(string field, MergedProperties? properties)
     {
         int start = 0;
         StringBuilder? resolvedName = null;
@@ -731,9 +731,9 @@ public sealed class ElasticMappingResolver : IDisposable
             {
                 string remainder = field[start..];
                 if (resolvedName is null)
-                    return new FieldMapping(remainder, null);
+                    return new ElasticFieldMapping(remainder, null);
 
-                return new FieldMapping(resolvedName.Append('.').Append(remainder).ToString(), null, null, nestedPathChain);
+                return new ElasticFieldMapping(resolvedName.Append('.').Append(remainder).ToString(), null, null, nestedPathChain);
             }
 
             if (resolvedName is null)
@@ -745,14 +745,14 @@ public sealed class ElasticMappingResolver : IDisposable
                 (nestedPathChain ??= []).Add(resolvedName.ToString());
 
             if (separator < 0)
-                return new FieldMapping(resolvedName.ToString(), matched.Property, matched.Children, nestedPathChain);
+                return new ElasticFieldMapping(resolvedName.ToString(), matched.Property, matched.Children, nestedPathChain);
 
             properties = matched.Children;
             start = separator + 1;
         }
     }
 
-    private static FieldMapping CreateUnmapped(FieldMapping alias) => new(alias.FullPath, null, null, alias.NestedPathChain);
+    private static ElasticFieldMapping CreateUnmapped(ElasticFieldMapping alias) => new(alias.FullPath, null, null, alias.NestedPathChain);
 
     private string? GetAliasTarget(FieldAliasProperty alias)
     {

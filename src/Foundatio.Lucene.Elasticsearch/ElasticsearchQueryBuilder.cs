@@ -712,12 +712,12 @@ internal static class ElasticsearchQueryBuilder
             return context.MappingResolver is { } resolver && resolver.GetMapping(field) is { Found: true } mapping ? mapping.FullPath : field;
         }
 
-        private FieldMapping? GetMapping(string field)
+        private ElasticFieldMapping? GetMapping(string field)
         {
             return context.MappingResolver?.GetMapping(field);
         }
 
-        private FieldType GetFieldType(string field, FieldMapping? mapping)
+        private FieldType GetFieldType(string field, ElasticFieldMapping? mapping)
         {
             if (mapping is { Found: true })
                 return ElasticMappingResolver.GetFieldType(mapping.Property);
@@ -735,7 +735,7 @@ internal static class ElasticsearchQueryBuilder
             };
         }
 
-        private bool IsAnalyzed(string field, FieldMapping? mapping)
+        private bool IsAnalyzed(string field, ElasticFieldMapping? mapping)
         {
             return mapping is { Found: true } && context.MappingResolver!.IsPropertyAnalyzed(mapping.Property);
         }
