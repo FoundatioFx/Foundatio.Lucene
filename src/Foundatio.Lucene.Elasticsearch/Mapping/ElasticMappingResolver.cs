@@ -883,10 +883,10 @@ public sealed class ElasticMappingResolver : IDisposable
     /// </summary>
     /// <param name="getMappingAsync">Returns the server mapping, or <see langword="null"/> when it is unavailable. Receives the resolver lifetime token.</param>
     /// <param name="inferrer">Resolves <see cref="Field"/> names.</param>
-    /// <param name="timeProvider">The time provider used for refresh throttling.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="timeProvider">The time provider used for refresh throttling.</param>
     public static ElasticMappingResolver CreateWithAsyncLoader(Func<CancellationToken, Task<TypeMapping?>> getMappingAsync, Inferrer? inferrer = null,
-        TimeProvider? timeProvider = null, ILogger? logger = null)
+        ILogger? logger = null, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(getMappingAsync);
 
@@ -894,9 +894,9 @@ public sealed class ElasticMappingResolver : IDisposable
     }
 
     /// <summary>Creates a resolver that merges a code mapping built with a descriptor with an asynchronously loaded server mapping.</summary>
-    /// <inheritdoc cref="CreateWithAsyncLoader(Func{CancellationToken, Task{TypeMapping}}, Inferrer, TimeProvider, ILogger)"/>
+    /// <inheritdoc cref="CreateWithAsyncLoader(Func{CancellationToken, Task{TypeMapping}}, Inferrer, ILogger, TimeProvider)"/>
     public static ElasticMappingResolver CreateWithAsyncLoader<T>(Action<TypeMappingDescriptor<T>> mappingBuilder, Inferrer inferrer,
-        Func<CancellationToken, Task<TypeMapping?>> getMappingAsync, TimeProvider? timeProvider = null, ILogger? logger = null)
+        Func<CancellationToken, Task<TypeMapping?>> getMappingAsync, ILogger? logger = null, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(inferrer);
         ArgumentNullException.ThrowIfNull(getMappingAsync);
@@ -910,7 +910,7 @@ public sealed class ElasticMappingResolver : IDisposable
     /// use <paramref name="getMapping"/>.
     /// </summary>
     public static ElasticMappingResolver CreateWithLoaders(Func<TypeMapping?> getMapping, Func<CancellationToken, Task<TypeMapping?>> getMappingAsync,
-        Inferrer? inferrer = null, TypeMapping? codeMapping = null, TimeProvider? timeProvider = null, ILogger? logger = null)
+        Inferrer? inferrer = null, TypeMapping? codeMapping = null, ILogger? logger = null, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(getMapping);
         ArgumentNullException.ThrowIfNull(getMappingAsync);

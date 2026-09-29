@@ -223,7 +223,7 @@ public class ElasticMappingResolverLoadingTests(ITestOutputHelper output) : Mapp
         }
 
         using var resolver = asynchronous
-            ? ElasticMappingResolver.CreateWithAsyncLoader(_ => Task.FromResult<TypeMapping?>(Load()), Inferrer, timeProvider)
+            ? ElasticMappingResolver.CreateWithAsyncLoader(_ => Task.FromResult<TypeMapping?>(Load()), Inferrer, timeProvider: timeProvider)
             : new ElasticMappingResolver(Load, Inferrer, timeProvider);
         resolver.ServerMappingRevisionResolver = _ => "index-uuid:1";
 
@@ -297,7 +297,7 @@ public class ElasticMappingResolverLoadingTests(ITestOutputHelper output) : Mapp
         var timeProvider = new FakeTimeProvider();
         var mapping = CreateTextWithKeywordMapping("name");
         using var resolver = asynchronous
-            ? ElasticMappingResolver.CreateWithAsyncLoader(_ => Task.FromResult<TypeMapping?>(mapping), Inferrer, timeProvider)
+            ? ElasticMappingResolver.CreateWithAsyncLoader(_ => Task.FromResult<TypeMapping?>(mapping), Inferrer, timeProvider: timeProvider)
             : new ElasticMappingResolver(() => mapping, Inferrer, timeProvider);
         bool fail = false;
         resolver.ServerMappingRevisionResolver = _ => fail ? throw new InvalidOperationException("Revision unavailable") : "index-uuid:1";

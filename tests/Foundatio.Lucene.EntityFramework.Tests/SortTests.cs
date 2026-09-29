@@ -41,6 +41,7 @@ public class SortTests : IDisposable
     [InlineData("skills", "cannot be sorted on")]
     [InlineData("NOT name", "not supported in sort")]
     [InlineData("name*", "Sort expressions only support field names")]
+    [InlineData("name:john", "Sort values are not supported")]
     [InlineData("", "at least one field")]
     public void BuildSort_WithInvalidSort_ThrowsValidationError(string sort, string message)
     {

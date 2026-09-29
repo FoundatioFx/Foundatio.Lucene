@@ -1,3 +1,4 @@
+using System.Globalization;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Mapping;
 
@@ -49,6 +50,16 @@ internal static class ElasticsearchSortBuilder
                     _ => FieldType.Keyword
                 };
 
+            if (field.Value is { } value)
+            {
+                if (fieldType == FieldType.GeoPoint)
+                    sorts.Add(new SortOptions { GeoDistance = new GeoDistanceSort { Field = sortField, Location = [ParseLocation(value)], Order = order, DistanceType = GeoDistanceType.Arc } });
+                else
+                    context.ValidationResult.AddError($"Sort values are only supported on geo_point fields, where they sort by distance ({field.OriginalField}:{value}).", field.Position, QueryErrorCode.UnsupportedQueryType);
+
+                continue;
+            }
+
             var fieldSort = new FieldSort(sortField)
             {
                 Order = order,
@@ -63,6 +74,22 @@ internal static class ElasticsearchSortBuilder
 
         context.ValidationResult.ThrowIfInvalid();
         return sorts;
+    }
+
+    /// <summary>
+    /// Reads a <c>lat,lon</c> point; anything else (a geohash) is passed to Elasticsearch as text.
+    /// </summary>
+    private static GeoLocation ParseLocation(string value)
+    {
+        string[] parts = value.Split(',');
+        if (parts.Length == 2
+            && double.TryParse(parts[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double lat)
+            && double.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+        {
+            return GeoLocation.LatitudeLongitude(new LatLonGeoLocation { Lat = lat, Lon = lon });
+        }
+
+        return GeoLocation.Text(value);
     }
 
     private static NestedSortValue BuildNestedSort(IReadOnlyList<string> chain, Elastic.Clients.Elasticsearch.QueryDsl.Query? filter)

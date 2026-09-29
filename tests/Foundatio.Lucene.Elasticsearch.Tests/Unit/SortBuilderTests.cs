@@ -37,6 +37,30 @@ public class SortBuilderTests
     }
 
     [Theory]
+    [InlineData("geo:\"51.5,-0.12\"", "[{'_geo_distance':{'distance_type':'arc','order':'asc','geo':{'lat':51.5,'lon':-0.12}}}]")]
+    [InlineData("-geo:u4pruydqqvj", "[{'_geo_distance':{'distance_type':'arc','order':'desc','geo':'u4pruydqqvj'}}]")]
+    public void BuildSort_WithValueOnGeoField_EmitsGeoDistanceSort(string sort, string expected)
+    {
+        var parser = TestMapping.CreateParser();
+
+        var result = parser.BuildSort(sort);
+
+        ElasticAssert.Json(expected, result);
+    }
+
+    [Theory]
+    [InlineData("keyword:foo")]
+    [InlineData("number:\"51.5,-0.12\"")]
+    public void BuildSort_WithValueOnNonGeoField_ThrowsValidationError(string sort)
+    {
+        var parser = TestMapping.CreateParser();
+
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildSort(sort));
+
+        Assert.Contains("only supported on geo_point fields", exception.Message);
+    }
+
+    [Theory]
     [InlineData("_score", "[{'_score':{'order':'asc'}}]")]
     [InlineData("-_score", "[{'_score':{'order':'desc'}}]")]
     [InlineData("_doc", "[{'_doc':{'order':'asc'}}]")]

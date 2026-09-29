@@ -207,7 +207,7 @@ Per-request options win over registered options, which win over the parser confi
 | no async dependencies (code mapping or preloaded server mapping, static includes and field maps) | `BuildQuery`, `BuildAggregations`, `BuildSort`, `BuildSearch` |
 | a server mapping not yet loaded, `IncludeResolver`, `AsyncFieldResolver`, `GeoLocationResolver`, `RuntimeFieldResolver`, or `NestedFilterResolver` | the `Async` methods |
 
-The synchronous methods throw `InvalidOperationException` when async dependencies haven't been resolved, so they never block on I/O.
+The synchronous methods throw `InvalidOperationException` when async dependencies haven't been resolved, so they never block on I/O. A `GeoLocationResolver` only affects queries, so it doesn't stop you from building sorts and aggregations synchronously.
 
 ## Custom queries for fields
 
@@ -215,4 +215,4 @@ A visitor can replace the query generated for a node with `node.SetQuery(query)`
 
 ## Errors
 
-`BuildQuery` throws `QueryParseException` for syntax errors and `QueryValidationException` for invalid queries. `TryBuildQuery` and `TryBuildQueryAsync` return a `QueryResult<Query>` instead. `ValidateQuery`, `ValidateAggregations`, and `ValidateSort` validate without building, including mapping-based field resolution.
+`BuildQuery` throws `QueryValidationException` for syntax errors and invalid queries. `TryBuildQuery` and `TryBuildQueryAsync` return a `QueryResult<Query>` instead. `ValidateQuery`, `ValidateAggregations`, and `ValidateSort` (and their `Async` versions) validate without building, including mapping-based field resolution, and `Parse`/`ParseAsync` return the processed query tree.

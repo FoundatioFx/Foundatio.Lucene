@@ -382,6 +382,12 @@ public class EntityFrameworkQueryParser : QueryParserBase<EntityFrameworkQueryVi
         for (int i = 0; i < fields.Count; i++)
         {
             var field = fields[i];
+            if (field.Value is not null)
+            {
+                result.AddError($"Sort values are not supported by the Entity Framework provider ({field.OriginalField}:{field.Value}); use :asc or :desc.", field.Position, QueryErrorCode.UnsupportedQueryType);
+                continue;
+            }
+
             if (!context.TryGetField(field.Field, out var info))
             {
                 result.UnresolvedFields.Add(field.OriginalField);

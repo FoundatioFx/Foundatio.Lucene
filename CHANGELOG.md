@@ -54,6 +54,12 @@ changes from Foundatio.Parsers.
 - Caller documents and options are never modified.
 - Sort expressions (`SortExpression`, `SortField`) and aggregation expressions (`AggregationExpressionParser`,
   `AggregationExpression`) with the Foundatio.Parsers syntax.
+- Visitors run on sort and aggregation expressions too: `AddVisitor` adds to all three pipelines, as in
+  Foundatio.Parsers, and `AddQueryVisitor`, `AddSortVisitor`, and `AddAggregationVisitor` add to one.
+- Provider build methods report syntax errors as `QueryValidationException` with each error's position and code,
+  so one exception type covers all invalid input.
+- `Parse`/`ParseAsync` on the providers return the processed query (includes expanded, fields resolved) without
+  building it.
 
 ### Validation
 
@@ -87,7 +93,10 @@ changes from Foundatio.Parsers.
 - Date ranges with default and per-range time zones.
 - Runtime fields via `RuntimeFieldResolver`, which can be turned off per request with `EnableRuntimeFieldResolver`.
 - Aggregations (`BuildAggregations`) and sorts (`BuildSort`) for every Foundatio.Parsers aggregation type and
-  modifier.
+  modifier, and geo distance sorts (`location:"51.5,-0.12"`).
+- `node.SetSort(...)` and `node.SetAggregation(...)` let visitors supply custom sorts and aggregations, including
+  aggregation types the provider doesn't know.
+- `ValidateSortAsync` and `ValidateAggregationsAsync` for parsers with asynchronous resolvers.
 - `BuildSearch`/`BuildSearchAsync` build a query, aggregations, and sort together and apply them to a search request.
 - `node.SetQuery(query)` lets visitors supply custom queries.
 

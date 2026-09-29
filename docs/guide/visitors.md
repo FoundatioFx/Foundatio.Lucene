@@ -19,7 +19,9 @@ Every provider (Elasticsearch, Entity Framework) processes a query in the same o
 
 4. **Build** the provider's query from the processed tree.
 
-Documents you pass in are cloned first, so a cached `QueryDocument` is never modified.
+Documents you pass in are cloned first, so a cached `QueryDocument` is never modified. `Parse` and `ParseAsync` on the providers return the processed document without building it, for example to see which fields a query references after aliases and includes are resolved.
+
+Sort and aggregation expressions are parsed the same way and have their own pipelines (`SortVisitor`, `AggregationVisitor`). Their visitors run after include expansion and before field resolution; `AddVisitor` adds a visitor to all three pipelines, and `AddQueryVisitor`, `AddSortVisitor`, and `AddAggregationVisitor` add it to one.
 
 ```csharp
 var parser = new ElasticsearchQueryParser(c =>

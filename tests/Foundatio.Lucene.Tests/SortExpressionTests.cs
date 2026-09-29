@@ -83,7 +83,6 @@ public class SortExpressionTests
     [InlineData("a?b")]
     [InlineData("a~")]
     [InlineData("a^2")]
-    [InlineData("a:foo")]
     [InlineData("a:[1 TO 2]")]
     [InlineData("a:(b c)")]
     [InlineData("/re/")]
@@ -104,6 +103,24 @@ public class SortExpressionTests
         var error = Assert.Single(result.ValidationErrors);
         Assert.StartsWith("Sort expressions only support field names", error.Message);
         Assert.Empty(fields);
+    }
+
+    [Theory]
+    [InlineData("a:foo", "a", "foo", SortDirection.Ascending)]
+    [InlineData("-location:\"51.5,-0.12\"", "location", "51.5,-0.12", SortDirection.Descending)]
+    [InlineData("+geo:u4pruydqqvj", "geo", "u4pruydqqvj", SortDirection.Ascending)]
+    public void Parse_FieldWithValue_RecordsValueForProvider(string sort, string field, string value, SortDirection direction)
+    {
+        var result = new QueryValidationResult();
+
+        var fields = SortExpression.Parse(sort, result);
+
+        Assert.True(result.IsValid);
+        var sortField = Assert.Single(fields);
+        Assert.Equal(field, sortField.Field);
+        Assert.Equal(value, sortField.Value);
+        Assert.Equal(direction, sortField.Direction);
+        Assert.Null(Assert.Single(SortExpression.Parse("a:desc", result)).Value);
     }
 
     [Fact]

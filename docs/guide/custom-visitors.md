@@ -134,6 +134,51 @@ public class TagVisitor : QueryVisitor
 
 Fields starting with `@` are never resolved or validated as data fields, which makes them a good choice for shortcuts like this.
 
+### Custom sorts and aggregations
+
+Visitors added with `AddVisitor`, `AddSortVisitor`, or `AddAggregationVisitor` also run on sort and aggregation expressions. `SetSort` supplies the sort for a node, for example a script sort behind a shortcut:
+
+```csharp
+public class PopularitySortVisitor : QueryVisitor
+{
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+    {
+        if (node.Field != "@popular")
+            return base.Visit(node, context);
+
+        node.SetSort(new SortOptions
+        {
+            Script = new ScriptSort
+            {
+                Type = ScriptSortType.Number,
+                Script = new Script { Source = "doc['likes'].value * 2 + doc['views'].value" },
+                Order = SortOrder.Desc
+            }
+        });
+        return node;
+    }
+}
+
+// sort: @popular:desc -created
+```
+
+`SetAggregation` supplies the aggregation for a `type:field` node, including types the provider doesn't know. The aggregation is named `{type}_{field}`, wrapped in nested aggregations for nested fields, and gets the node's sub-aggregations:
+
+```csharp
+public class RareTermsVisitor : QueryVisitor
+{
+    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+    {
+        if (node.Field == "rare" && node.Query is TermNode field)
+            node.SetAggregation(new RareTermsAggregation { Field = field.UnescapedTerm });
+
+        return base.Visit(node, context);
+    }
+}
+
+// aggregations: rare:tags terms:(status rare:owner)
+```
+
 ## Async lookups
 
 Visitors can't await. When a transformation needs data from a database or service:

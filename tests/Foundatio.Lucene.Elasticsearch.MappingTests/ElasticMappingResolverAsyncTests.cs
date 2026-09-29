@@ -122,7 +122,7 @@ public class ElasticMappingResolverAsyncTests(ITestOutputHelper output) : Mappin
         {
             Interlocked.Increment(ref fetchCount);
             return Task.FromResult<TypeMapping?>(serverMapping);
-        }, Inferrer, timeProvider, Logger);
+        }, Inferrer, Logger, timeProvider);
         Assert.True(await resolver.EnsureFieldsAsync(["name", " ", "NAME.keyword"], TestCancellationToken));
 
         // Act
@@ -420,7 +420,7 @@ public class ElasticMappingResolverAsyncTests(ITestOutputHelper output) : Mappin
             return throwException
                 ? Task.FromException<TypeMapping?>(new InvalidOperationException("Elasticsearch is unavailable"))
                 : Task.FromResult<TypeMapping?>(null);
-        }, Inferrer, timeProvider, Logger);
+        }, Inferrer, Logger, timeProvider);
         Assert.True(await resolver.EnsureFieldsAsync(["name"], TestCancellationToken));
         failRefresh = true;
 
@@ -670,7 +670,7 @@ public class ElasticMappingResolverAsyncTests(ITestOutputHelper output) : Mappin
         {
             Interlocked.Increment(ref fetchCount);
             return Task.FromResult<TypeMapping?>(serverMapping);
-        }, Inferrer, timeProvider, Logger);
+        }, Inferrer, Logger, timeProvider);
         Assert.False(await resolver.EnsureFieldsAsync(["missing"], TestCancellationToken));
         serverMapping = CreateTextWithKeywordMapping("name");
 

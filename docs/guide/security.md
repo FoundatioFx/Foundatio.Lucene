@@ -61,7 +61,7 @@ validation.AllowUnresolvedFields = false;
 
 ## Handling errors
 
-Building throws `QueryParseException` for syntax errors and `QueryValidationException` for rule violations. Both derive from `QueryException`, carry an error code, and are safe to show to users: messages describe the query, never your data. Use the `TryBuild*` methods to get a result instead of an exception:
+Building throws `QueryValidationException` for anything wrong with the user's input: syntax errors (with their positions and parse error codes) and rule violations alike. It derives from `QueryException`, carries an error code, and is safe to show to users: messages describe the query, never your data. Use the `TryBuild*` methods to get a result instead of an exception:
 
 ```csharp
 var result = parser.TryBuildQuery(userQuery);

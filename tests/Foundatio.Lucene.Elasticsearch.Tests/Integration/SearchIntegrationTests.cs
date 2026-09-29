@@ -107,6 +107,8 @@ public sealed class SearchIntegrationTests(ElasticsearchFixture fixture)
     [InlineData("-resellers.price", "5,3,2,1,4")]
     [InlineData("resellers.price", "1,2,3,5,4")]
     [InlineData("TITLE", "2,3,1,5,4")]
+    [InlineData("location:\"51.5,-0.12\"", "3,1,5,2,4")]
+    [InlineData("location:gcpvj0", "3,1,5,2,4")]
     public async Task BuildSort_WithSortExpression_IsAcceptedAndOrdersDocuments(string sort, string expected)
     {
         var parser = CreateParser();

@@ -852,3 +852,5 @@ Foundatio.Lucene.QueryParserConfiguration.AddSortVisitor(Foundatio.Lucene.Visito
 Foundatio.Lucene.QueryParserConfiguration.AggregationVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
 Foundatio.Lucene.QueryParserConfiguration.SortVisitor.get -> Foundatio.Lucene.Visitors.ChainedQueryVisitor!
 Foundatio.Lucene.SortField.GetData<T>(string! key) -> T?
+Foundatio.Lucene.SortField.Value.get -> string?
+Foundatio.Lucene.SortField.Value.set -> void

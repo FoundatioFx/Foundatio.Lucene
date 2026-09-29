@@ -82,7 +82,7 @@ var result = QueryValidator.ValidateQuery("title:hel* AND price:[1 TO 5]");
 
 ## Handling validation errors
 
-Building throws `QueryValidationException` (with the full `Result`) for rule violations and `QueryParseException` for syntax errors. Their messages are meant for users. In an API:
+Building throws `QueryValidationException` (with the full `Result`) for syntax errors and rule violations. Its message is meant for users. (`QueryParseException` is only thrown by `LuceneParseResult.GetDocumentOrThrow` when you parse with `LuceneQuery` yourself.) In an API:
 
 ```csharp
 app.MapGet("/search", (string q, ElasticsearchQueryParser parser) =>

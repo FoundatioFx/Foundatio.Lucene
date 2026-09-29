@@ -328,7 +328,7 @@ if (!built.IsSuccess)
     return BadRequest(built.ErrorMessage);
 ```
 
-Building throws `QueryParseException` for syntax errors and `QueryValidationException` for invalid queries; `ValidateQuery` reports the same problems without throwing (unless `ShouldThrow` is set). Validation includes everything the build checks: unknown fields, values that don't fit the field type, and unsupported syntax.
+Building throws `QueryValidationException` for syntax errors and invalid queries; `ValidateQuery` reports the same problems without throwing (unless `ShouldThrow` is set). Validation includes everything the build checks: unknown fields, values that don't fit the field type, and unsupported syntax.
 
 These are errors because SQL can't express them: fuzzy terms (`john~`), phrase proximity (`"a b"~2`), boosts (`name:john^2`), wildcard field names (`name*:x`), and, by default, regular expressions.
 

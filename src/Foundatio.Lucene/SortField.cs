@@ -47,6 +47,12 @@ public sealed class SortField
     public SortDirection Direction { get; set; }
 
     /// <summary>
+    /// The value written after the field (<c>location:"51.5,-0.12"</c>), or null. Providers use it for sorts that need
+    /// one, such as Elasticsearch geo distance sorts, and reject it otherwise.
+    /// </summary>
+    public string? Value { get; set; }
+
+    /// <summary>
     /// The 0-based position of the field in the sort expression.
     /// </summary>
     public int Position { get; set; }
@@ -143,17 +149,23 @@ public static class SortExpression
                 when value.UnescapedTerm.Equals("asc", StringComparison.OrdinalIgnoreCase) || value.UnescapedTerm.Equals("desc", StringComparison.OrdinalIgnoreCase):
                 Add(field.Field, value.UnescapedTerm.Equals("desc", StringComparison.OrdinalIgnoreCase) ? SortDirection.Descending : SortDirection.Ascending, field, fields);
                 break;
+            case FieldQueryNode { Query: TermNode { IsPrefix: false, IsWildcard: false, IsFuzzy: false, BoostText: null } value } field:
+                Add(field.Field, direction, field, fields).Value = value.UnescapedTerm;
+                break;
+            case FieldQueryNode { Query: PhraseNode { ProximityText: null, BoostText: null } value } field:
+                Add(field.Field, direction, field, fields).Value = value.Phrase;
+                break;
             case FieldQueryNode { HasData: true } field:
                 // A visitor attached data (for example a provider-specific sort), so the provider interprets the value.
                 Add(field.Field, direction, field, fields);
                 break;
             default:
-                result.AddError($"Sort expressions only support field names, optionally prefixed with + or - or suffixed with :asc or :desc ({QueryStringBuilder.ToQueryString(node)}).", node.StartPosition);
+                result.AddError($"Sort expressions only support field names, optionally prefixed with + or - or suffixed with :asc, :desc, or a value ({QueryStringBuilder.ToQueryString(node)}).", node.StartPosition);
                 break;
         }
     }
 
-    private static void Add(string field, SortDirection direction, QueryNode node, List<SortField> fields)
+    private static SortField Add(string field, SortDirection direction, QueryNode node, List<SortField> fields)
     {
         var sortField = new SortField(field, direction) { Position = node.StartPosition };
         if (node.HasData)
@@ -163,6 +175,7 @@ public static class SortExpression
         }
 
         fields.Add(sortField);
+        return sortField;
     }
 
     internal static void AddOrderingError(QueryNode? node, string kind, QueryValidationResult result)

@@ -98,11 +98,15 @@ Resolvers receive the context, so per-request data is available to them, and the
 ## Custom visitors
 
 ```csharp
-c.AddVisitor(new ShortcutVisitor());                          // priority 0: before field resolution
-c.AddVisitor(new AuditVisitor(), priority: 40);                // after validation
+c.AddVisitor(new ShortcutVisitor());                          // queries, sorts, and aggregations; priority 0: before field resolution
+c.AddQueryVisitor(new AuditVisitor(), priority: 40);           // queries only, after validation
+c.AddSortVisitor(new GeoSortVisitor());                        // sorts only
+c.AddAggregationVisitor(new CustomAggregationVisitor());       // aggregations only
 c.AddVisitorBefore<FieldResolverQueryVisitor>(new MyVisitor());
 c.ReplaceVisitor<FieldResolverQueryVisitor>(new MyFieldResolver());
 ```
+
+`AddVisitor` adds to all three pipelines; check `context.QueryType` in a visitor that only makes sense for one of them. `RemoveVisitor<T>` removes from all three, and `ReplaceVisitor<T>` replaces in the query pipeline and wherever else `T` was added.
 
 See [Visitors](./visitors) and [Custom Visitors](./custom-visitors).
 

@@ -15,11 +15,12 @@ A sort expression is a list of fields separated by whitespace:
 | `field` or `+field` | ascending |
 | `-field` | descending |
 | `field:asc`, `field:desc` | explicit |
+| `location:"51.5,-0.12"`, `-location:gcpvj0` | by distance from a point (Elasticsearch `geo_point` fields) |
 | `-(a b +c)` | a prefix on a group applies to the fields inside it, so `a` and `b` are descending and `c` ascending |
 
 `NOT` and `!` are rejected in sort expressions (use `-`), as are wildcards, ranges, and other query syntax.
 
-The parsed form is a list of `SortField` (`Field`, `OriginalField`, `Direction`). Providers turn it into their own sort:
+The parsed form is a list of `SortField` (`Field`, `OriginalField`, `Direction`, and the `Value` written after the field, if any). Providers turn it into their own sort:
 
 ::: code-group
 
@@ -47,6 +48,9 @@ With a mapping, the Elasticsearch provider picks a sortable field and sets `unma
 | integer `count` | `{"count":{"order":"asc","unmapped_type":"integer"}}` |
 | nested `children.name` | adds `"nested":{"path":"children"}` (nested chains for multi-level nesting, plus the nested filter if one is configured) |
 | `_score`, `_doc` | score and index-order sorts |
+| geo_point `location:"51.5,-0.12"` or `location:gcpvj0` | `{"_geo_distance":{"location":{"lat":51.5,"lon":-0.12},"order":"asc","distance_type":"arc"}}` |
+
+A value on any other field is a validation error, as it is for the Entity Framework provider.
 
 ## Aggregation expressions
 
@@ -99,13 +103,17 @@ IDictionary<string, Aggregation> aggregations = parser.BuildAggregations("terms:
 
 The dictionary can be assigned directly to a search request's `Aggregations`. Text fields are aggregated on their keyword sub-field, aggregations on nested fields are wrapped in `nested_{path}` aggregations (and in a `filtered_{name}` filter aggregation when a nested filter is configured), and terms ordering on nested sub-aggregations uses the right bucket path. Most aggregations carry `@field_type` meta with the mapped type of the field, which helps callers format bucket keys and values.
 
+## Custom visitors
+
+Visitors added with `AddVisitor` (or just to one pipeline with `AddSortVisitor` and `AddAggregationVisitor`) run on sort and aggregation expressions after includes are expanded and before fields are resolved, so they can rename fields or rewrite the expression. With Elasticsearch a visitor can also supply the sort or aggregation for a node with `node.SetSort(...)` and `node.SetAggregation(...)`, including aggregation types the provider doesn't know. See [Custom Visitors](./custom-visitors#custom-sorts-and-aggregations).
+
 ## Includes in sorts and aggregations
 
 `@include:name` works at the top level of both kinds of expressions, so saved sorts and aggregation sets can be reused. Inside an aggregation group, `@include` is the terms/top hits modifier instead.
 
 ## Validation
 
-`QueryValidator.ValidateSort` and `QueryValidator.ValidateAggregations` (and the providers' `ValidateSort`/`ValidateAggregations`) apply the same `QueryValidationOptions` as queries. For aggregations, `AllowedOperations` and `RestrictedOperations` are the aggregation types, and `AllowedMaxSortFields` limits the number of sort fields.
+`QueryValidator.ValidateSort` and `QueryValidator.ValidateAggregations` (and the providers' `ValidateSort`/`ValidateAggregations`, with `Async` versions for parsers with asynchronous resolvers) apply the same `QueryValidationOptions` as queries. For aggregations, `AllowedOperations` and `RestrictedOperations` are the aggregation types, and `AllowedMaxSortFields` limits the number of sort fields.
 
 ```csharp
 var options = new QueryValidationOptions();
