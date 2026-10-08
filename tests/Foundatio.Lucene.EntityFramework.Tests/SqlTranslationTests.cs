@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.Lucene.EntityFramework.Tests;
 
@@ -15,6 +16,63 @@ public partial class SqlTranslationTests : IDisposable
         .SetDefaultFields("Name"));
 
     public void Dispose() => _db.Dispose();
+
+    [Theory]
+    [InlineData("_exists_:manager.age", true)]
+    [InlineData("_missing_:manager.age", false)]
+    public void BuildFilter_WithNonNullableFieldUnderOptionalReference_TranslatesNavigationExistence(string query, bool exists)
+    {
+        // Arrange
+        var expected = exists
+            ? _db.Employees.Where(e => e.Manager != null)
+            : _db.Employees.Where(e => e.Manager == null);
+
+        // Act
+        string sql = _db.Employees.Where(query, _parser).ToSql();
+
+        // Assert
+        Assert.Equal(expected.ToSql(), sql);
+    }
+
+    [Theory]
+    [InlineData("_exists_:detail.number", true)]
+    [InlineData("_missing_:detail.number", false)]
+    [InlineData("detail.number:[* TO *]", true)]
+    public void BuildFilter_WithRequiredComplexProperty_PreservesSqlTranslation(string query, bool exists)
+    {
+        // Arrange
+        using var db = new RequiredComplexContext(new DbContextOptionsBuilder<RequiredComplexContext>()
+            .UseSqlServer("Server=localhost;Database=offline;Integrated Security=true;TrustServerCertificate=true")
+            .Options);
+        var expected = exists ? db.Records.Where(_ => true) : db.Records.Where(_ => false);
+
+        // Act
+        string sql = db.Records.Where(query, _parser).ToSql();
+
+        // Assert
+        Assert.Equal(expected.ToSql(), sql);
+    }
+
+    private sealed class RequiredComplexContext(DbContextOptions<RequiredComplexContext> options) : DbContext(options)
+    {
+        public DbSet<ComplexRecord> Records => Set<ComplexRecord>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<ComplexRecord>().ComplexProperty(e => e.Detail).IsRequired();
+        }
+    }
+
+    private sealed class ComplexRecord
+    {
+        public int Id { get; set; }
+        public ComplexDetail Detail { get; set; } = new();
+    }
+
+    private sealed class ComplexDetail
+    {
+        public int Number { get; set; }
+    }
 
     [Fact]
     public void BuildFilter_WithValues_UsesSqlParametersInsteadOfLiterals()

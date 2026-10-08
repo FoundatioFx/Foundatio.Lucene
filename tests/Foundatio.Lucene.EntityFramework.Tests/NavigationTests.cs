@@ -1,3 +1,6 @@
+using System.Linq.Expressions;
+using Foundatio.Lucene.Ast;
+
 namespace Foundatio.Lucene.EntityFramework.Tests;
 
 public class NavigationTests : IDisposable
@@ -28,6 +31,102 @@ public class NavigationTests : IDisposable
     public void BuildFilter_WithReferenceNavigationPath_AccessesRelatedEntity(string query, string[] expected)
     {
         Assert.Equal(expected, _db.Employees.Where(query, _parser).Names());
+    }
+
+    [Theory]
+    [InlineData("_exists_:manager.age", new[] { "Alice Brown" })]
+    [InlineData("manager.age:(*)", new[] { "Alice Brown" })]
+    [InlineData("manager.age:[* TO *]", new[] { "Alice Brown" })]
+    [InlineData("_missing_:manager.age", new[] { "Bob Wilson", "Jane Smith", "John Doe" })]
+    [InlineData("NOT _exists_:manager.age", new[] { "Bob Wilson", "Jane Smith", "John Doe" })]
+    [InlineData("-manager.age:[* TO *]", new[] { "Bob Wilson", "Jane Smith", "John Doe" })]
+    public void BuildFilter_WithNonNullableFieldUnderOptionalReference_RequiresNavigationExistence(string query, string[] expected)
+    {
+        // Arrange
+        var options = new EntityFrameworkQueryOptions { Model = _db.Model };
+
+        // Act
+        var filter = _parser.BuildFilter<Employee>(query, options);
+        var names = _db.Employees.Where(filter).Names();
+        var compiledNames = _db.Employees.AsEnumerable().Where(filter.Compile()).Select(e => e.Name).Order();
+
+        // Assert
+        Assert.Equal(expected, names);
+        Assert.Equal(expected, compiledNames);
+    }
+
+    [Theory]
+    [InlineData("_exists_:manager.manager.age", new string[0])]
+    [InlineData("_missing_:manager.manager.age", new[] { "Alice Brown", "Bob Wilson", "Jane Smith", "John Doe" })]
+    public void BuildFilter_WithMultipleOptionalReferences_RequiresEveryNavigation(string query, string[] expected)
+    {
+        // Arrange
+        var options = new EntityFrameworkQueryOptions { Model = _db.Model };
+
+        // Act
+        var filter = _parser.BuildFilter<Employee>(query, options);
+        var compiledNames = _db.Employees.AsEnumerable().Where(filter.Compile()).Select(e => e.Name).Order();
+
+        // Assert
+        Assert.Equal(expected, _db.Employees.Where(filter).Names());
+        Assert.Equal(expected, compiledNames);
+    }
+
+    [Fact]
+    public void BuildFilter_WithOptionalReferenceUnderCollection_RequiresMatchingNavigation()
+    {
+        // Arrange
+        const string query = "_exists_:employees.manager.age";
+
+        // Act
+        var names = _db.Companies.Where(query, _parser).Select(c => c.Name).ToArray();
+
+        // Assert
+        Assert.Equal(["Acme Corp"], names);
+    }
+
+    [Theory]
+    [InlineData("_exists_:age", 4)]
+    [InlineData("_missing_:age", 0)]
+    [InlineData("_exists_:company.foundedyear", 4)]
+    [InlineData("_missing_:company.foundedyear", 0)]
+    public void BuildFilter_WithRequiredNonNullableField_PreservesExistence(string query, int expected)
+    {
+        // Arrange
+        var employees = _db.Employees;
+
+        // Act
+        int count = employees.Where(query, _parser).Count();
+
+        // Assert
+        Assert.Equal(expected, count);
+    }
+
+    [Theory]
+    [InlineData("_exists_:manager.age", 4)]
+    [InlineData("_missing_:manager.age", 3)]
+    [InlineData("manager.age:[* TO *]", 4)]
+    public void BuildFilter_WithCustomNavigationExistence_PreservesBuilderSemantics(string query, int expected)
+    {
+        // Arrange
+        int calls = 0;
+        var parser = new EntityFrameworkQueryParser(c => c.UseCustomFieldExpressionBuilder(context =>
+        {
+            if (context.Field.FullName != "Manager.Age")
+                return null;
+
+            calls++;
+            return context.Node is MissingNode
+                ? Expression.Equal(context.Instance, Expression.Constant(null, context.Instance.Type))
+                : Expression.Constant(true);
+        }));
+
+        // Act
+        int count = _db.Employees.Where(query, parser).Count();
+
+        // Assert
+        Assert.Equal(expected, count);
+        Assert.Equal(1, calls);
     }
 
     [Theory]

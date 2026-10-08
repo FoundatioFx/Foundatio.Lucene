@@ -238,14 +238,22 @@ internal sealed class FilterExpressionBuilder
         if (!field.IsScalar)
             return Fail(lenient, node, $"Field ({field.FullName}) is a navigation; query one of its fields instead.", QueryErrorCode.UnsupportedQueryType);
 
-        return BuildPath(field, instance => BuildMemberPredicate(instance, field, node, searchOperator, lenient));
+        if (node is RangeNode { Min: null, Max: null })
+        {
+            bool handledByCustomBuilder = false;
+            return BuildPath(field,
+                instance => BuildMemberPredicate(instance, field, node, searchOperator, lenient, out handledByCustomBuilder),
+                () => !handledByCustomBuilder);
+        }
+
+        return BuildPath(field, instance => BuildMemberPredicate(instance, field, node, searchOperator, lenient, out _));
     }
 
     /// <summary>
     /// Walks from the queried entity to the object declaring <paramref name="field"/>, accessing reference
     /// navigations and wrapping collection navigations in <c>Any</c>, then builds the predicate at the declaring object.
     /// </summary>
-    private Expression? BuildPath(EntityFieldInfo field, Func<Expression, Expression?> buildAtDeclaringInstance)
+    private Expression? BuildPath(EntityFieldInfo field, Func<Expression, Expression?> buildAtDeclaringInstance, Func<bool>? requiresReferenceExistence = null)
     {
         if (field.Parent is null)
             return buildAtDeclaringInstance(Root);
@@ -255,10 +263,10 @@ internal sealed class FilterExpressionBuilder
             chain.Add(parent);
         chain.Reverse();
 
-        return BuildPath(chain, 0, Root, buildAtDeclaringInstance);
+        return BuildPath(chain, 0, Root, buildAtDeclaringInstance, requiresReferenceExistence);
     }
 
-    private Expression? BuildPath(List<EntityFieldInfo> chain, int index, Expression instance, Func<Expression, Expression?> buildAtDeclaringInstance)
+    private Expression? BuildPath(List<EntityFieldInfo> chain, int index, Expression instance, Func<Expression, Expression?> buildAtDeclaringInstance, Func<bool>? requiresReferenceExistence)
     {
         if (index == chain.Count)
             return buildAtDeclaringInstance(instance);
@@ -266,16 +274,22 @@ internal sealed class FilterExpressionBuilder
         var segment = chain[index];
         var member = ExpressionHelpers.Access(instance, segment);
         if (!segment.IsCollection)
-            return BuildPath(chain, index + 1, member, buildAtDeclaringInstance);
+        {
+            var predicate = BuildPath(chain, index + 1, member, buildAtDeclaringInstance, requiresReferenceExistence);
+            return predicate is not null && segment.IsNavigation && requiresReferenceExistence?.Invoke() == true
+                ? ExpressionHelpers.AndAlso(Exists(member), predicate)
+                : predicate;
+        }
 
         var element = CreateParameter(segment.ElementType!);
-        var body = BuildPath(chain, index + 1, element, buildAtDeclaringInstance);
+        var body = BuildPath(chain, index + 1, element, buildAtDeclaringInstance, requiresReferenceExistence);
         return body is null ? null : Any(member, element, body);
     }
 
-    private Expression? BuildMemberPredicate(Expression instance, EntityFieldInfo field, QueryNode node, SearchOperator? searchOperator, bool lenient)
+    private Expression? BuildMemberPredicate(Expression instance, EntityFieldInfo field, QueryNode node, SearchOperator? searchOperator, bool lenient, out bool handledByCustomBuilder)
     {
-        if (TryBuildCustom(instance, field, node, searchOperator, out var custom))
+        handledByCustomBuilder = TryBuildCustom(instance, field, node, searchOperator, out var custom);
+        if (handledByCustomBuilder)
             return custom;
 
         if (field.Kind == EntityFieldKind.Custom)
@@ -344,7 +358,7 @@ internal sealed class FilterExpressionBuilder
 
             var member = ExpressionHelpers.Access(instance, field);
             return field.IsCollection ? ExpressionHelpers.Any(member, field.ElementType!) : Exists(member);
-        });
+        }, () => !handledByCustomBuilder);
 
         if (exists is null || handledByCustomBuilder || !missing)
             return exists;
