@@ -38,13 +38,31 @@ internal static class ElasticsearchAggregationBuilder
                 if (aggregation is null)
                     continue;
 
-                string? nestedPath = context.UseNested ? GetMapping(expression.Field)?.NestedPath : null;
+                bool inheritsScope = expression.Field == "_";
+                string? nestedPath = inheritsScope ? currentNestedPath : context.UseNested ? GetMapping(expression.Field)?.NestedPath : null;
                 var target = container;
                 string bucketPath = string.Empty;
 
-                if (nestedPath is not null && !string.Equals(nestedPath, currentNestedPath, StringComparison.Ordinal))
+                string? scopePath = currentNestedPath;
+                if (scopePath is not null && nestedPath != scopePath && (nestedPath is null || !nestedPath.StartsWith(scopePath + ".", StringComparison.Ordinal)))
                 {
-                    foreach (string path in GetNestedChain(expression.Field, currentNestedPath))
+                    string? ancestor = GetNestedChain(expression.Field, currentNestedPath: null)
+                        .LastOrDefault(path => scopePath == path || scopePath.StartsWith(path + ".", StringComparison.Ordinal));
+                    string key = ancestor is null ? "reverse_nested" : $"reverse_nested_{ancestor}";
+                    if (!target.TryGetValue(key, out var reverse))
+                    {
+                        reverse = new Aggregation { ReverseNested = new ReverseNestedAggregation { Path = ancestor is null ? null : new Field(ancestor) }, Aggregations = new Dictionary<string, Aggregation>(StringComparer.Ordinal) };
+                        target[key] = reverse;
+                    }
+
+                    target = reverse.Aggregations ??= new Dictionary<string, Aggregation>(StringComparer.Ordinal);
+                    bucketPath += key + ">";
+                    scopePath = ancestor;
+                }
+
+                if (nestedPath is not null && !string.Equals(nestedPath, scopePath, StringComparison.Ordinal))
+                {
+                    foreach (string path in GetNestedChain(expression.Field, scopePath))
                     {
                         string key = $"nested_{path}";
                         if (!target.TryGetValue(key, out var nested))
@@ -56,15 +74,15 @@ internal static class ElasticsearchAggregationBuilder
                         target = nested.Aggregations ??= new Dictionary<string, Aggregation>(StringComparer.Ordinal);
                         bucketPath += key + ">";
                     }
+                }
 
-                    if (context.GetNestedFilter(nestedPath, expression.Field) is { } filter)
-                    {
-                        string filteredKey = $"filtered_{expression.Name}";
-                        var filtered = new Aggregation { Filter = filter, Aggregations = new Dictionary<string, Aggregation>(StringComparer.Ordinal) };
-                        target[filteredKey] = filtered;
-                        target = filtered.Aggregations;
-                        bucketPath += filteredKey + ">";
-                    }
+                if (!inheritsScope && nestedPath is not null && context.GetNestedFilter(nestedPath, expression.Field) is { } filter)
+                {
+                    string filteredKey = $"filtered_{expression.Name}";
+                    var filtered = new Aggregation { Filter = filter, Aggregations = new Dictionary<string, Aggregation>(StringComparer.Ordinal) };
+                    target[filteredKey] = filtered;
+                    target = filtered.Aggregations;
+                    bucketPath += filteredKey + ">";
                 }
 
                 target[expression.Name] = aggregation;
@@ -78,7 +96,7 @@ internal static class ElasticsearchAggregationBuilder
                 if (expression.Aggregations.Count > 0)
                 {
                     aggregation.Aggregations ??= new Dictionary<string, Aggregation>(StringComparer.Ordinal);
-                    AddAll(aggregation.Aggregations, aggregation.Terms, expression.Aggregations, nestedPath ?? currentNestedPath);
+                    AddAll(aggregation.Aggregations, aggregation.Terms, expression.Aggregations, nestedPath);
                 }
             }
         }
@@ -154,7 +172,7 @@ internal static class ElasticsearchAggregationBuilder
                     {
                         Field = field,
                         MinDocCount = 0,
-                        Interval = ReadDouble(expression, expression.ProximityText, "interval") ?? 50
+                        Interval = ReadPositiveInterval(expression)
                     };
                 case AggregationTypes.DateHistogram:
                     return CreateDateHistogram(expression, field);
@@ -168,6 +186,14 @@ internal static class ElasticsearchAggregationBuilder
                     _result.AddError($"Unknown aggregation type '{expression.Type}'.", expression.Position);
                     return null;
             }
+        }
+
+        private double ReadPositiveInterval(AggregationExpression expression)
+        {
+            double interval = ReadDouble(expression, expression.ProximityText, "interval") ?? 50;
+            if (interval <= 0)
+                _result.AddError($"Invalid interval '{expression.ProximityText}' for aggregation {expression.Name}; the histogram interval must be positive.", expression.Position);
+            return interval;
         }
 
         private Aggregation CreatePercentiles(AggregationExpression expression, string field)
@@ -230,7 +256,7 @@ internal static class ElasticsearchAggregationBuilder
 
                 if (calendar is not null)
                     histogram.CalendarInterval = calendar;
-                else if (TryCreateDuration(interval, out var fixedInterval))
+                else if (TryCreateDuration(interval, out var fixedInterval) && fixedInterval.Milliseconds is > 0 and { } milliseconds && double.IsFinite(milliseconds))
                     histogram.FixedInterval = fixedInterval;
                 else
                     _result.AddError($"Invalid interval '{interval}' for aggregation {expression.Name}; use a calendar unit (d, w, M, ...) or a fixed interval such as 90m or 2d.", expression.Position);

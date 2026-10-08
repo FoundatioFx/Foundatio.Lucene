@@ -779,7 +779,8 @@ internal static partial class ElasticsearchQueryBuilder
 
         private string ResolveDefaultField(string field)
         {
-            return context.MappingResolver is { } resolver && resolver.GetMapping(field) is { Found: true } mapping ? mapping.FullPath : field;
+            Foundatio.Lucene.Visitors.FieldResolverQueryVisitor.TryResolveField(field, context, out string resolved);
+            return resolved;
         }
 
         private ElasticFieldMapping? GetMapping(string field)
@@ -857,7 +858,7 @@ internal static partial class ElasticsearchQueryBuilder
         {
             FieldType.Integer or FieldType.Short or FieldType.Byte when int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue) => intValue,
             FieldType.Long when long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long longValue) => longValue,
-            FieldType.Float or FieldType.HalfFloat when float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatValue) => floatValue,
+            FieldType.Float or FieldType.HalfFloat when float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatValue) && float.IsFinite(floatValue) => floatValue,
             FieldType.Double or FieldType.ScaledFloat when double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue) => doubleValue,
             FieldType.Boolean when bool.TryParse(value, out bool boolValue) => boolValue,
             _ => value

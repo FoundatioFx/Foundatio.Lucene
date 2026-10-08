@@ -133,4 +133,48 @@ public class GeoQueryTests
 
         ElasticAssert.Json("{'range':{'geo':{'gte':'1,2','lte':'3,4'}}}", result);
     }
+    [Theory]
+    [InlineData("keyword:value", null)]
+    [InlineData("@include:outer", "Dallas")]
+    [InlineData("@include:OUTER", "Dallas")]
+    [InlineData("geo:(@include:plain)", "Dallas")]
+    public async Task BuildQueryAsync_WithUnusedGeoInclude_OnlyResolvesReachedLocations(string query, string? expectedLocation)
+    {
+        // Arrange
+        var requested = new ConcurrentBag<string>();
+        var parser = TestMapping.CreateScoringParser(c =>
+        {
+            c.Includes = new Dictionary<string, string>
+            {
+                ["unused"] = "geo:unreachable",
+                ["outer"] = "@include:nearby",
+                ["nearby"] = "geo:Dallas~75mi",
+                ["plain"] = "Dallas"
+            };
+            c.GeoLocationResolver = (text, _, _) =>
+            {
+                requested.Add(text);
+                if (text == "unreachable")
+                    throw new InvalidOperationException("unused geocoder");
+                return ValueTask.FromResult<string?>("32.7767,-96.7970");
+            };
+        });
+
+        // Act
+        var result = await parser.BuildQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        if (expectedLocation is null)
+        {
+            Assert.Empty(requested);
+            ElasticAssert.Json("{'term':{'keyword':{'value':'value'}}}", result);
+        }
+        else
+        {
+            Assert.Equal(expectedLocation, Assert.Single(requested));
+            string distance = query.Equals("@include:outer", StringComparison.OrdinalIgnoreCase) ? "75mi" : "10mi";
+            ElasticAssert.Json($"{{'geo_distance':{{'distance':'{distance}','geo':'32.7767,-96.7970'}}}}", result);
+        }
+    }
+
 }

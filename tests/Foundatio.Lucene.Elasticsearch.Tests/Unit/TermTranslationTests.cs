@@ -533,4 +533,36 @@ public class TermTranslationTests
 
         ElasticAssert.Json("{'bool':{'should':[{'match':{'text':{'query':'hello'}}},{'term':{'keyword':{'value':'hello'}}}]}}", result);
     }
+    [Theory]
+    [InlineData("1e100")]
+    [InlineData("-1e100")]
+    public void BuildQuery_WithFloatTermBeyondSinglePrecision_PreservesFiniteTextForBackend(string value)
+    {
+        // Arrange
+        var parser = TestMapping.CreateScoringParser();
+
+        // Act
+        var result = parser.BuildQuery($"float:\"{value}\"");
+
+        // Assert
+        ElasticAssert.Json($"{{'term':{{'float':{{'value':'{value}'}}}}}}", result);
+    }
+
+    [Theory]
+    [InlineData("number:1.5", "{'term':{'number':{'value':'1.5'}}}")]
+    [InlineData("number:[1.5 TO 5.5]", "{'range':{'number':{'gte':'1.5','lte':'5.5'}}}")]
+    [InlineData("float:1.5", "{'term':{'float':{'value':1.5}}}")]
+    [InlineData("number:1e100", "{'term':{'number':{'value':'1e100'}}}")]
+    public void BuildQuery_WithBackendSupportedNumericText_PreservesTermAndRangeSemantics(string query, string expected)
+    {
+        // Arrange
+        var parser = TestMapping.CreateScoringParser();
+
+        // Act
+        var result = parser.BuildQuery(query);
+
+        // Assert
+        ElasticAssert.Json(expected, result);
+    }
+
 }

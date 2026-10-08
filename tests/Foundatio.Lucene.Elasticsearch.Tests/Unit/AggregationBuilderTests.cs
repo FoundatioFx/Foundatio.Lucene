@@ -621,4 +621,158 @@ public class AggregationBuilderTests
         return TestMapping.CreateParser(c => c.NestedFilterResolver = (filter, _, _) =>
             ValueTask.FromResult<Query?>(filter.NestedPath == "resellers" ? (Query)new TermQuery("resellers.name", "Official") : null));
     }
+
+    [Theory]
+    [InlineData("histogram:number~0")]
+    [InlineData("histogram:number~-1")]
+    [InlineData("histogram:number~NaN")]
+    [InlineData("histogram:number~Infinity")]
+    public void BuildAggregations_WithNonpositiveHistogramInterval_ThrowsValidationException(string expression)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildAggregations(expression));
+
+        // Assert
+        Assert.Contains("interval", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("date:date~0m")]
+    [InlineData("date:date~-1h")]
+    public void BuildAggregations_WithNonpositiveFixedDateInterval_ThrowsValidationException(string expression)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildAggregations(expression));
+
+        // Assert
+        Assert.Contains("interval", exception.Message);
+    }
+
+    [Fact]
+    public void BuildAggregations_WithNestedToRootMetric_ExitsNestedScope()
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var result = parser.BuildAggregations("terms:(children.name -max:number)");
+
+        // Assert
+        ElasticAssert.Json("""
+            {"nested_children":{"nested":{"path":"children"},"aggregations":{
+              "terms_children.name":{"terms":{"field":"children.name","order":{"reverse_nested>max_number":"desc"}},"meta":{"@field_type":"keyword"},"aggregations":{
+                "reverse_nested":{"reverse_nested":{},"aggregations":{"max_number":{"max":{"field":"number"},"meta":{"@field_type":"integer"}}}}}}}}}
+            """, result);
+    }
+
+    [Theory]
+    [InlineData("terms:(children.name max:resellers.price)", "children", "root", "resellers", "max_resellers.price", "resellers.price")]
+    [InlineData("terms:(children.grand.name max:children.num)", "children.grand", "children", null, "max_children.num", "children.num")]
+    [InlineData("terms:(children.grand.name cardinality:children.toys.name)", "children.grand", "children", "children.toys", "cardinality_children.toys.name", "children.toys.name")]
+    public void BuildAggregations_WithNestedSiblingOrAncestor_UsesCommonAncestorScope(string expression, string sourcePath, string ancestor, string? targetPath, string metricName, string metricField)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var result = parser.BuildAggregations(expression);
+
+        // Assert
+        var json = JsonNode.Parse(ElasticAssert.Serialize(result))!;
+        var nested = json["nested_children"]!["aggregations"]!;
+        if (sourcePath != "children")
+            nested = nested[$"nested_{sourcePath}"]!["aggregations"]!;
+        var terms = nested[$"terms_{sourcePath}.name"]!["aggregations"]!;
+        var reverse = Assert.IsType<JsonObject>(terms[ancestor == "root" ? "reverse_nested" : $"reverse_nested_{ancestor}"]);
+        Assert.NotNull(reverse["reverse_nested"]);
+        if (ancestor == "root")
+            Assert.Null(reverse["reverse_nested"]!["path"]);
+        else
+            Assert.Equal(ancestor, reverse["reverse_nested"]!["path"]!.GetValue<string>());
+        var target = reverse["aggregations"]!;
+        if (targetPath is not null)
+        {
+            Assert.Equal(targetPath, target[$"nested_{targetPath}"]!["nested"]!["path"]!.GetValue<string>());
+            target = target[$"nested_{targetPath}"]!["aggregations"]!;
+        }
+        string metricType = metricName.StartsWith("max_", StringComparison.Ordinal) ? "max" : "cardinality";
+        Assert.Equal(metricField, target[metricName]![metricType]!["field"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task BuildAggregationsAsync_WithSamePathFieldFilters_AppliesChildFilterAndOrderPath()
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser(c => c.NestedFilterResolver = (field, _, _) =>
+            ValueTask.FromResult<Query?>(new TermQuery("children.name", field.ResolvedField == "children.name" ? "parent" : "child")));
+
+        // Act
+        var result = await parser.BuildAggregationsAsync("terms:(children.name -max:children.num)", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json("""
+            {"nested_children":{"nested":{"path":"children"},"aggregations":{
+              "filtered_terms_children.name":{"filter":{"term":{"children.name":{"value":"parent"}}},"aggregations":{
+                "terms_children.name":{"terms":{"field":"children.name","order":{"filtered_max_children.num>max_children.num[value]":"desc"}},"meta":{"@field_type":"keyword"},"aggregations":{
+                  "filtered_max_children.num":{"filter":{"term":{"children.name":{"value":"child"}}},"aggregations":{"max_children.num":{"max":{"field":"children.num"},"meta":{"@field_type":"integer"}}}}}}}}}}}
+            """, result);
+    }
+
+    [Theory]
+    [InlineData("terms:(root.children.name max:root.num max:number)")]
+    [InlineData("terms:(root.children.name max:number max:root.num)")]
+    public void BuildAggregations_WithRootNamedNestedAncestor_KeepsRootAndAncestorWrappersDistinct(string expression)
+    {
+        // Arrange
+        var mapping = TestMapping.Create();
+        mapping.Properties!.Add("root", new Elastic.Clients.Elasticsearch.Mapping.NestedProperty
+        {
+            Properties = new Elastic.Clients.Elasticsearch.Mapping.Properties
+            {
+                { "num", new Elastic.Clients.Elasticsearch.Mapping.IntegerNumberProperty() },
+                { "children", new Elastic.Clients.Elasticsearch.Mapping.NestedProperty
+                    { Properties = new Elastic.Clients.Elasticsearch.Mapping.Properties { { "name", new Elastic.Clients.Elasticsearch.Mapping.KeywordProperty() } } } }
+            }
+        });
+        var parser = TestMapping.CreateParser(c => c.UseMappings(mapping));
+
+        // Act
+        var result = parser.BuildAggregations(expression);
+
+        // Assert
+        var json = JsonNode.Parse(ElasticAssert.Serialize(result))!;
+        var subAggregations = Assert.IsType<JsonObject>(json["nested_root"]!["aggregations"]!["nested_root.children"]!["aggregations"]!["terms_root.children.name"]!["aggregations"]);
+        Assert.Equal(2, subAggregations.Count);
+        var ancestor = subAggregations.Single(pair => pair.Value?["reverse_nested"]?["path"]?.GetValue<string>() == "root").Value!;
+        var root = subAggregations.Single(pair => pair.Value?["reverse_nested"]?["path"] is null).Value!;
+        Assert.Equal("root.num", ancestor["aggregations"]!["max_root.num"]!["max"]!["field"]!.GetValue<string>());
+        Assert.Equal("number", root["aggregations"]!["max_number"]!["max"]!["field"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("terms:(children.name tophits:_)")]
+    [InlineData("terms:(children.name terms:(children.grand.name tophits:_))")]
+    public void BuildAggregations_WithNestedTopHits_RetainsCurrentNestedScope(string expression)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var result = parser.BuildAggregations(expression);
+
+        // Assert
+        var json = JsonNode.Parse(ElasticAssert.Serialize(result))!;
+        var nested = json["nested_children"]!["aggregations"]!["terms_children.name"]!["aggregations"]!;
+        if (expression.Contains("children.grand", StringComparison.Ordinal))
+            nested = nested["nested_children.grand"]!["aggregations"]!["terms_children.grand.name"]!["aggregations"]!;
+        Assert.NotNull(nested["tophits"]?["top_hits"]);
+        Assert.Single(Assert.IsType<JsonObject>(nested));
+    }
+
 }

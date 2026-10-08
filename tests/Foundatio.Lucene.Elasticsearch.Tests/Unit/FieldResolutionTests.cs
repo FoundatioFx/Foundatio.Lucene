@@ -489,4 +489,66 @@ public class FieldResolutionTests
         Assert.Same(resolver, parser.Configuration.MappingResolver);
         ElasticAssert.Json("{'match':{'text':{'query':'hello'}}}", result);
     }
+    [Theory]
+    [InlineData("hello")]
+    [InlineData("@include:outer")]
+    [InlineData("@include:OUTER")]
+    public async Task BuildQueryAsync_WithAsyncDefaultAlias_UsesResolvedNestedField(string query)
+    {
+        // Arrange
+        var requested = new ConcurrentBag<string>();
+        var nestedFields = new List<string>();
+        var parser = TestMapping.CreateScoringParser(c =>
+        {
+            c.DefaultFields = ["searchAlias"];
+            c.Includes = new Dictionary<string, string> { ["outer"] = "@include:inner", ["inner"] = "hello" };
+            c.AsyncFieldResolver = (field, _, _) =>
+            {
+                requested.Add(field);
+                return ValueTask.FromResult(field == "searchAlias" ? "children.name" : null);
+            };
+            c.NestedFilterResolver = (field, _, _) =>
+            {
+                nestedFields.Add(field.ResolvedField);
+                return ValueTask.FromResult<Elastic.Clients.Elasticsearch.QueryDsl.Query?>(null);
+            };
+        });
+
+        // Act
+        var result = await parser.BuildQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal("searchAlias", Assert.Single(requested));
+        Assert.Equal("children.name", Assert.Single(nestedFields));
+        ElasticAssert.Json("{'nested':{'path':'children','query':{'term':{'children.name':{'value':'hello'}}}}}", result);
+    }
+
+    [Theory]
+    [InlineData("keyword:hello")]
+    [InlineData("keyword:(@include:inner)")]
+    public async Task BuildQueryAsync_WithUnusedAsyncDefaultAlias_DoesNotResolveDefault(string query)
+    {
+        // Arrange
+        var requested = new ConcurrentBag<string>();
+        var parser = TestMapping.CreateScoringParser(c =>
+        {
+            c.DefaultFields = ["unusedAlias"];
+            c.Includes = new Dictionary<string, string> { ["inner"] = "hello" };
+            c.AsyncFieldResolver = (field, _, _) =>
+            {
+                requested.Add(field);
+                if (field == "unusedAlias")
+                    throw new InvalidOperationException("unused default");
+                return ValueTask.FromResult<string?>(null);
+            };
+        });
+
+        // Act
+        var result = await parser.BuildQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal("keyword", Assert.Single(requested));
+        ElasticAssert.Json("{'term':{'keyword':{'value':'hello'}}}", result);
+    }
+
 }

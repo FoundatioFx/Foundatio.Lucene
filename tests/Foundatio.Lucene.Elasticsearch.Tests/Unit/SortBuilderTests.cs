@@ -207,4 +207,41 @@ public class SortBuilderTests
 
         Assert.Empty(exception.Result.UnresolvedIncludes);
     }
+    [Theory]
+    [InlineData("91,0")]
+    [InlineData("-91,0")]
+    [InlineData("0,181")]
+    [InlineData("0,-181")]
+    [InlineData("NaN,0")]
+    [InlineData("0,NaN")]
+    [InlineData("Infinity,0")]
+    [InlineData("0,-Infinity")]
+    public void BuildSort_WithInvalidGeoCoordinates_ThrowsValidationException(string coordinates)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var exception = Assert.Throws<QueryValidationException>(() => parser.BuildSort($"geo:\"{coordinates}\""));
+
+        // Assert
+        Assert.Contains("coordinates", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("90,180", "[{'_geo_distance':{'distance_type':'arc','order':'asc','geo':{'lat':90,'lon':180}}}]")]
+    [InlineData("-90,-180", "[{'_geo_distance':{'distance_type':'arc','order':'asc','geo':{'lat':-90,'lon':-180}}}]")]
+    [InlineData("u4pruydqqvj", "[{'_geo_distance':{'distance_type':'arc','order':'asc','geo':'u4pruydqqvj'}}]")]
+    public void BuildSort_WithValidGeoBoundaryOrGeohash_PreservesLocation(string location, string expected)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser();
+
+        // Act
+        var result = parser.BuildSort($"geo:\"{location}\"");
+
+        // Assert
+        ElasticAssert.Json(expected, result);
+    }
+
 }

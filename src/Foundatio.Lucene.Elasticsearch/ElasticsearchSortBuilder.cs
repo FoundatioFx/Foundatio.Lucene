@@ -53,7 +53,10 @@ internal static class ElasticsearchSortBuilder
             if (field.Value is { } value)
             {
                 if (fieldType == FieldType.GeoPoint)
-                    sorts.Add(new SortOptions { GeoDistance = new GeoDistanceSort { Field = sortField, Location = [ParseLocation(value)], Order = order, DistanceType = GeoDistanceType.Arc } });
+                {
+                    if (ParseLocation(value, field, context) is { } location)
+                        sorts.Add(new SortOptions { GeoDistance = new GeoDistanceSort { Field = sortField, Location = [location], Order = order, DistanceType = GeoDistanceType.Arc } });
+                }
                 else
                     context.ValidationResult.AddError($"Sort values are only supported on geo_point fields, where they sort by distance ({field.OriginalField}:{value}).", field.Position, QueryErrorCode.UnsupportedQueryType);
 
@@ -79,13 +82,19 @@ internal static class ElasticsearchSortBuilder
     /// <summary>
     /// Reads a <c>lat,lon</c> point; anything else (a geohash) is passed to Elasticsearch as text.
     /// </summary>
-    private static GeoLocation ParseLocation(string value)
+    private static GeoLocation? ParseLocation(string value, SortField field, ElasticsearchQueryVisitorContext context)
     {
         string[] parts = value.Split(',');
         if (parts.Length == 2
             && double.TryParse(parts[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double lat)
             && double.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
         {
+            if (!double.IsFinite(lat) || !double.IsFinite(lon) || lat is < -90 or > 90 || lon is < -180 or > 180)
+            {
+                context.ValidationResult.AddError($"Invalid geo sort coordinates '{value}'; latitude must be between -90 and 90 and longitude between -180 and 180, both finite.", field.Position);
+                return null;
+            }
+
             return GeoLocation.LatitudeLongitude(new LatLonGeoLocation { Lat = lat, Lon = lon });
         }
 

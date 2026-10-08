@@ -425,7 +425,7 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
     protected override async ValueTask OnResolveAsync(QueryType type, QueryDocument document, IReadOnlyDictionary<string, string> fields, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken)
     {
         var resolver = context.MappingResolver;
-        var resolvedFields = fields.Values.Concat(context.DefaultFields ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var resolvedFields = fields.Values.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         if (resolver is not null)
             await resolver.EnsureFieldsAsync(resolvedFields, cancellationToken).ConfigureAwait(false);
@@ -460,8 +460,7 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
 
         if (context.NestedFilterResolver is { } nestedFilterResolver && context.UseNested && resolver is not null)
         {
-            var pairs = fields.Select(p => (Original: p.Key, Resolved: CanonicalField(p.Value, context)))
-                .Concat((context.DefaultFields ?? []).Select(f => (Original: f, Resolved: CanonicalField(f, context))));
+            var pairs = fields.Select(p => (Original: p.Key, Resolved: CanonicalField(p.Value, context)));
             foreach (var (original, resolved) in pairs)
             {
                 var mapping = resolver.GetMapping(resolved, followAlias: true);
@@ -490,12 +489,8 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
     private static async ValueTask ResolveGeoLocationsAsync(QueryDocument document, ElasticsearchQueryVisitorContext context, CancellationToken cancellationToken)
     {
         var texts = new HashSet<string>(StringComparer.Ordinal);
-        CollectGeoTerms(document, field: null, context, texts);
-        if (context.Includes is { } includes)
-        {
-            foreach (string text in includes.Values)
-                CollectGeoTerms(LuceneQuery.Parse(text, context.ParserOptions).Document, field: null, context, texts);
-        }
+        int includeExpansions = 0;
+        CollectGeoTerms(document, field: null, context, texts, includeDepth: 0, ref includeExpansions);
 
         foreach (string text in texts)
         {
@@ -511,26 +506,36 @@ public class ElasticsearchQueryParser : QueryParserBase<ElasticsearchQueryVisito
         }
     }
 
-    private static void CollectGeoTerms(QueryNode? node, string? field, ElasticsearchQueryVisitorContext context, HashSet<string> texts)
+    private static void CollectGeoTerms(QueryNode? node, string? field, ElasticsearchQueryVisitorContext context, HashSet<string> texts, int includeDepth, ref int includeExpansions)
     {
         switch (node)
         {
             case QueryDocument document:
-                CollectGeoTerms(document.Query, field, context, texts);
+                CollectGeoTerms(document.Query, field, context, texts, includeDepth, ref includeExpansions);
                 break;
             case GroupNode group:
-                CollectGeoTerms(group.Query, field, context, texts);
+                CollectGeoTerms(group.Query, field, context, texts, includeDepth, ref includeExpansions);
                 break;
             case NotNode not:
-                CollectGeoTerms(not.Query, field, context, texts);
+                CollectGeoTerms(not.Query, field, context, texts, includeDepth, ref includeExpansions);
                 break;
             case BooleanQueryNode boolean:
                 foreach (var clause in boolean.Clauses)
-                    CollectGeoTerms(clause.Query, field, context, texts);
+                    CollectGeoTerms(clause.Query, field, context, texts, includeDepth, ref includeExpansions);
+                break;
+            case FieldQueryNode include when IncludeVisitor.IsInclude(include):
+                var options = context.ValidationOptions ?? new QueryValidationOptions();
+                if (context.ShouldSkipInclude?.Invoke(include, context) != true
+                    && includeDepth < options.MaxIncludeDepth
+                    && IncludeVisitor.GetIncludeName(include) is { } name
+                    && context.Includes?.TryGetValue(name, out string? text) == true
+                    && !string.IsNullOrWhiteSpace(text)
+                    && ++includeExpansions <= options.MaxIncludeExpansions)
+                    CollectGeoTerms(LuceneQuery.Parse(text, context.ParserOptions).Document, field, context, texts, includeDepth + 1, ref includeExpansions);
                 break;
             case FieldQueryNode fieldNode:
                 FieldResolverQueryVisitor.TryResolveField(fieldNode.Field, context, out string resolved);
-                CollectGeoTerms(fieldNode.Query, resolved, context, texts);
+                CollectGeoTerms(fieldNode.Query, resolved, context, texts, includeDepth, ref includeExpansions);
                 break;
             case TermNode term when field is not null && IsGeoField(field, context):
                 texts.Add(term.UnescapedTerm);

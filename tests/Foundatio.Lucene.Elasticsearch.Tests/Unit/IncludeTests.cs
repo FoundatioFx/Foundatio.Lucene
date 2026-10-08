@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Elasticsearch.Tests.Utility;
+using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Elasticsearch.Tests.Unit;
 
@@ -222,4 +223,63 @@ public class IncludeTests
 
         Assert.Contains(exception.Errors, e => e.Code == QueryErrorCode.MaxDepthExceeded);
     }
+    [Theory]
+    [InlineData("@include:skip", "{'term':{'@include':{'value':'skip'}}}")]
+    [InlineData("@include:outer", "{'bool':{'must':[{'term':{'keyword':{'value':'value'}}},{'term':{'@include':{'value':'skip'}}}]}}")]
+    public async Task BuildQueryAsync_WithSkippedInclude_DoesNotInvokeResolver(string query, string expected)
+    {
+        // Arrange
+        var requested = new ConcurrentBag<string>();
+        var parser = TestMapping.CreateScoringParser(c =>
+        {
+            c.Includes = new Dictionary<string, string> { ["outer"] = "keyword:value @include:skip" };
+            c.ShouldSkipInclude = (node, _) => Foundatio.Lucene.Visitors.IncludeVisitor.GetIncludeName(node) == "skip";
+            c.IncludeResolver = (name, _, _) =>
+            {
+                requested.Add(name);
+                throw new InvalidOperationException("skipped include was resolved");
+            };
+        });
+
+        // Act
+        var result = await parser.BuildQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Empty(requested);
+        ElasticAssert.Json(expected, result);
+    }
+
+    [Theory]
+    [InlineData(QueryType.Sort)]
+    [InlineData(QueryType.Aggregation)]
+    public async Task BuildQueryAsync_AfterAnotherExpression_SkipsIncludesWithQueryContext(QueryType previousType)
+    {
+        // Arrange
+        var requested = new ConcurrentBag<string>();
+        var parser = TestMapping.CreateScoringParser(c =>
+        {
+            c.ShouldSkipInclude = (_, context) => context.QueryType == QueryType.Query;
+            c.IncludeResolver = (name, _, _) =>
+            {
+                requested.Add(name);
+                throw new InvalidOperationException("skipped include was resolved using the previous expression type");
+            };
+        });
+        var context = parser.CreateContext();
+        if (previousType == QueryType.Sort)
+            await parser.BuildSortAsync("keyword", context, TestContext.Current.CancellationToken);
+        else
+            await parser.BuildAggregationsAsync("terms:keyword", context, TestContext.Current.CancellationToken);
+        Assert.Equal(previousType, context.QueryType);
+
+        // Act
+        var result = await parser.BuildQueryAsync("@include:skip", context, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Empty(requested);
+        Assert.Equal(QueryType.Query, context.QueryType);
+        Assert.Equal(QueryType.Query, context.ValidationResult.QueryType);
+        ElasticAssert.Json("{'term':{'@include':{'value':'skip'}}}", result);
+    }
+
 }

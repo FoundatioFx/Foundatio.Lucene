@@ -315,6 +315,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     protected async ValueTask ResolveQueryAsync(QueryDocument document, TContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(document);
+        BeginExpression(context, QueryType.Query);
 
         var includeDocuments = await ResolveIncludesAsync(document, QueryType.Query, context, cancellationToken).ConfigureAwait(false);
         var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -323,6 +324,10 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             foreach (string field in root.GetReferencedFields())
                 fields.Add(field);
         }
+
+        int includeExpansions = 0;
+        if (context.DefaultFields is { Length: > 0 } defaultFields && UsesDefaultFields(document, context, hasField: false, depth: 0, ref includeExpansions))
+            fields.UnionWith(defaultFields);
 
         await ResolveFieldsAsync(fields, context, cancellationToken).ConfigureAwait(false);
         await OnResolveAsync(QueryType.Query, document, ResolveFields(fields, context), context, cancellationToken).ConfigureAwait(false);
@@ -335,7 +340,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
     /// </summary>
     /// <param name="type">The kind of expression being resolved.</param>
     /// <param name="document">The parsed expression, before includes are expanded. Do not modify it.</param>
-    /// <param name="fields">The fields the expression and its includes reference, as written, mapped to their resolved names.</param>
+    /// <param name="fields">The fields the expression and its includes reference, including used default fields, as written, mapped to their resolved names.</param>
     /// <param name="context">The context to store resolved data on.</param>
     /// <param name="cancellationToken">A token to cancel the lookups.</param>
     protected virtual ValueTask OnResolveAsync(QueryType type, QueryDocument document, IReadOnlyDictionary<string, string> fields, TContext context, CancellationToken cancellationToken)
@@ -372,7 +377,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new List<string>();
-        CollectIncludeNames(document, type, pending);
+        CollectIncludeNames(document, type, context, pending);
 
         int fetched = 0;
         for (int depth = 0; depth < options.MaxIncludeDepth && pending.Count > 0; depth++)
@@ -404,12 +409,11 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
 
                 var parsed = LuceneQuery.Parse(text, context.ParserOptions);
                 documents.Add(parsed.Document);
-                CollectIncludeNames(parsed.Document, type, pending);
+                CollectIncludeNames(parsed.Document, type, context, pending);
             }
         }
 
-        if (resolver is not null)
-            context.Includes = includes;
+        context.Includes = includes;
 
         return documents;
     }
@@ -426,7 +430,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
         }
     }
 
-    private static void CollectIncludeNames(QueryNode root, QueryType type, List<string> names)
+    private static void CollectIncludeNames(QueryNode root, QueryType type, TContext context, List<string> names)
     {
         var stack = new Stack<QueryNode>();
         stack.Push(root);
@@ -435,7 +439,7 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
             switch (node)
             {
                 case FieldQueryNode field when IncludeVisitor.IsInclude(field):
-                    if (IncludeVisitor.GetIncludeName(field) is { Length: > 0 } name)
+                    if (context.ShouldSkipInclude?.Invoke(field, context) != true && IncludeVisitor.GetIncludeName(field) is { Length: > 0 } name)
                         names.Add(name);
                     break;
                 case FieldQueryNode { Query: { } query } when type != QueryType.Aggregation:
@@ -458,6 +462,42 @@ public abstract class QueryParserBase<TContext> where TContext : QueryVisitorCon
                     }
                     break;
             }
+        }
+    }
+
+    private static bool UsesDefaultFields(QueryNode? node, TContext context, bool hasField, int depth, ref int includeExpansions)
+    {
+        switch (node)
+        {
+            case QueryDocument document:
+                return UsesDefaultFields(document.Query, context, hasField, depth, ref includeExpansions);
+            case GroupNode group:
+                return UsesDefaultFields(group.Query, context, hasField, depth, ref includeExpansions);
+            case NotNode not:
+                return UsesDefaultFields(not.Query, context, hasField, depth, ref includeExpansions);
+            case BooleanQueryNode boolean:
+                foreach (var clause in boolean.Clauses)
+                {
+                    if (UsesDefaultFields(clause.Query, context, hasField, depth, ref includeExpansions))
+                        return true;
+                }
+                return false;
+            case FieldQueryNode field when IncludeVisitor.IsInclude(field):
+                if (context.ShouldSkipInclude?.Invoke(field, context) == true
+                    || depth >= (context.ValidationOptions ?? QueryValidationOptions.Default).MaxIncludeDepth
+                    || IncludeVisitor.GetIncludeName(field) is not { } name
+                    || context.Includes?.TryGetValue(name, out string? text) != true
+                    || string.IsNullOrWhiteSpace(text)
+                    || ++includeExpansions > (context.ValidationOptions ?? QueryValidationOptions.Default).MaxIncludeExpansions)
+                    return false;
+
+                return UsesDefaultFields(LuceneQuery.Parse(text, context.ParserOptions).Document, context, hasField, depth + 1, ref includeExpansions);
+            case FieldQueryNode field:
+                return UsesDefaultFields(field.Query, context, hasField: true, depth, ref includeExpansions);
+            case TermNode or PhraseNode or RegexNode or RangeNode:
+                return !hasField;
+            default:
+                return false;
         }
     }
 
