@@ -104,18 +104,50 @@ public class DocumentationSampleTests : IDisposable
         Assert.Equal("John", Assert.Single(contacts).Name);
     }
 
+    [Theory]
+    [InlineData("_missing_:city", new[] { "NoCity", "NullCity" })]
+    [InlineData("_exists_:city", new[] { "HasCity" })]
+    public void CustomFields_WithAbsentOrNullValueRow_AppliesDocumentedExistence(string query, string[] expected)
+    {
+        // Arrange
+        _db.Contacts.AddRange(
+            new Contact { Name = "HasCity", DataValues = [new DataValue { DataDefinitionId = 2, StringValue = "Boston" }] },
+            new Contact { Name = "NoCity" },
+            new Contact { Name = "NullCity", DataValues = [new DataValue { DataDefinitionId = 2, StringValue = null }] });
+        _db.SaveChanges();
+        var parser = new EntityFrameworkQueryParser(c => c.UseCustomFieldExpressionBuilder(DataValueBuilder));
+        var options = new EntityFrameworkQueryOptions
+        {
+            AdditionalFields =
+            [
+                new EntityFieldInfo { Name = "city", ClrType = typeof(string), Data = new Dictionary<string, object?> { ["DataDefinitionId"] = 2, ["Column"] = "StringValue" } }
+            ]
+        };
+
+        // Act
+        var names = _db.Contacts.Where(query, parser, options).Select(c => c.Name).AsEnumerable().Order().ToArray();
+
+        // Assert
+        Assert.Equal(expected, names);
+    }
+
     private static Expression? DataValueBuilder(CustomFieldContext context)
     {
         if (context.Field.Data.GetValueOrDefault("DataDefinitionId") is not int definitionId
             || context.Field.Data["Column"] is not string column)
             return null;
 
+        // Missing means no row has a value, rather than a row whose column is null.
+        bool missing = context.Node is MissingNode;
         var row = Expression.Parameter(typeof(DataValue), "dv");
+        var member = Expression.Property(row, column);
+        var predicate = missing ? Expression.NotEqual(member, Expression.Constant(null, member.Type)) : context.BuildDefault(member);
         var body = Expression.AndAlso(
             Expression.Equal(Expression.Property(row, nameof(DataValue.DataDefinitionId)), context.Parameterize(definitionId)),
-            context.BuildDefault(Expression.Property(row, column)));
+            predicate);
 
-        return context.Any(Expression.Property(context.Instance, nameof(Contact.DataValues)), Expression.Lambda(body, row));
+        var any = context.Any(Expression.Property(context.Instance, nameof(Contact.DataValues)), Expression.Lambda(body, row));
+        return missing ? Expression.Not(any) : any;
     }
 
     [Fact]

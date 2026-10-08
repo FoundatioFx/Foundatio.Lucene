@@ -226,12 +226,17 @@ static Expression? DataValueBuilder(CustomFieldContext context)
         || context.Field.Data["Column"] is not string column)
         return null;
 
+    // Missing means no row has a value, rather than a row whose column is null.
+    bool missing = context.Node is Foundatio.Lucene.Ast.MissingNode;
     var row = Expression.Parameter(typeof(DataValue), "dv");
+    var member = Expression.Property(row, column);
+    var predicate = missing ? Expression.NotEqual(member, Expression.Constant(null, member.Type)) : context.BuildDefault(member);
     var body = Expression.AndAlso(
         Expression.Equal(Expression.Property(row, nameof(DataValue.DataDefinitionId)), context.Parameterize(definitionId)),
-        context.BuildDefault(Expression.Property(row, column)));
+        predicate);
 
-    return context.Any(Expression.Property(context.Instance, nameof(Contact.DataValues)), Expression.Lambda(body, row));
+    var any = context.Any(Expression.Property(context.Instance, nameof(Contact.DataValues)), Expression.Lambda(body, row));
+    return missing ? Expression.Not(any) : any;
 }
 
 var parser = new EntityFrameworkQueryParser(c => c.UseCustomFieldExpressionBuilder(DataValueBuilder));
