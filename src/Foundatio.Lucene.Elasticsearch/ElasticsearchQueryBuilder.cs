@@ -484,11 +484,14 @@ internal static partial class ElasticsearchQueryBuilder
 
             var mapping = GetMapping(field);
             string? path = mapping?.NestedPath;
-            if (path is null || string.Equals(path, _currentNestedPath, StringComparison.Ordinal))
+            if (path is null)
                 return new Part(query);
 
-            // Inside an explicit nested group, a deeper nested field still needs its own nested query.
             var filter = context.GetNestedFilter(path, field);
+            if (string.Equals(path, _currentNestedPath, StringComparison.Ordinal))
+                return new Part(ApplyFilter(query, filter));
+
+            // Inside an explicit nested group, a deeper nested field still needs its own nested query.
             return new Part(new NestedQuery(path, ApplyFilter(query, filter)), path, IsNestedMergeable: true);
         }
 

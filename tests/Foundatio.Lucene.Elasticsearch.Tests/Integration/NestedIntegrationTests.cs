@@ -91,6 +91,37 @@ public sealed class NestedIntegrationTests(ElasticsearchFixture fixture)
         }
     }
 
+    [Theory]
+    [InlineData("resellers.price:10", false, "p1,p2,p4")]
+    [InlineData("resellers:(resellers.price:10)", false, "p1,p2,p4")]
+    [InlineData("resellers:(resellers.price:10)", true, "p2")]
+    [InlineData("resellers:(resellers.price:10 AND resellers.stock:5)", false, "p2")]
+    [InlineData("resellers:(resellers.price:10 OR resellers.stock:5)", false, "p1,p2,p4")]
+    public async Task BuildQueryAsync_WithGroupedLeafAndContainerFilters_ExcludesDisallowedNestedDocuments(string query, bool filterContainer, string expected)
+    {
+        // Arrange
+        var parser = new ElasticsearchQueryParser(c =>
+        {
+            c.UseMappings(NestedData.ResellerMapping);
+            c.NestedFilterResolver = (filter, _, _) => ValueTask.FromResult<Query?>(filter.ResolvedField switch
+            {
+                "resellers.price" or "resellers.stock" => (Query)new TermQuery("resellers.name", "Official"),
+                "resellers" when filterContainer => new TermQuery("resellers.stock", 5),
+                _ => null
+            });
+        });
+
+        foreach (bool scoring in new[] { false, true })
+        {
+            // Act
+            var result = await parser.BuildQueryAsync(query, new ElasticsearchQueryOptions { UseScoring = scoring }, TestContext.Current.CancellationToken);
+            string? matchingIds = await fixture.GetMatchingIdsAsync(NestedData.ResellerIndex, result, TestContext.Current.CancellationToken);
+
+            // Assert
+            Assert.Equal(expected, matchingIds);
+        }
+    }
+
     [Fact]
     public async Task BuildQueryAsync_WithNestedFilterPerDefaultField_MatchesOnlyTheRightDiscriminator()
     {

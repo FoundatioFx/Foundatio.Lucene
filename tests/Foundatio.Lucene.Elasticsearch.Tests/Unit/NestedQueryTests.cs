@@ -184,7 +184,114 @@ public class NestedQueryTests
 
         var result = await parser.BuildQueryAsync("resellers:(resellers.name:Official resellers.price:10)", cancellationToken: TestContext.Current.CancellationToken);
 
-        ElasticAssert.Json("{'nested':{'path':'resellers','query':{'bool':{'filter':{'term':{'resellers.name':{'value':'Official'}}},'must':{'bool':{'must':[{'term':{'resellers.name':{'value':'Official'}}},{'term':{'resellers.price':{'value':10}}}]}}}}}}", result);
+        ElasticAssert.Json("{'nested':{'path':'resellers','query':{'bool':{'filter':{'term':{'resellers.name':{'value':'Official'}}},'must':{'bool':{'must':[{'bool':{'must':{'term':{'resellers.name':{'value':'Official'}}},'filter':{'term':{'resellers.name':{'value':'Official'}}}}},{'bool':{'must':{'term':{'resellers.price':{'value':10}}},'filter':{'term':{'resellers.name':{'value':'Official'}}}}}]}}}}}}", result);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BuildQueryAsync_WithLeafFilterAndNestedGroup_PreservesUngroupedPredicate(bool scoring)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser(c => c.NestedFilterResolver = (filter, _, _) =>
+            ValueTask.FromResult<Query?>(filter.ResolvedField == "children.name" ? (Query)new TermQuery("children.num", 1) : null));
+        var options = new ElasticsearchQueryOptions { UseScoring = scoring };
+        const string nested = "{'nested':{'path':'children','query':{'bool':{'must':{'term':{'children.name':{'boost':2,'value':'x'}}},'filter':{'term':{'children.num':{'value':1}}}}}}}";
+        string expected = scoring ? nested : "{'bool':{'filter':" + nested + "}}";
+
+        // Act
+        var ungrouped = await parser.BuildQueryAsync("children.name:x^2", options, TestContext.Current.CancellationToken);
+        var grouped = await parser.BuildQueryAsync("children:(children.name:x^2)", options, TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json(expected, ungrouped);
+        ElasticAssert.Json(expected, grouped);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BuildQueryAsync_WithDistinctLeafAndContainerFilters_PreservesBothPredicates(bool scoring)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser(c => c.NestedFilterResolver = (filter, _, _) =>
+            ValueTask.FromResult<Query?>(filter.ResolvedField switch
+            {
+                "children" => (Query)new TermQuery("children.text", "container"),
+                "children.name" => new TermQuery("children.num", 1),
+                _ => null
+            }));
+        const string nested = "{'nested':{'path':'children','query':{'bool':{'must':{'bool':{'must':{'term':{'children.name':{'value':'x'}}},'filter':{'term':{'children.num':{'value':1}}}}},'filter':{'term':{'children.text':{'value':'container'}}}}}}}";
+        string expected = scoring ? nested : "{'bool':{'filter':" + nested + "}}";
+
+        // Act
+        var result = await parser.BuildQueryAsync("children:(children.name:x)", new ElasticsearchQueryOptions { UseScoring = scoring }, TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json(expected, result);
+    }
+
+    [Theory]
+    [InlineData("AND", false)]
+    [InlineData("AND", true)]
+    [InlineData("OR", false)]
+    [InlineData("OR", true)]
+    public async Task BuildQueryAsync_WithGroupedSiblingLeafFilters_PreservesEachPredicateAndCorrelation(string operation, bool scoring)
+    {
+        // Arrange
+        var parser = TestMapping.CreateParser(c => c.NestedFilterResolver = (filter, _, _) =>
+            ValueTask.FromResult<Query?>(filter.ResolvedField switch
+            {
+                "children.name" => (Query)new TermQuery("children.num", 1),
+                "children.num" => new TermQuery("children.name", "allowed"),
+                _ => null
+            }));
+        const string clauses = "[{'bool':{'must':{'term':{'children.name':{'value':'x'}}},'filter':{'term':{'children.num':{'value':1}}}}},{'bool':{'must':{'term':{'children.num':{'value':5}}},'filter':{'term':{'children.name':{'value':'allowed'}}}}}]";
+        string occur = operation == "OR" ? "'minimum_should_match':1,'should'" : scoring ? "'must'" : "'filter'";
+        string nested = "{'nested':{'path':'children','query':{'bool':{" + occur + ":" + clauses + "}}}}";
+        string expected = scoring ? nested : "{'bool':{'filter':" + nested + "}}";
+        var options = new ElasticsearchQueryOptions { UseScoring = scoring };
+
+        // Act
+        var grouped = await parser.BuildQueryAsync($"children:(children.name:x {operation} children.num:5)", options, TestContext.Current.CancellationToken);
+        var ungrouped = await parser.BuildQueryAsync($"children.name:x {operation} children.num:5", options, TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json(expected, grouped);
+        ElasticAssert.Json(expected, ungrouped);
+    }
+
+    [Theory]
+    [InlineData("children:(children.grand.name:x)")]
+    [InlineData("children:(children.grand:(children.grand.name:x))")]
+    public async Task BuildQueryAsync_WithDeeperGroupedLeafFilter_PreservesBothNestedPaths(string query)
+    {
+        // Arrange
+        var parser = TestMapping.CreateScoringParser(c => c.NestedFilterResolver = (filter, _, _) =>
+            ValueTask.FromResult<Query?>(filter.ResolvedField == "children.grand.name" ? (Query)new TermQuery("children.grand.name", "allowed") : null));
+
+        // Act
+        var result = await parser.BuildQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json("{'nested':{'path':'children','query':{'nested':{'path':'children.grand','query':{'bool':{'must':{'term':{'children.grand.name':{'value':'x'}}},'filter':{'term':{'children.grand.name':{'value':'allowed'}}}}}}}}}", result);
+    }
+
+    [Fact]
+    public async Task BuildQueryAsync_WithNestedDisabledAndLeafFilter_PreservesFlatQuery()
+    {
+        // Arrange
+        var parser = TestMapping.CreateScoringParser(c =>
+        {
+            c.UseNested = false;
+            c.NestedFilterResolver = (_, _, _) => ValueTask.FromResult<Query?>(new TermQuery("children.num", 1));
+        });
+
+        // Act
+        var result = await parser.BuildQueryAsync("children:(children.name:x)", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json("{'term':{'children.name':{'value':'x'}}}", result);
     }
 
     [Fact]
@@ -202,12 +309,14 @@ public class NestedQueryTests
         ElasticAssert.Json("{'bool':{'must':[{'nested':{'path':'resellers','query':{'bool':{'filter':{'term':{'resellers.name':{'value':'Official'}}},'must':{'term':{'resellers.price':{'value':10}}}}}}},{'nested':{'path':'children','query':{'bool':{'filter':{'term':{'children.name':{'value':'sale'}}},'must':{'term':{'children.num':{'value':1}}}}}}}]}}", result);
     }
 
-    [Fact]
-    public async Task BuildQueryAsync_WithNestedFilterResolverReturningNull_ProducesUnfilteredNestedQuery()
+    [Theory]
+    [InlineData("resellers.price:10")]
+    [InlineData("resellers:(resellers.price:10)")]
+    public async Task BuildQueryAsync_WithNestedFilterResolverReturningNull_ProducesUnfilteredNestedQuery(string query)
     {
         var parser = TestMapping.CreateScoringParser(c => c.NestedFilterResolver = (_, _, _) => ValueTask.FromResult<Query?>(null));
 
-        var result = await parser.BuildQueryAsync("resellers.price:10", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await parser.BuildQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         ElasticAssert.Json("{'nested':{'path':'resellers','query':{'term':{'resellers.price':{'value':10}}}}}", result);
     }
