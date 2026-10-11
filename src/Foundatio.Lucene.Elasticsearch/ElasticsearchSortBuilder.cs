@@ -55,7 +55,13 @@ internal static class ElasticsearchSortBuilder
                 if (fieldType == FieldType.GeoPoint)
                 {
                     if (ParseLocation(value, field, context) is { } location)
-                        sorts.Add(new SortOptions { GeoDistance = new GeoDistanceSort { Field = sortField, Location = [location], Order = order, DistanceType = GeoDistanceType.Arc } });
+                    {
+                        var geoSort = new GeoDistanceSort { Field = sortField, Location = [location], Order = order, DistanceType = GeoDistanceType.Arc };
+                        if (context.UseNested && resolver?.GetMapping(field.Field, followAlias: true) is { NestedPath: { } geoNestedPath } geoMapping)
+                            geoSort.Nested = BuildNestedSort(geoMapping.NestedPathChain, context.GetNestedFilter(geoNestedPath, field.Field));
+
+                        sorts.Add(new SortOptions { GeoDistance = geoSort });
+                    }
                 }
                 else
                     context.ValidationResult.AddError($"Sort values are only supported on geo_point fields, where they sort by distance ({field.OriginalField}:{value}).", field.Position, QueryErrorCode.UnsupportedQueryType);

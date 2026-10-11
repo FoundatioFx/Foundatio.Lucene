@@ -1,3 +1,4 @@
+using Elastic.Clients.Elasticsearch.Mapping;
 using Elastic.Clients.Elasticsearch.QueryDsl;
 using Foundatio.Lucene.Elasticsearch.Tests.Utility;
 
@@ -46,6 +47,116 @@ public class SortBuilderTests
         var result = parser.BuildSort(sort);
 
         ElasticAssert.Json(expected, result);
+    }
+
+    [Theory]
+    [InlineData("geo", true, false, "")]
+    [InlineData("geo", true, true, "")]
+    [InlineData("places.geo", true, false, ",'nested':{'path':'places'}")]
+    [InlineData("places.geo", true, true, ",'nested':{'path':'places'}")]
+    [InlineData("places.inner.geo", true, false, ",'nested':{'path':'places','nested':{'path':'places.inner'}}")]
+    [InlineData("places.inner.geo", true, true, ",'nested':{'path':'places','nested':{'path':'places.inner'}}")]
+    [InlineData("places.geo", false, false, "")]
+    [InlineData("places.inner.geo", false, true, "")]
+    public void BuildSort_WithMappedGeoField_PreservesNestedPolicyAndSortOrder(string mappedField, bool useNested, bool useScoring, string nestedJson)
+    {
+        // Arrange
+        var parser = new ElasticsearchQueryParser(c =>
+        {
+            c.UseMappings(CreateGeoSortMapping());
+            c.FieldMap = new FieldMap { { "location", mappedField } };
+            c.UseNested = useNested;
+            c.UseScoring = useScoring;
+        });
+
+        // Act
+        var result = parser.BuildSort("-_score -location:\"51.5,-0.12\" +location:u4pruydqqvj");
+
+        // Assert
+        ElasticAssert.Json($$$$"""
+            [
+                {'_score':{'order':'desc'}},
+                {'_geo_distance':{'distance_type':'arc','order':'desc','{{{{mappedField}}}}':{'lat':51.5,'lon':-0.12}{{{{nestedJson}}}}}},
+                {'_geo_distance':{'distance_type':'arc','order':'asc','{{{{mappedField}}}}':'u4pruydqqvj'{{{{nestedJson}}}}}}
+            ]
+            """, result);
+    }
+
+    [Theory]
+    [InlineData("places", true)]
+    [InlineData("places.inner", true)]
+    [InlineData("places", false)]
+    [InlineData("places.inner", false)]
+    public async Task BuildSortAsync_WithNestedGeoFields_PreservesResolvedFieldFilters(string nestedPath, bool hasFilter)
+    {
+        // Arrange
+        var resolved = new List<NestedFilterContext>();
+        var parser = new ElasticsearchQueryParser(c =>
+        {
+            c.UseMappings(CreateGeoSortMapping());
+            c.FieldMap = new FieldMap { { "location", nestedPath + ".geo" }, { "other", nestedPath + ".otherGeo" } };
+            c.NestedFilterResolver = (filter, _, _) =>
+            {
+                resolved.Add(filter);
+                return ValueTask.FromResult<Query?>(hasFilter ? (Query)new TermQuery(filter.NestedPath + ".name", filter.ResolvedField) : null);
+            };
+        });
+
+        // Act
+        var result = await parser.BuildSortAsync("location:u4pruydqqvj -other:u4pruydqqvj", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains(new NestedFilterContext(nestedPath, "location", nestedPath + ".geo"), resolved);
+        Assert.Contains(new NestedFilterContext(nestedPath, "other", nestedPath + ".otherGeo"), resolved);
+        var expected = new List<string>();
+        foreach (var (field, order) in new[] { ("geo", "asc"), ("otherGeo", "desc") })
+        {
+            string filter = hasFilter ? $$$$""",'filter':{'term':{'{{{{nestedPath}}}}.name':{'value':'{{{{nestedPath}}}}.{{{{field}}}}'}}}""" : "";
+            string nested = $$$$"""{'path':'{{{{nestedPath}}}}'{{{{filter}}}}}""";
+            if (nestedPath == "places.inner")
+                nested = $$$$"""{'path':'places','nested':{{{{nested}}}}}""";
+            expected.Add($$$$"""{'_geo_distance':{'distance_type':'arc','order':'{{{{order}}}}','{{{{nestedPath}}}}.{{{{field}}}}':'u4pruydqqvj','nested':{{{{nested}}}}}}""");
+        }
+        ElasticAssert.Json("[" + string.Join(',', expected) + "]", result);
+    }
+
+    [Fact]
+    public async Task BuildSortAsync_WithNestedGeoDisabled_DoesNotResolveOrEmitNestedFilter()
+    {
+        // Arrange
+        var parser = new ElasticsearchQueryParser(c =>
+        {
+            c.UseMappings(CreateGeoSortMapping());
+            c.UseNested = false;
+            c.NestedFilterResolver = (_, _, _) => throw new InvalidOperationException("Nested filters should not be resolved.");
+        });
+
+        // Act
+        var result = await parser.BuildSortAsync("places.inner.geo:u4pruydqqvj", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        ElasticAssert.Json("[{'_geo_distance':{'distance_type':'arc','order':'asc','places.inner.geo':'u4pruydqqvj'}}]", result);
+    }
+
+    private static TypeMapping CreateGeoSortMapping()
+    {
+        var mapping = TestMapping.Create();
+        mapping.Properties!.Add("places", new NestedProperty
+        {
+            Properties = new Properties
+            {
+                { "geo", new GeoPointProperty() },
+                { "otherGeo", new GeoPointProperty() },
+                { "name", new KeywordProperty() },
+                { "inner", new NestedProperty { Properties = new Properties
+                {
+                    { "geo", new GeoPointProperty() },
+                    { "otherGeo", new GeoPointProperty() },
+                    { "name", new KeywordProperty() }
+                } } }
+            }
+        });
+        return mapping;
     }
 
     [Theory]
