@@ -1,377 +1,352 @@
-using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Foundatio.Lucene.Ast;
 
 namespace Foundatio.Lucene;
 
 /// <summary>
-/// Converts a query AST back to a Lucene query string.
+/// Converts a query AST back into Lucene query text. The output parses (with the same default operator) back into
+/// a semantically equivalent tree; the operators and prefixes the user wrote are preserved where they are still valid.
 /// </summary>
-public class QueryStringBuilder
+public sealed class QueryStringBuilder
 {
     private readonly StringBuilder _builder;
+    private readonly BooleanOperator _defaultOperator;
 
     /// <summary>
-    /// Creates a new QueryStringBuilder instance.
+    /// Creates a builder that assumes the default parser options.
     /// </summary>
-    public QueryStringBuilder()
+    public QueryStringBuilder() : this(LuceneParserOptions.Default.DefaultOperator)
     {
-        _builder = new StringBuilder();
     }
 
     /// <summary>
-    /// Creates a new QueryStringBuilder with pre-allocated capacity.
+    /// Creates a builder for text that will be parsed with the specified default operator.
     /// </summary>
-    /// <param name="capacity">Initial capacity for the string builder.</param>
-    public QueryStringBuilder(int capacity)
+    public QueryStringBuilder(BooleanOperator defaultOperator, int capacity = 256)
     {
+        _defaultOperator = defaultOperator == BooleanOperator.Implicit ? LuceneParserOptions.Default.DefaultOperator : defaultOperator;
         _builder = new StringBuilder(capacity);
     }
 
     /// <summary>
-    /// Converts a query node to its string representation.
+    /// Converts a node to query text, assuming the default parser options.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string ToQueryString(QueryNode node)
-    {
-        return new QueryStringBuilder().Visit(node);
-    }
+    public static string ToQueryString(QueryNode node) => new QueryStringBuilder().Build(node);
 
     /// <summary>
-    /// Visits a node and returns its string representation.
+    /// Converts a node to query text that will be parsed with the specified default operator.
     /// </summary>
-    public string Visit(QueryNode node)
+    public static string ToQueryString(QueryNode node, BooleanOperator defaultOperator) => new QueryStringBuilder(defaultOperator).Build(node);
+
+    /// <summary>
+    /// Converts a node to query text.
+    /// </summary>
+    public string Build(QueryNode node)
     {
+        ArgumentNullException.ThrowIfNull(node);
         _builder.Clear();
-        AppendNode(node);
+        Append(node);
         return _builder.ToString();
     }
 
-    /// <summary>
-    /// Appends a node to the internal buffer. Call ToString() or Visit() to get the result.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendNode(QueryNode? node)
+    private void Append(QueryNode? node)
     {
-        if (node is null)
-            return;
-
         switch (node)
         {
-            case QueryDocument doc:
-                AppendNode(doc.Query);
+            case null:
+                break;
+            case QueryDocument document:
+                Append(document.Query);
                 break;
             case GroupNode group:
-                AppendGroup(group);
+                _builder.Append('(');
+                Append(group.Query);
+                _builder.Append(')');
+                AppendBoost(group.BoostText);
                 break;
-            case BooleanQueryNode boolQuery:
-                AppendBooleanQuery(boolQuery);
+            case BooleanQueryNode boolean:
+                AppendBoolean(boolean);
                 break;
-            case FieldQueryNode fieldQuery:
-                AppendFieldQuery(fieldQuery);
+            case NotNode not:
+                _builder.Append("NOT ");
+                AppendOperand(not.Query);
+                break;
+            case FieldQueryNode field:
+                AppendFieldName(field.Field);
+                _builder.Append(':');
+                if (field.Query is BooleanQueryNode or NotNode)
+                {
+                    _builder.Append('(');
+                    Append(field.Query);
+                    _builder.Append(')');
+                }
+                else
+                {
+                    Append(field.Query);
+                }
                 break;
             case TermNode term:
-                AppendTerm(term);
+                // A lone +, -, or ! is literal text only when followed by whitespace; escape it so modifiers
+                // written after it cannot turn it into an operator.
+                if (term.Term is "+" or "-" or "!" or "&&" or "||" && !term.IsPrefix)
+                    _builder.Append('\\');
+                _builder.Append(term.Term);
+                if (term.IsPrefix)
+                    _builder.Append('*');
+                AppendProximity(term.ProximityText);
+                AppendBoost(term.BoostText);
                 break;
             case PhraseNode phrase:
-                AppendPhrase(phrase);
+                _builder.Append('"').Append(QueryText.EscapePhrase(phrase.Phrase)).Append('"');
+                AppendProximity(phrase.ProximityText);
+                AppendBoost(phrase.BoostText);
                 break;
             case RegexNode regex:
-                AppendRegex(regex);
+                _builder.Append('/').Append(regex.Pattern).Append('/');
+                AppendBoost(regex.BoostText);
                 break;
             case RangeNode range:
                 AppendRange(range);
                 break;
-            case NotNode not:
-                AppendNot(not);
+            case ExistsNode exists when exists.IsExistsSyntax:
+                _builder.Append("_exists_:");
+                AppendFieldName(exists.Field);
                 break;
             case ExistsNode exists:
-                AppendExists(exists);
+                AppendFieldName(exists.Field);
+                _builder.Append(":*");
                 break;
             case MissingNode missing:
-                AppendMissing(missing);
+                _builder.Append("_missing_:");
+                AppendFieldName(missing.Field);
                 break;
             case MatchAllNode:
                 _builder.Append("*:*");
                 break;
-            case MultiTermNode multiTerm:
-                AppendMultiTerm(multiTerm);
+            default:
+                throw new NotSupportedException($"Cannot convert node type '{node.GetType().Name}' to query text.");
+        }
+    }
+
+    private void AppendBoolean(BooleanQueryNode node)
+    {
+        var clauses = node.Clauses;
+        if (clauses.Count == 0)
+            return;
+
+        // A node without should clauses has AND semantics; any should clause means it is an OR level.
+        bool isAndLevel = true;
+        foreach (var clause in clauses)
+        {
+            if (clause.Occur == Occur.Should)
+            {
+                isAndLevel = false;
+                break;
+            }
+        }
+
+        for (int i = 0; i < clauses.Count; i++)
+        {
+            var clause = clauses[i];
+            if (i > 0)
+                AppendOperator(clause, isAndLevel);
+
+            AppendClause(clause, isAndLevel);
+        }
+    }
+
+    private void AppendOperator(BooleanClause clause, bool isAndLevel)
+    {
+        var levelOperator = isAndLevel ? BooleanOperator.And : BooleanOperator.Or;
+        if (clause.Operator == BooleanOperator.Implicit && _defaultOperator == levelOperator)
+            _builder.Append(' ');
+        else
+            _builder.Append(isAndLevel ? " AND " : " OR ");
+    }
+
+    private void AppendClause(BooleanClause clause, bool isAndLevel)
+    {
+        switch (clause.Occur)
+        {
+            case Occur.Must when !isAndLevel || clause.Modifier == ClauseModifier.Plus:
+                _builder.Append('+');
+                break;
+            case Occur.MustNot:
+                _builder.Append(clause.Modifier switch
+                {
+                    ClauseModifier.Not => "NOT ",
+                    ClauseModifier.Bang => "!",
+                    _ => "-"
+                });
                 break;
         }
-    }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendGroup(GroupNode node)
-    {
-        _builder.Append('(');
-        AppendNode(node.Query);
-        _builder.Append(')');
-        AppendBoost(node.Boost);
-    }
-
-    private void AppendBooleanQuery(BooleanQueryNode node)
-    {
-        if (node.Clauses.Count == 0)
-            return;
-
-        bool isFirst = true;
-
-        for (int i = 0; i < node.Clauses.Count; i++)
+        // An OR level nested directly inside an AND level (or under a prefix) needs parentheses to keep its meaning.
+        bool hasPrefix = clause.Occur == Occur.MustNot || clause.Occur == Occur.Must && (!isAndLevel || clause.Modifier == ClauseModifier.Plus);
+        if (clause.Query is BooleanQueryNode child && (isAndLevel || hasPrefix || !IsAndLevel(child)))
         {
-            var clause = node.Clauses[i];
-            if (clause.Query is null)
-                continue;
-
-            // Track position before appending to check if anything was written
-            int positionBefore = _builder.Length;
-
-            // Add operator before clause (except for first written clause)
-            if (!isFirst)
-            {
-                switch (clause.Operator)
-                {
-                    case BooleanOperator.And:
-                        _builder.Append(" AND ");
-                        break;
-                    case BooleanOperator.Or:
-                        _builder.Append(" OR ");
-                        break;
-                    default:
-                        _builder.Append(' ');
-                        break;
-                }
-            }
-
-            // Determine if we need a +/- prefix
-            if (clause.Occur == Occur.MustNot)
-            {
-                _builder.Append('-');
-            }
-            else if (clause.Occur == Occur.Must && clause.Operator != BooleanOperator.And)
-            {
-                bool isPartOfAndChain = i + 1 < node.Clauses.Count &&
-                                        node.Clauses[i + 1].Operator == BooleanOperator.And;
-                if (!isPartOfAndChain)
-                {
-                    _builder.Append('+');
-                }
-            }
-
-            int positionBeforeQuery = _builder.Length;
-            AppendNode(clause.Query);
-
-            // Check if query actually produced output
-            if (_builder.Length > positionBeforeQuery)
-            {
-                isFirst = false;
-            }
-            else
-            {
-                // Nothing was written, revert any operator/prefix we added
-                _builder.Length = positionBefore;
-            }
+            _builder.Append('(');
+            AppendBoolean(child);
+            _builder.Append(')');
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendFieldQuery(FieldQueryNode node)
-    {
-        _builder.Append(node.Field);
-        _builder.Append(':');
-
-        if (node.IsExists)
+        else if (clause.Query is NotNode && hasPrefix)
         {
-            _builder.Append('*');
+            _builder.Append('(');
+            Append(clause.Query);
+            _builder.Append(')');
         }
         else
         {
-            AppendNode(node.Query);
+            Append(clause.Query);
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendTerm(TermNode node)
+    private void AppendOperand(QueryNode? node)
     {
-        AppendEscapedTermValue(node.Term);
-
-        if (node.IsPrefix)
+        if (node is BooleanQueryNode or NotNode)
         {
-            _builder.Append('*');
-        }
-
-        if (node.FuzzyDistance.HasValue)
-        {
-            _builder.Append('~');
-            if (node.FuzzyDistance.Value != TermNode.DefaultFuzzyDistance)
-            {
-                _builder.Append(node.FuzzyDistance.Value);
-            }
-        }
-
-        AppendBoost(node.Boost);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendPhrase(PhraseNode node)
-    {
-        _builder.Append('"');
-        _builder.Append(node.Phrase);
-        _builder.Append('"');
-
-        if (node.Slop.HasValue)
-        {
-            _builder.Append('~');
-            _builder.Append(node.Slop.Value);
-        }
-
-        AppendBoost(node.Boost);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendRegex(RegexNode node)
-    {
-        _builder.Append('/');
-        _builder.Append(node.Pattern);
-        _builder.Append('/');
-        AppendBoost(node.Boost);
-    }
-
-    private void AppendRange(RangeNode node)
-    {
-        // Handle short-form ranges
-        if (node.Operator.HasValue)
-        {
-            switch (node.Operator.Value)
-            {
-                case RangeOperator.GreaterThan:
-                    _builder.Append('>');
-                    AppendEscapedTermValue(node.Min ?? "*");
-                    break;
-                case RangeOperator.GreaterThanOrEqual:
-                    _builder.Append(">=");
-                    AppendEscapedTermValue(node.Min ?? "*");
-                    break;
-                case RangeOperator.LessThan:
-                    _builder.Append('<');
-                    AppendEscapedTermValue(node.Max ?? "*");
-                    break;
-                case RangeOperator.LessThanOrEqual:
-                    _builder.Append("<=");
-                    AppendEscapedTermValue(node.Max ?? "*");
-                    break;
-            }
+            _builder.Append('(');
+            Append(node);
+            _builder.Append(')');
         }
         else
         {
-            // Standard range syntax — values inside brackets don't need escaping
-            // since they're delimited by [ ] { } and TO keyword
-            _builder.Append(node.MinInclusive ? '[' : '{');
-            _builder.Append(node.Min ?? "*");
+            Append(node);
+        }
+    }
+
+    private static bool IsAndLevel(BooleanQueryNode node)
+    {
+        foreach (var clause in node.Clauses)
+        {
+            if (clause.Occur == Occur.Should)
+                return false;
+        }
+
+        return true;
+    }
+
+    private void AppendRange(RangeNode range)
+    {
+        if (range.Operator is { } op && IsConsistentShortRange(range, op))
+        {
+            _builder.Append(op switch
+            {
+                RangeOperator.GreaterThan => ">",
+                RangeOperator.GreaterThanOrEqual => ">=",
+                RangeOperator.LessThan => "<",
+                _ => "<="
+            });
+            AppendRangeValue(op is RangeOperator.GreaterThan or RangeOperator.GreaterThanOrEqual ? range.Min : range.Max, isShortRange: true);
+        }
+        else
+        {
+            _builder.Append(range.MinInclusive ? '[' : '{');
+            AppendRangeValue(range.Min, isShortRange: false);
             _builder.Append(" TO ");
-            _builder.Append(node.Max ?? "*");
-            _builder.Append(node.MaxInclusive ? ']' : '}');
+            AppendRangeValue(range.Max, isShortRange: false);
+            _builder.Append(range.MaxInclusive ? ']' : '}');
         }
 
-        AppendBoost(node.Boost);
+        AppendProximity(range.ProximityText);
+        AppendBoost(range.BoostText);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendNot(NotNode node)
+    private static bool IsConsistentShortRange(RangeNode range, RangeOperator op)
     {
-        _builder.Append("NOT ");
-        AppendNode(node.Query);
+        return op switch
+        {
+            RangeOperator.GreaterThan => range.Min is not null && range.Max is null && !range.MinInclusive,
+            RangeOperator.GreaterThanOrEqual => range.Min is not null && range.Max is null && range.MinInclusive,
+            RangeOperator.LessThan => range.Max is not null && range.Min is null && !range.MaxInclusive,
+            _ => range.Max is not null && range.Min is null && range.MaxInclusive
+        };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendExists(ExistsNode node)
-    {
-        if (node.IsExistsSyntax)
-        {
-            _builder.Append("_exists_:");
-            _builder.Append(node.Field);
-        }
-        else
-        {
-            _builder.Append(node.Field);
-            _builder.Append(":*");
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendMissing(MissingNode node)
-    {
-        _builder.Append("_missing_:");
-        _builder.Append(node.Field);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendMultiTerm(MultiTermNode node)
-    {
-        _builder.Append(node.CombinedText);
-
-        if (node.FuzzyDistance.HasValue)
-        {
-            _builder.Append('~');
-            if (node.FuzzyDistance.Value != TermNode.DefaultFuzzyDistance)
-            {
-                _builder.Append(node.FuzzyDistance.Value);
-            }
-        }
-
-        AppendBoost(node.Boost);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendBoost(float? boost)
-    {
-        if (boost.HasValue)
-        {
-            _builder.Append('^');
-            AppendFloat(boost.Value);
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AppendFloat(float value)
-    {
-        // Fast path for common integer values
-        if (value == (int)value && value >= 0 && value <= 99)
-        {
-            _builder.Append((int)value);
-        }
-        else
-        {
-            _builder.Append(value.ToString("0.##", CultureInfo.InvariantCulture));
-        }
-    }
-
-    /// <summary>
-    /// Appends a term value, escaping any characters that are special in Lucene query syntax.
-    /// This ensures round-trip fidelity when the lexer has already unescaped the value.
-    /// </summary>
-    private void AppendEscapedTermValue(string? value)
+    private void AppendRangeValue(string? value, bool isShortRange)
     {
         if (value is null)
-            return;
-
-        foreach (char c in value)
         {
-            if (IsSpecialTermChar(c))
-                _builder.Append('\\');
+            _builder.Append('*');
+            return;
+        }
 
+        if (NeedsQuotes(value, isShortRange))
+            _builder.Append('"').Append(QueryText.EscapePhrase(value)).Append('"');
+        else
+            _builder.Append(value);
+    }
+
+    private static bool NeedsQuotes(string value, bool isShortRange)
+    {
+        if (value.Length == 0 || value == "*" || value == "TO" || value.Contains("..", StringComparison.Ordinal))
+            return true;
+
+        // A short range value starting with '=' would merge with the operator (<=, >=).
+        if (isShortRange && value[0] == '=')
+            return true;
+
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (char.IsWhiteSpace(c) || c is '[' or ']' or '{' or '}' or '(' or ')' or '"' or '^' or '~' or '\\')
+                return true;
+
+            // Short range values end at a colon unless it separates digits (a time such as 10:30:00).
+            if (isShortRange && c == ':' && (i == 0 || i == value.Length - 1 || !char.IsAsciiDigit(value[i - 1]) || !char.IsAsciiDigit(value[i + 1])))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void AppendFieldName(string field)
+    {
+        for (int i = 0; i < field.Length; i++)
+        {
+            char c = field[i];
+            bool special = char.IsWhiteSpace(c) || c is ':' or '\\' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~'
+                || i == 0 && c is '+' or '-' or '!' or '/' or '>' or '<';
+            if (special)
+                _builder.Append('\\');
             _builder.Append(c);
         }
     }
 
-    /// <summary>
-    /// Returns true if the character requires escaping inside an unquoted term value.
-    /// These are characters that would terminate or alter term tokenization.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsSpecialTermChar(char c)
+    private void AppendProximity(string? proximity)
     {
-        return c is ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' or '>' or '<' or '=' or '\\'
-            || char.IsWhiteSpace(c);
+        if (proximity is null)
+            return;
+
+        _builder.Append('~');
+        if (proximity.Length > 0)
+            AppendModifierValue(proximity);
+    }
+
+    private void AppendBoost(string? boost)
+    {
+        if (boost is null)
+            return;
+
+        _builder.Append('^');
+        AppendModifierValue(boost);
+    }
+
+    private void AppendModifierValue(string value)
+    {
+        bool needsQuotes = value.Length == 0;
+        foreach (char c in value)
+        {
+            if (char.IsWhiteSpace(c) || c is ':' or '(' or ')' or '[' or ']' or '{' or '}' or '"' or '^' or '~' or '\\')
+            {
+                needsQuotes = true;
+                break;
+            }
+        }
+
+        if (needsQuotes)
+            _builder.Append('"').Append(QueryText.EscapePhrase(value)).Append('"');
+        else
+            _builder.Append(value);
     }
 }

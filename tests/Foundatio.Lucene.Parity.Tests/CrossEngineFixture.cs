@@ -1,6 +1,7 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Elastic.Clients.Elasticsearch;
+using Elastic.Clients.Elasticsearch.Mapping;
 using Elastic.Transport;
 using Foundatio.Lucene.Elasticsearch;
 using Foundatio.Lucene.EntityFramework;
@@ -26,31 +27,42 @@ public class CrossEngineFixture : IAsyncLifetime
     private ElasticsearchClient _esClient = null!;
     private string _connectionString = null!;
 
-    // Names and categories are deliberately distinct, non-substring values so SQL Contains and ES
-    // keyword term matching agree (true result-set parity for equality queries). Dates sit well
-    // inside the test range boundaries so inclusive/exclusive day rounding never flips a result.
+    // Names and categories are distinct, non-substring values so SQL equality and Elasticsearch keyword terms agree.
+    // Two documents share a creation day and an age so ties and whole-day date rounding are exercised.
     private static readonly Doc[] SeedDocs =
     [
-        new() { Id = 1, Name = "alpha",   Category = "engineering", Age = 30, Salary = 80000,  Active = true,  Created = new DateTime(2020, 6, 15), Notes = "note-one" },
-        new() { Id = 2, Name = "bravo",   Category = "sales",       Age = 35, Salary = 95000,  Active = true,  Created = new DateTime(2019, 3, 10), Notes = null },
-        new() { Id = 3, Name = "charlie", Category = "research",    Age = 40, Salary = 110000, Active = true,  Created = new DateTime(2018, 9, 20), Notes = "note-three" },
-        new() { Id = 4, Name = "delta",   Category = "engineering", Age = 25, Salary = 55000,  Active = false, Created = new DateTime(2022, 11, 5), Notes = null },
-        new() { Id = 5, Name = "echo",    Category = "research",    Age = 50, Salary = 130000, Active = false, Created = new DateTime(2021, 1, 25), Notes = "note-five" },
+        new() { Id = 1, Name = "alpha",   Category = "engineering", Age = 30, Salary = 80000,  Balance = 100,  Active = true,  Created = new DateTime(2020, 6, 15), Notes = "note-one" },
+        new() { Id = 2, Name = "bravo",   Category = "sales",       Age = 35, Salary = 95000,  Balance = 50,   Active = true,  Created = new DateTime(2019, 3, 10), Notes = null },
+        new() { Id = 3, Name = "charlie", Category = "research",    Age = 40, Salary = 110000, Balance = 10,   Active = true,  Created = new DateTime(2018, 9, 20), Notes = "note-three" },
+        new() { Id = 4, Name = "delta",   Category = "engineering", Age = 25, Salary = 55000,  Balance = -50,  Active = false, Created = new DateTime(2022, 11, 5), Notes = null },
+        new() { Id = 5, Name = "echo",    Category = "research",    Age = 50, Salary = 130000, Balance = 200,  Active = false, Created = new DateTime(2021, 1, 25), Notes = "note-five" },
+        new() { Id = 6, Name = "foxtrot", Category = "sales",       Age = 30, Salary = 100000, Balance = 0,    Active = false, Created = new DateTime(2020, 6, 15), Notes = "note-six" },
+        new() { Id = 7, Name = "gamma",   Category = "engineering", Age = 22, Salary = 60000,  Balance = -100, Active = true,  Created = new DateTime(2023, 2, 1),  Notes = null },
+        new() { Id = 8, Name = "hotel",   Category = "research",    Age = 45, Salary = 150000, Balance = 300,  Active = false, Created = new DateTime(2017, 12, 31), Notes = null },
     ];
 
-    public EntityFrameworkQueryParser EfParser { get; } = new();
+    private static readonly Dictionary<string, string> Includes = new() { ["seniors"] = "age:>=40" };
 
+    private static readonly FieldMap Aliases = new() { { "dept", "category" } };
+
+    public EntityFrameworkQueryParser EfParser { get; } = new(c =>
+    {
+        c.Includes = Includes;
+        c.FieldMap = Aliases;
+    });
+
+    // Filter context (term/range) with the index mapping, so keyword fields use exact term matching like SQL
+    // equality and date fields produce real date range queries.
     public ElasticsearchQueryParser EsParser { get; } = new(c =>
     {
-        // Filter context (term/range) so string equality matches SQL's exact-ish Contains on the
-        // non-substring test data, and date fields produce real date range queries.
-        c.UseScoring = false;
-        c.IsDateField = f => string.Equals(f, "created", StringComparison.OrdinalIgnoreCase);
+        c.UseMappings(CreateMapping());
+        c.Includes = Includes;
+        c.FieldMap = Aliases;
     });
 
     public CrossEngineFixture()
     {
-        _sql = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+        _sql = new MsSqlBuilder("concordservicing/sqlserver-fts:2022-latest").Build();
 
         // Testcontainers.Elasticsearch does not yet support 9.x, so build the container directly
         // (mirrors the Elasticsearch.Tests fixture).
@@ -95,8 +107,7 @@ public class CrossEngineFixture : IAsyncLifetime
     public List<int> QuerySql(string query)
     {
         using var db = CreateDb();
-        var filter = EfParser.BuildFilter<Doc>(query);
-        return db.Docs.Where(filter).Select(d => d.Id).ToList();
+        return db.Docs.Where(query, EfParser).Select(d => d.Id).ToList();
     }
 
     /// <summary>Runs the query through the ES parser against Elasticsearch and returns matching ids.</summary>
@@ -114,6 +125,44 @@ public class CrossEngineFixture : IAsyncLifetime
         return response.Documents.Select(d => d.Id).ToList();
     }
 
+    /// <summary>Sorts all documents through the EF parser against SQL Server and returns the ids in order.</summary>
+    public List<int> SortSql(string sort)
+    {
+        using var db = CreateDb();
+        return db.Docs.OrderBy(sort, EfParser).Select(d => d.Id).ToList();
+    }
+
+    /// <summary>Sorts all documents through the ES parser against Elasticsearch and returns the ids in order.</summary>
+    public async Task<List<int>> SortElasticsearchAsync(string sort)
+    {
+        var sortOptions = EsParser.BuildSort(sort);
+        var response = await _esClient.SearchAsync<Doc>(s => s
+            .Indices(IndexName)
+            .Size(100)
+            .Sort(sortOptions));
+
+        if (!response.IsValidResponse)
+            throw new InvalidOperationException($"Elasticsearch sort failed: {response.DebugInformation}");
+
+        return response.Documents.Select(d => d.Id).ToList();
+    }
+
+    private static TypeMapping CreateMapping() => new()
+    {
+        Properties = new Properties
+        {
+            { "id", new IntegerNumberProperty() },
+            { "name", new KeywordProperty() },
+            { "category", new KeywordProperty() },
+            { "age", new IntegerNumberProperty() },
+            { "salary", new DoubleNumberProperty() },
+            { "balance", new IntegerNumberProperty() },
+            { "active", new BooleanProperty() },
+            { "created", new DateProperty() },
+            { "notes", new KeywordProperty() }
+        }
+    };
+
     private ParityDbContext CreateDb()
         => new(new DbContextOptionsBuilder<ParityDbContext>().UseSqlServer(_connectionString).Options);
 
@@ -127,17 +176,7 @@ public class CrossEngineFixture : IAsyncLifetime
 
     private async Task SeedElasticsearchAsync()
     {
-        var create = await _esClient.Indices.CreateAsync<Doc>(IndexName, c => c
-            .Mappings(m => m
-                .Properties(p => p
-                    .IntegerNumber(d => d.Id)
-                    .Keyword(d => d.Name)
-                    .Keyword(d => d.Category)
-                    .IntegerNumber(d => d.Age)
-                    .DoubleNumber(d => d.Salary)
-                    .Boolean(d => d.Active)
-                    .Date(d => d.Created)
-                    .Keyword(d => d.Notes!))));
+        var create = await _esClient.Indices.CreateAsync(IndexName, c => c.Mappings(CreateMapping()));
 
         if (!create.IsValidResponse)
             throw new InvalidOperationException($"Failed to create index: {create.DebugInformation}");
@@ -160,6 +199,7 @@ public class Doc
     public string Category { get; set; } = "";
     public int Age { get; set; }
     public double Salary { get; set; }
+    public int Balance { get; set; }
     public bool Active { get; set; }
     public DateTime Created { get; set; }
     public string? Notes { get; set; }

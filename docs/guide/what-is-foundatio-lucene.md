@@ -1,135 +1,41 @@
 # What is Foundatio.Lucene?
 
-Foundatio.Lucene is a library for adding dynamic Lucene-style query capabilities to your .NET applications. It enables your users to write powerful search queries using familiar Lucene syntax, with built-in support for Entity Framework Core and Elasticsearch.
-
-## Why Lucene Query Syntax?
-
-Lucene query syntax is a widely-adopted standard for search queries. Users familiar with tools like Elasticsearch, Kibana, or Apache Solr will feel right at home. The syntax is powerful yet intuitive:
+Foundatio.Lucene lets the users of your application write search and filter queries in Lucene syntax — the syntax of Elasticsearch's `query_string`, Kibana, and Solr — and turns them into Elasticsearch queries or Entity Framework Core LINQ expressions. It also parses sort and aggregation expressions in the same syntax.
 
 ```
-title:hello AND (status:active OR priority:[1 TO 5])
+type:error AND (status:open OR status:regressed) AND created:[now-7d TO now] -tags:ignore
 ```
 
-## How It Works
+It is the successor to [Foundatio.Parsers](https://github.com/FoundatioFx/Foundatio.Parsers), with the same features, much better performance, and stricter, precisely specified behavior.
+
+## How it works
 
 ```mermaid
 graph LR
-    A[Query String] --> B[Lexer]
-    B --> C[Parser]
-    C --> D[AST]
-    D --> E[Visitors]
-    E --> F[Output]
-    F --> G[LINQ Expression]
-    F --> H[Elasticsearch Query]
-    F --> I[Query String]
+    A[Query text] --> B[Parse]
+    B --> C[Resolve<br/><small>async, optional</small>]
+    C --> D[Visitor pipeline<br/><small>includes, fields, validation</small>]
+    D --> E[Elasticsearch Query DSL]
+    D --> F[EF Core LINQ expression]
+    D --> G[Query text]
 ```
 
-The library works in three main phases:
+1. **Parse.** A hand-written lexer and parser build a syntax tree. Parsing is fast, never throws for bad input, and reports every error with its position.
+2. **Resolve.** When a parser has asynchronous dependencies — saved queries in a database, custom field names, an Elasticsearch mapping to load — they are resolved in one explicit async phase.
+3. **Process.** A synchronous visitor pipeline expands includes, resolves field aliases, and enforces validation rules. Your own visitors can transform the tree.
+4. **Build.** The provider turns the tree into its output.
 
-1. **Parsing** - The query string is tokenized and parsed into an Abstract Syntax Tree (AST)
-2. **Transformation** - Visitors can modify, validate, or analyze the AST
-3. **Output** - The AST is converted to the desired output format (LINQ, Elasticsearch Query DSL, or back to a query string)
+## Features
 
-## Key Features
+- **Complete syntax**: terms, phrases, wildcards, fuzzy and proximity search, fields and field groups, inclusive, exclusive, and open ranges, comparison operators, boolean logic with standard precedence, boosts, regular expressions, existence checks, date math, and saved-query includes.
+- **Elasticsearch**: mapping-aware translation (match vs term vs phrase, keyword and sort sub-fields, typed values), nested queries with correct correlation, geo distance and bounding boxes, date ranges with time zones, runtime fields, and aggregations and sorts.
+- **Entity Framework Core**: filters and sorts that translate to SQL, with navigation properties, collections, and full-text search, limited to the fields your model exposes.
+- **Field aliasing**: friendly names, hierarchical maps, and synchronous or asynchronous resolvers, per request or per tenant.
+- **Validation**: allowed and restricted fields (including sub-fields and resolved names), allowed operations, depth limits, and leading-wildcard rules, enforced on every build.
+- **Visitors**: analyze or rewrite queries; invert a query within a scope; remove fields; clean up; round-trip back to text.
 
-### 🔍 Full Lucene Query Syntax
+## Next steps
 
-Support for the complete Lucene query syntax:
-
-- **Terms**: `hello`, `hello*`, `hel?o`
-- **Phrases**: `"hello world"`, `"hello world"~2`
-- **Fields**: `title:test`, `user.name:john`
-- **Ranges**: `price:[100 TO 500]`, `date:{* TO 2024-01-01}`
-- **Boolean**: `AND`, `OR`, `NOT`, `+`, `-`
-- **Groups**: `(a OR b) AND c`
-- **Special**: `_exists_:field`, `_missing_:field`, `*:*`
-- **Regex**: `/pattern/`
-
-### 🗃️ Entity Framework Integration
-
-Convert Lucene queries directly to LINQ expressions for EF Core:
-
-```csharp
-var parser = new EntityFrameworkQueryParser();
-var filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
-var results = await context.Employees.Where(filter).ToListAsync();
-```
-
-### 🔎 Elasticsearch Integration
-
-Generate Elasticsearch Query DSL using the official Elastic.Clients.Elasticsearch 9.x client:
-
-```csharp
-var parser = new ElasticsearchQueryParser(config =>
-{
-    config.UseScoring = true;
-    config.DefaultFields = ["title", "content"];
-});
-var query = parser.BuildQuery("author:john AND status:active");
-```
-
-### 🔄 Round-Trip Capable
-
-Parse queries to an AST and convert back to query strings:
-
-```csharp
-var result = LuceneQuery.Parse("title:test AND (status:active OR status:pending)");
-var queryString = QueryStringBuilder.ToQueryString(result.Document);
-// Returns: "title:test AND (status:active OR status:pending)"
-```
-
-### 🛡️ Query Validation
-
-Restrict what users can query with validation options:
-
-```csharp
-var options = new QueryValidationOptions
-{
-    AllowLeadingWildcards = false
-};
-options.AllowedFields.Add("title");
-options.AllowedFields.Add("status");
-
-var validationResult = QueryValidator.Validate(document, options);
-```
-
-### 🏷️ Field Aliasing
-
-Map user-friendly field names to your actual data model:
-
-```csharp
-var fieldMap = new FieldMap
-{
-    { "user", "account.username" },
-    { "created", "metadata.timestamp" }
-};
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-```
-
-### 📅 Date Math Support
-
-Elasticsearch-style date math expressions:
-
-```csharp
-// Supports expressions like:
-// now-1d          (one day ago)
-// now+1h          (one hour from now)
-// 2024-01-01||+1M/d  (January 1st 2024 plus one month, rounded to day)
-```
-
-## Use Cases
-
-- **Search APIs** - Let users filter data with powerful query syntax
-- **Admin Dashboards** - Enable complex filtering without custom UI for each field
-- **Reporting** - Allow dynamic report criteria using familiar search syntax
-- **Data Export** - Let users specify exactly what data they need
-- **Audit/Log Search** - Search through logs with date ranges, terms, and boolean logic
-
-## Next Steps
-
-Ready to get started? Here's what to explore next:
-
-- [Getting Started](./getting-started) - Install and set up your first query
-- [Query Syntax](./query-syntax) - Learn all the supported syntax
-- [Entity Framework](./entity-framework) - Integrate with EF Core
-- [Elasticsearch](./elasticsearch) - Integrate with Elasticsearch
+- [Getting Started](./getting-started)
+- [Query Syntax](./query-syntax)
+- [Migrating from Foundatio.Parsers](./migrating-from-parsers)

@@ -1,322 +1,218 @@
-# Elasticsearch Integration
+# Elasticsearch
 
-Foundatio.Lucene.Elasticsearch converts Lucene query strings to Elasticsearch Query DSL using the official Elastic.Clients.Elasticsearch 9.x client.
-
-## Installation
+`Foundatio.Lucene.Elasticsearch` builds Elasticsearch queries, aggregations, and sorts from Lucene-syntax expressions using the official `Elastic.Clients.Elasticsearch` 9.x client.
 
 ```bash
 dotnet add package Foundatio.Lucene.Elasticsearch
 ```
 
-## Basic Usage
+## Quick start
 
 ```csharp
 using Foundatio.Lucene.Elasticsearch;
-using Elastic.Clients.Elasticsearch;
 
-var parser = new ElasticsearchQueryParser();
+var parser = new ElasticsearchQueryParser(c => c.UseMappings(ElasticMappingResolver.Create(client, "events")));
 
-// Parse a Lucene query and convert to Elasticsearch Query DSL
-var query = parser.BuildQuery("title:hello AND status:active");
+var search = await parser.BuildSearchAsync(
+    query: "type:error AND (status:open OR status:regressed) -tags:ignore",
+    aggregations: "terms:(status~10 max:created) date:created~1d",
+    sort: "-created");
 
-// Use with the Elasticsearch client
-var client = new ElasticsearchClient();
-var response = await client.SearchAsync<Document>(s => s
-    .Index("my-index")
-    .Query(query)
-);
+var response = await client.SearchAsync<Event>(s => s.Indices("events").Apply(search));
 ```
 
-## Configuration Options
+Create the parser once and share it; it's thread-safe.
 
-The `ElasticsearchQueryParser` supports extensive configuration:
+## Mappings
+
+With a mapping the provider generates the right query for each field type. Without one every field is treated as an unmapped keyword field, like a mapping-less `query_string`.
 
 ```csharp
-var parser = new ElasticsearchQueryParser(config =>
+// Load from the server (an index, alias, or pattern); lookups are cached and refreshed when fields are missing.
+c.UseMappings(ElasticMappingResolver.Create(client, "events"));
+
+// Or declare it in code (no I/O; ideal for tests).
+c.UseMappings(new TypeMapping { Properties = new Properties { { "status", new KeywordProperty() } } });
+```
+
+Server mappings are loaded in the resolution phase of the `Async` methods. To use the synchronous methods, load the mapping at startup:
+
+```csharp
+var resolver = ElasticMappingResolver.Create(client, "events");
+await resolver.EnsureLoadedAsync();
+var parser = new ElasticsearchQueryParser(c => c.UseMappings(resolver));
+var query = parser.BuildQuery("status:open");
+```
+
+See [Elasticsearch Mappings](./elasticsearch-mappings) for sources, merging, and refresh behavior.
+
+### How terms are translated
+
+| Term | Text field | Keyword, numeric, date, boolean, or unmapped field |
+|---|---|---|
+| `title:hello` | `match` | `term` (with a typed value for numbers and booleans) |
+| `title:"hello world"` | `match_phrase` | `term`, or `match_phrase` with slop |
+| `title:hel*` | `query_string` with `analyze_wildcard` | `prefix` |
+| `title:h?llo`, `title:*llo` | `query_string` | `wildcard` |
+| `title:helo~1` | `match` with fuzziness | `fuzzy` |
+| `title:/hel+o/` | `regexp` | `regexp` |
+| `title:*`, `_exists_:title` | `exists` | `exists` |
+| `_missing_:title` | `bool.must_not.exists` | `bool.must_not.exists` |
+| `price:[1 TO 5]`, `price:>5` | `range` | `range` (dates use `range` with `time_zone`) |
+
+Regex, fuzzy, and phrase slop on numeric, date, and boolean fields, and values that don't fit the field's type (`count:abc`), are validation errors.
+
+Field names are matched against the mapping ignoring case and replaced with the mapped spelling. Fields that are neither mapped nor runtime fields are reported as unresolved; set `AllowUnresolvedFields = false` to reject them.
+
+### Default fields
+
+Terms without a field search `DefaultFields`:
+
+```csharp
+c.DefaultFields = ["title", "body", "tags"];
+```
+
+Analyzed default fields are searched together with `multi_match`; non-analyzed ones get their own typed clauses; default fields under nested paths get nested queries. Without default fields, Elasticsearch's `index.query.default_field` applies.
+
+## Boolean logic and scoring
+
+Queries run in filter context by default: the whole query is wrapped in `bool.filter`, which is cacheable and doesn't score. Set `UseScoring = true` (or call `UseSearchMode()`, which also makes OR the default operator) for relevance-ranked search.
+
+| Query | Elasticsearch |
+|---|---|
+| `a AND b` | `bool.must` (scoring) or `bool.filter` (filter context) |
+| `a OR b` | `bool.should` with `minimum_should_match: 1` |
+| `-a`, `NOT a` | `bool.must_not` |
+| `+a b` (default OR) | `a` required, `b` only boosts the score |
+| `a OR NOT b` | `bool.should: [a, bool.must_not: b]` |
+| `(a OR b)^2` | `bool.must: [...]` with `boost: 2` |
+
+See [Query Syntax](./query-syntax#boolean-logic) for precedence and the rules for `+`, `-`, and `NOT`.
+
+## Nested fields
+
+Fields under `nested` mappings are queried with `nested` queries automatically. Clauses on the same nested path are combined into one `nested` query, so they must match the same nested document:
+
+```
+children.name:x AND children.age:>5
+→ nested(children, bool.must: [children.name:x, children.age:>5])
+```
+
+Deeper paths are folded into their ancestor's nested query, clauses on sibling paths (`parent.a.x` and `parent.b.y`) are combined under their shared parent, and `children:(children.name:x children.age:>5)` writes a nested group explicitly (fields inside the group keep their full paths). A `-` or `NOT` clause on a nested field excludes documents that have any matching nested document; put it inside a nested group to exclude it from the matched nested document only. Sorts and aggregations on nested fields get nested sorts and `nested_{path}` aggregations. Set `UseNested = false` to query nested fields as ordinary fields.
+
+A `NestedFilterResolver` adds a filter inside every nested query, sort, and aggregation — for example to restrict nested documents to the current tenant:
+
+```csharp
+c.NestedFilterResolver = (filter, context, cancellationToken) =>
+    ValueTask.FromResult<Query?>(new TermQuery($"{filter.NestedPath}.tenantId", tenantId));
+```
+
+## Dates and time zones
+
+Date math is passed through to Elasticsearch, which evaluates it:
+
+```
+created:[now-7d/d TO now]
+created:>=2024-01-01||+1M/d
+```
+
+Set a default time zone for date ranges and date histograms, or give one per range with `^`:
+
+```csharp
+c.DefaultTimeZone = "America/Chicago";
+```
+
+```
+created:[2024-01-01 TO 2024-01-31]^"Europe/London"
+created:[now/d TO *]^-5h
+```
+
+On a date range `^` is always the time zone; offsets written as time units (`-5h`) are converted to `-05:00`.
+
+## Geo queries
+
+Terms on `geo_point` fields are distance queries; ranges are bounding boxes:
+
+```
+location:"51.5,-0.12"~5km
+location:[51.5,-0.12 TO 50.0,1.0]
+```
+
+The distance defaults to `10mi`. To accept place names, configure a `GeoLocationResolver`; it runs in the resolution phase and returns a `lat,lon` or geohash:
+
+```csharp
+c.GeoLocationResolver = async (location, context, cancellationToken) => await geocoder.LookupAsync(location, cancellationToken);
+```
+
+```
+location:"London"~5km
+```
+
+## Runtime fields
+
+A `RuntimeFieldResolver` supplies definitions for fields that aren't in the mapping. The fields a query uses are collected so you can add them to the request (`BuildSearch` does this for you):
+
+```csharp
+c.RuntimeFieldResolver = (field, context, cancellationToken) => ValueTask.FromResult(
+    field == "day_of_week"
+        ? new ElasticRuntimeField("day_of_week", RuntimeFieldType.Keyword, "emit(doc['created'].value.dayOfWeekEnum.toString())")
+        : null);
+
+var context = parser.CreateContext();
+var query = await parser.BuildQueryAsync("day_of_week:MONDAY", context);
+// context.RuntimeFields contains day_of_week
+```
+
+Set `EnableRuntimeFieldResolver = false` in the request's `ElasticsearchQueryOptions` to skip the resolver for that request.
+
+## Aggregations and sorts
+
+```csharp
+IDictionary<string, Aggregation> aggregations = parser.BuildAggregations("terms:(status~10 max:created) date:created~1d");
+ICollection<SortOptions> sort = parser.BuildSort("-created +title");
+```
+
+See [Sorting and Aggregations](./sorting-and-aggregations) for the syntax, every aggregation type, and how sub-fields and nested fields are handled.
+
+## Per-request and per-index options
+
+Pass per-request settings with an immutable `ElasticsearchQueryOptions`, which is safe to cache per tenant:
+
+```csharp
+var options = new ElasticsearchQueryOptions
 {
-    // Use scoring queries (match) vs filter queries (term)
-    config.UseScoring = true;
+    FieldMap = tenantFieldMap,
+    DefaultFields = ["title"],
+    UseScoring = true,
+    DefaultTimeZone = user.TimeZone,
+    ValidationOptions = tenantValidation
+};
 
-    // Default fields for unfielded terms
-    config.DefaultFields = ["title", "content", "description"];
-
-    // Default boolean operator (AND or OR)
-    config.DefaultOperator = BooleanOperator.And;
-
-    // Field aliasing
-    config.FieldMap = new FieldMap
-    {
-        { "author", "metadata.author" },
-        { "created", "metadata.createdAt" },
-        { "updated", "metadata.updatedAt" }
-    };
-
-    // Date field detection
-    config.IsDateField = field =>
-        field.EndsWith("date") ||
-        field.EndsWith("timestamp") ||
-        field == "created" ||
-        field == "updated";
-
-    // Default timezone for date ranges
-    config.DefaultTimeZone = "America/Chicago";
-
-    // Pre-resolved @include content (resolve saved queries from your store before building)
-    config.Includes = new Dictionary<string, string>
-    {
-        ["active"] = "status:active AND deleted:false"
-    };
-
-    // Query validation
-    config.ValidationOptions = new QueryValidationOptions
-    {
-        AllowLeadingWildcards = false
-    };
-});
+var query = parser.BuildQuery("title:report", options);
 ```
 
-## Query Types
-
-### Term Queries
-
-Simple field queries become term queries (or match queries if scoring is enabled):
+Options can also be registered by name (typically an index) and selected with `Index`:
 
 ```csharp
-// Input
-"status:active"
-
-// Output (UseScoring = false)
-{ "term": { "status": "active" } }
-
-// Output (UseScoring = true)
-{ "match": { "status": "active" } }
+parser.SetOptions("logs", new ElasticsearchQueryOptions { MappingResolver = logsMapping, DefaultFields = ["message"] });
+var query = parser.BuildQuery("error", new ElasticsearchQueryOptions { Index = "logs" });
 ```
 
-### Phrase Queries
+Per-request options win over registered options, which win over the parser configuration.
 
-Quoted phrases become match_phrase queries:
+## Synchronous and asynchronous building
 
-```csharp
-// Input
-"title:\"hello world\""
+| You have | Use |
+|---|---|
+| no async dependencies (code mapping or preloaded server mapping, static includes and field maps) | `BuildQuery`, `BuildAggregations`, `BuildSort`, `BuildSearch` |
+| a server mapping not yet loaded, `IncludeResolver`, `AsyncFieldResolver`, `GeoLocationResolver`, `RuntimeFieldResolver`, or `NestedFilterResolver` | the `Async` methods |
 
-// Output
-{ "match_phrase": { "title": "hello world" } }
-```
+The synchronous methods throw `InvalidOperationException` when async dependencies haven't been resolved, so they never block on I/O. A `GeoLocationResolver` only affects queries, so it doesn't stop you from building sorts and aggregations synchronously.
 
-With proximity:
+## Custom queries for fields
 
-```csharp
-// Input
-"title:\"hello world\"~2"
+A visitor can replace the query generated for a node with `node.SetQuery(query)`. See [Custom Visitors](./custom-visitors#custom-elasticsearch-queries).
 
-// Output
-{ "match_phrase": { "title": { "query": "hello world", "slop": 2 } } }
-```
+## Errors
 
-### Range Queries
-
-Range syntax maps directly to Elasticsearch range queries:
-
-```csharp
-// Input
-"price:[100 TO 500]"
-
-// Output
-{ "range": { "price": { "gte": 100, "lte": 500 } } }
-
-// Input with exclusive boundaries
-"price:{100 TO 500}"
-
-// Output
-{ "range": { "price": { "gt": 100, "lt": 500 } } }
-```
-
-### Boolean Queries
-
-Boolean operators map to Elasticsearch bool queries:
-
-```csharp
-// Input
-"title:hello AND status:active"
-
-// Output
-{
-    "bool": {
-        "must": [
-            { "term": { "title": "hello" } },
-            { "term": { "status": "active" } }
-        ]
-    }
-}
-```
-
-### Wildcard Queries
-
-Wildcards are converted to wildcard queries:
-
-```csharp
-// Input
-"name:john*"
-
-// Output
-{ "wildcard": { "name": "john*" } }
-```
-
-### Regex Queries
-
-Regex patterns become regexp queries:
-
-```csharp
-// Input
-"name:/joh?n/"
-
-// Output
-{ "regexp": { "name": "joh?n" } }
-```
-
-### Exists/Missing Queries
-
-Field existence checks:
-
-```csharp
-// Input
-"_exists_:email"
-
-// Output
-{ "exists": { "field": "email" } }
-
-// Input
-"_missing_:phone"
-
-// Output
-{ "bool": { "must_not": { "exists": { "field": "phone" } } } }
-```
-
-## Geo Queries
-
-> Geo query generation (`geo_distance` / `geo_bounding_box`) is **not supported in 1.0**. It is
-> planned for a later release with a design that keeps the visitor pipeline synchronous (collect geo
-> references, resolve coordinates outside the pipeline, then annotate the AST).
-
-## Date Queries
-
-Date fields with date math are automatically handled:
-
-```csharp
-config.IsDateField = field => field.EndsWith("date");
-config.DefaultTimeZone = "America/Chicago";
-
-// Input
-"created:[now-7d TO now]"
-
-// Output (date math evaluated)
-{
-    "range": {
-        "created": {
-            "gte": "2024-11-26T00:00:00",
-            "lte": "2024-12-03T00:00:00",
-            "time_zone": "America/Chicago"
-        }
-    }
-}
-```
-
-## Error Handling
-
-The parser throws `QueryParseException` for invalid queries:
-
-```csharp
-try
-{
-    var query = parser.BuildQuery("invalid::[query");
-}
-catch (QueryParseException ex)
-{
-    Console.WriteLine($"Parse error: {ex.Message}");
-}
-```
-
-## Custom Visitors
-
-Add custom visitors to transform the query before building:
-
-```csharp
-var parser = new ElasticsearchQueryParser();
-
-// Add a custom visitor
-parser.AddVisitor(new MyCustomVisitor());
-
-var query = parser.BuildQuery("...");
-```
-
-## Complete Example
-
-Here's a complete example with an ASP.NET Core API:
-
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-public class SearchController : ControllerBase
-{
-    private readonly ElasticsearchClient _client;
-    private readonly ElasticsearchQueryParser _parser;
-
-    public SearchController(ElasticsearchClient client)
-    {
-        _client = client;
-        _parser = new ElasticsearchQueryParser(config =>
-        {
-            config.UseScoring = true;
-            config.DefaultFields = ["title", "content"];
-            config.FieldMap = new FieldMap
-            {
-                { "author", "metadata.author" },
-                { "date", "metadata.publishedAt" }
-            };
-            config.IsDateField = f => f.Contains("date") || f.Contains("At");
-            config.ValidationOptions = new QueryValidationOptions
-            {
-                AllowLeadingWildcards = false
-            };
-        });
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Search(
-        [FromQuery] string q,
-        [FromQuery] int page = 1,
-        [FromQuery] int size = 20)
-    {
-        try
-        {
-            var query = _parser.BuildQuery(q);
-
-            var response = await _client.SearchAsync<Article>(s => s
-                .Index("articles")
-                .Query(query)
-                .From((page - 1) * size)
-                .Size(size)
-                .Sort(so => so.Field("_score", f => f.Order(SortOrder.Desc)))
-            );
-
-            return Ok(new
-            {
-                Total = response.Total,
-                Page = page,
-                Results = response.Documents
-            });
-        }
-        catch (QueryParseException ex)
-        {
-            return BadRequest(new { Error = ex.Message });
-        }
-    }
-}
-```
-
-## Next Steps
-
-- [Query Syntax](./query-syntax) - All supported query syntax
-- [Visitors](./visitors) - Custom query transformation
-- [Validation](./validation) - Query validation options
+`BuildQuery` throws `QueryValidationException` for syntax errors and invalid queries. `TryBuildQuery` and `TryBuildQueryAsync` return a `QueryResult<Query>` instead. `ValidateQuery`, `ValidateAggregations`, and `ValidateSort` (and their `Async` versions) validate without building, including mapping-based field resolution, and `Parse`/`ParseAsync` return the processed query tree.

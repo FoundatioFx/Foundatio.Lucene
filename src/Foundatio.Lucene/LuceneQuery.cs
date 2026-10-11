@@ -8,102 +8,72 @@ namespace Foundatio.Lucene;
 public static class LuceneQuery
 {
     /// <summary>
-    /// Parses a Lucene query string and returns a parse result containing the AST and any errors.
-    /// The parser is resilient and will continue parsing after errors, returning a partial AST.
+    /// Parses a Lucene query. Parsing never throws for malformed input: errors are reported on the result and the
+    /// document contains everything that could be parsed.
     /// </summary>
-    /// <param name="query">The Lucene query string to parse.</param>
-    /// <param name="defaultOperator">The default operator to use (OR or AND). Defaults to OR.</param>
-    /// <param name="splitOnWhitespace">Whether to split terms on whitespace in groups. 
-    /// When false, consecutive terms in groups are combined into MultiTermNode. Defaults to true.</param>
-    /// <returns>A LuceneParseResult containing the parsed document (possibly partial) and any errors.</returns>
-    public static LuceneParseResult Parse(string query, BooleanOperator defaultOperator = BooleanOperator.Or, bool splitOnWhitespace = true)
+    /// <param name="query">The query text.</param>
+    /// <param name="options">Parser options, or null for <see cref="LuceneParserOptions.Default"/>.</param>
+    public static LuceneParseResult Parse(string query, LuceneParserOptions? options = null)
     {
-        if (query == null)
-        {
-            throw new ArgumentNullException(nameof(query));
-        }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return new LuceneParseResult();
-        }
-
-        try
-        {
-            var lexer = new LuceneLexer(query);
-            var tokens = lexer.Tokenize();
-
-            var parser = new LuceneParser(tokens)
-            {
-                DefaultOperator = defaultOperator,
-                SplitOnWhitespace = splitOnWhitespace
-            };
-            var document = parser.Parse();
-
-            // Only combine errors if there are any
-            var lexerErrors = lexer.Errors;
-            var parserErrors = parser.Errors;
-
-            if (lexerErrors.Count == 0 && parserErrors.Count == 0)
-            {
-                return LuceneParseResult.Success(document);
-            }
-
-            // Combine lexer and parser errors
-            var allErrors = new List<ParseError>(lexerErrors.Count + parserErrors.Count);
-            allErrors.AddRange(lexerErrors);
-            allErrors.AddRange(parserErrors);
-
-            return LuceneParseResult.Partial(document, allErrors);
-        }
-        catch (Exception ex)
-        {
-            return LuceneParseResult.Failure(new ParseError($"Unexpected error: {ex.Message}", 0, 0, 1, 1));
-        }
+        ArgumentNullException.ThrowIfNull(query);
+        return Parse(query.AsMemory(), options);
     }
 
     /// <summary>
-    /// Tokenizes a Lucene query string and returns all tokens.
+    /// Parses a Lucene query using the specified default operator.
     /// </summary>
-    /// <param name="query">The Lucene query string to tokenize.</param>
-    /// <returns>A list of tokens.</returns>
-    public static List<Token> Tokenize(string query)
+    public static LuceneParseResult Parse(string query, BooleanOperator defaultOperator)
     {
-        if (query == null)
-        {
-            throw new ArgumentNullException(nameof(query));
-        }
+        ArgumentNullException.ThrowIfNull(query);
+        return Parse(query.AsMemory(), defaultOperator == LuceneParserOptions.Default.DefaultOperator
+            ? LuceneParserOptions.Default
+            : new LuceneParserOptions { DefaultOperator = defaultOperator });
+    }
+
+    /// <summary>
+    /// Parses a Lucene query held in memory. Node values are zero-copy slices of <paramref name="query"/>,
+    /// so the memory must not be modified while the document is in use.
+    /// </summary>
+    public static LuceneParseResult Parse(ReadOnlyMemory<char> query, LuceneParserOptions? options = null)
+    {
+        options ??= LuceneParserOptions.Default;
 
         var lexer = new LuceneLexer(query);
-        return lexer.Tokenize();
+        var tokens = lexer.Tokenize();
+        var parser = new LuceneParser(tokens, options);
+        var document = parser.Parse();
+
+        var lexerErrors = lexer.HasErrors ? lexer.Errors : null;
+        var parserErrors = parser.Errors;
+        if (lexerErrors is null && parserErrors is null)
+            return new LuceneParseResult(document);
+
+        var errors = new List<ParseError>((lexerErrors?.Count ?? 0) + (parserErrors?.Count ?? 0));
+        if (lexerErrors is not null)
+            errors.AddRange(lexerErrors);
+        if (parserErrors is not null)
+            errors.AddRange(parserErrors);
+
+        errors.Sort(static (a, b) => a.Position.CompareTo(b.Position));
+        return new LuceneParseResult(document, errors);
     }
 
     /// <summary>
-    /// Validates a Lucene query string and returns the parse result with errors.
-    /// Returns true if parsing completed (even with errors), false only on catastrophic failures.
+    /// Parses a Lucene query and reports whether it parsed without errors.
     /// </summary>
-    /// <param name="query">The Lucene query string to validate.</param>
-    /// <param name="result">Output parameter for the parse result containing document and errors.</param>
-    /// <param name="defaultOperator">The default operator to use (OR or AND). Defaults to OR.</param>
-    /// <param name="splitOnWhitespace">Whether to split terms on whitespace in groups. Defaults to true.</param>
-    /// <returns>True if parsing completed, false only on catastrophic exceptions.</returns>
-    public static bool TryParse(string query, out LuceneParseResult result, BooleanOperator defaultOperator = BooleanOperator.Or, bool splitOnWhitespace = true)
+    public static bool TryParse(string query, out LuceneParseResult result, LuceneParserOptions? options = null)
     {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            result = new LuceneParseResult();
-            return true;
-        }
+        ArgumentNullException.ThrowIfNull(query);
+        result = Parse(query, options);
+        return result.IsSuccess;
+    }
 
-        try
-        {
-            result = Parse(query, defaultOperator, splitOnWhitespace);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            result = LuceneParseResult.Failure(new ParseError($"Catastrophic error: {ex.Message}", 0, 0, 1, 1));
-            return false;
-        }
+    /// <summary>
+    /// Tokenizes a Lucene query. Useful for syntax highlighting. The last token is always <see cref="TokenType.EndOfFile"/>.
+    /// </summary>
+    public static IReadOnlyList<Token> Tokenize(string query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        return new LuceneLexer(query.AsMemory()).Tokenize();
     }
 }

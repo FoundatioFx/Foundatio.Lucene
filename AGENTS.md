@@ -27,8 +27,16 @@ Design principles: **visitor-based extensibility**, **testable**, **Lucene/Elast
 ### Core Pipeline
 
 ```text
-Query String → LuceneLexer (tokens) → LuceneParser (AST) → Visitors (transform) → Output
+Query String → LuceneLexer (tokens) → LuceneParser (AST)
+             → [async resolution phase: include/field resolvers, provider lookups such as ES mappings]
+             → visitor pipeline (IncludeVisitor@0 → FieldResolverQueryVisitor@10 → ValidationVisitor@30 → custom)
+             → provider builder (Elasticsearch Query DSL / EF LINQ expression / query string)
 ```
+
+- Parsing and building are **synchronous**. Async work happens only in the explicit resolution phase that the `*Async` build methods run first (`QueryParserBase.ResolveQueryAsync` + provider `OnResolveAsync`). Sync build methods throw when async dependencies are configured but unresolved.
+- `QueryParserBase<TContext>` is the shared engine for providers: option merging (request > registered > configuration), parsing, the resolution phase, the visitor pipeline, sort and aggregation processing.
+- Query semantics (see `LuceneParser` remarks and `BooleanQueryNode` docs): precedence NOT > AND > OR, default operator AND, `+`/`-` set the clause `Occur` (Lucene bucketing), `NOT x` excludes like `-x` except as an explicit-OR alternative (`a OR NOT b` → `NotNode`).
+- Caller-provided `QueryDocument`s are cloned before visitors run; never mutate caller input.
 
 ## Quick Start
 
@@ -54,25 +62,37 @@ src
 │   ├── Ast                             # AST node types (TermNode, PhraseNode, RangeNode, etc.)
 │   ├── Visitors                        # Query visitors for traversal/transformation
 │   ├── Extensions                      # Extension methods for nodes and strings
-│   ├── LuceneQuery.cs                  # Main entry point for parsing
-│   ├── LuceneParser.cs                 # Recursive-descent parser implementation
-│   ├── LuceneLexer.cs                  # Tokenizer for query strings
-│   ├── QueryStringBuilder.cs           # Converts AST back to query string
-│   ├── QueryValidator.cs               # Query validation against options
+│   ├── LuceneQuery.cs                  # Main entry point for parsing (LuceneParserOptions)
+│   ├── LuceneParser.cs                 # Recursive-descent parser (internal)
+│   ├── LuceneLexer.cs                  # Context-aware tokenizer (internal)
+│   ├── QueryStringBuilder.cs           # Converts AST back to query string (meaning-preserving round trip)
+│   ├── QueryParserBase.cs              # Shared provider engine (resolution phase + pipeline)
+│   ├── QueryParserConfiguration.cs     # Shared provider configuration
+│   ├── QueryValidator.cs               # Standalone query/sort/aggregation validation
+│   ├── SortField.cs                    # Sort expression model + parser
+│   ├── AggregationExpression.cs        # Aggregation expression model + parser
+│   ├── DateMath.cs                     # Elasticsearch date math evaluation
 │   └── FieldMap.cs                     # Field alias mapping
 ├── Foundatio.Lucene.EntityFramework    # EF Core integration
-│   ├── EntityFrameworkQueryParser.cs   # Main parser for EF queries
-│   ├── ExpressionBuilderVisitor.cs     # Converts AST to LINQ expressions
+│   ├── EntityFrameworkQueryParser.cs   # Main parser: filters, sorts, validation, resolution
+│   ├── FilterExpressionBuilder.cs      # Processed AST → LINQ predicate (parameterized values)
+│   ├── EntityFieldResolver.cs          # Lazy, per-parser field discovery from the EF Core model
 │   └── EntityFieldInfo.cs              # Entity field metadata
 └── Foundatio.Lucene.Elasticsearch      # Elasticsearch integration
-    ├── ElasticsearchQueryParser.cs     # Main parser for ES queries
-    └── ElasticsearchQueryBuilderVisitor.cs  # Converts AST to ES Query DSL
+    ├── ElasticsearchQueryParser.cs     # Main parser: queries, aggregations, sorts, BuildSearch, resolution hook
+    ├── ElasticsearchQueryBuilder.cs    # AST → Query DSL (mapping-aware term translation, nested, geo)
+    ├── ElasticsearchAggregationBuilder.cs  # Aggregation expressions → aggregations
+    ├── ElasticsearchSortBuilder.cs     # Sort fields → sort options
+    └── Mapping/                        # ElasticMappingResolver (async load, sync lookups)
 tests
-├── Foundatio.Lucene.Tests              # Core parser unit tests
-├── Foundatio.Lucene.EntityFramework.Tests  # EF Core integration tests
-└── Foundatio.Lucene.Elasticsearch.Tests    # Elasticsearch integration tests
+├── Foundatio.Lucene.Tests              # Core unit tests (parser, visitors, validation, date math, engine)
+├── Foundatio.Lucene.EntityFramework.Tests  # EF Core tests (InMemory + SQL Server via Testcontainers)
+├── Foundatio.Lucene.Elasticsearch.Tests    # Elasticsearch unit + integration tests (Testcontainers)
+└── Foundatio.Lucene.Parity.Tests       # Same query, same results on SQL Server and Elasticsearch
 benchmarks
-└── Foundatio.Lucene.Benchmarks         # Performance benchmarks
+├── Shared/BenchmarkScenarios.cs        # Scenarios shared by both benchmark projects
+├── Foundatio.Lucene.Benchmarks         # Foundatio.Lucene benchmarks (+ in-process Parsers parse comparison)
+└── Foundatio.Parsers.Benchmarks        # Same scenarios on Foundatio.Parsers (separate process: ES 8.x client)
 docs                                    # VitePress documentation site
 ```
 
@@ -87,7 +107,7 @@ docs                                    # VitePress documentation site
 
 ### Architecture Patterns
 
-- **Visitor-based design**: Query transformations use visitor pattern (`IQueryVisitor`, `ChainableQueryVisitor`)
+- **Visitor-based design**: Query transformations use visitor pattern (`IQueryVisitor`, `QueryVisitor`)
 - **AST-based parsing**: Queries are parsed into Abstract Syntax Trees with typed nodes
 - **Chainable visitors**: Multiple visitors can be composed via `ChainedQueryVisitor`
 - **Dependency Injection**: Use constructor injection; extend via configuration lambdas
@@ -132,10 +152,12 @@ public class MyVisitor : QueryVisitor
 
 ### Built-in Visitors
 
-- `FieldResolverQueryVisitor` - Maps field aliases using `FieldMap`
-- `IncludeVisitor` - Expands `@include:name` references
-- `DateMathEvaluatorVisitor` - Evaluates Elasticsearch date math expressions (`now+1d`, `2024-01-01||+1M/d`)
-- `ValidationVisitor` - Validates queries against `QueryValidationOptions`
+- `IncludeVisitor` - Expands `@include:name` references (bounded depth and fan-out; not inside aggregation groups)
+- `FieldResolverQueryVisitor` - Resolves fields via `FieldResolver` then `FieldMap`, recording the original name in node `Data`
+- `ValidationVisitor` - Collects fields/operations/depth and applies `QueryValidationOptions`
+- `DateMathEvaluatorVisitor` - Evaluates date math (`now+1d`, `2024-01-01||+1M/d`) for stores that can't
+- `InvertQueryVisitor`, `RemoveFieldsQueryVisitor`, `CleanupQueryVisitor` - Query transformations ported from Foundatio.Parsers
+- Visitors are stateless singletons; per-run state lives in the context. Custom visitors default to priority 0 (after includes, before field resolution).
 
 ### Single Responsibility
 
@@ -319,13 +341,12 @@ public void Parse_SimpleTerm_ReturnsTermNode(string term)
 
 ### Key Test Files
 
-- `ParserTests.cs` - Comprehensive parsing scenarios (~1100 test cases)
-- `ChainableVisitorTests.cs` - Visitor composition patterns
-- `FieldResolverQueryVisitorTests.cs` - Field alias resolution
-- `QueryValidatorTests.cs` - Query validation scenarios
-- `EntityFrameworkQueryParserTests.cs` - EF Core integration with in-memory database
-- `ElasticsearchQueryParserTests.cs` - Elasticsearch Query DSL generation
-- `ElasticsearchIntegrationTests.cs` - Integration tests with Elasticsearch using Testcontainers
+- `ParserTests.cs` / `LexerTests.cs` - Table-driven parse trees (`ToDebugString()`), errors, limits, round trips, and a random-input fuzz test
+- `ChainedQueryVisitorTests.cs`, `FieldResolverQueryVisitorTests.cs`, `IncludeVisitorTests.cs`, `ValidationTests.cs`, `QueryValidatorTests.cs` - Visitor pipeline and validation (incl. restriction bypass attempts)
+- `QueryParserBaseTests.cs` - Shared engine: option precedence, resolution phase, sync/async rules
+- `DateMathTests.cs` / `DateMathEvaluatorVisitorTests.cs` - Date math incl. DST boundaries
+- Elasticsearch tests compare serialized JSON structurally and run document-level semantic oracles against a real cluster
+- The parity tests run the same queries on SQL Server and Elasticsearch and require identical results
 
 ### Integration Testing
 
@@ -397,12 +418,18 @@ var validationResult = QueryValidator.Validate(document, options);
 
 ```csharp
 var parser = new EntityFrameworkQueryParser(c => c.SetDefaultFields("Name"));
-Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>("name:john AND salary:[50000 TO *]");
-var results = context.Employees.Where(filter).ToList();
+var results = context.Employees
+    .Where("name:john AND salary:[50000 TO *]", parser)
+    .OrderBy("-salary", parser)
+    .ToList();
+
+// Without a DbSet, give the parser the model: c.UseModel(model) or new EntityFrameworkQueryOptions { Model = model }
+Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>("age:>30", new() { Model = context.Model });
 ```
 
-- `ExpressionBuilderVisitor` converts AST to LINQ expressions
-- Entity field metadata auto-discovered via EF Core `IEntityType`
+- `FilterExpressionBuilder` converts the processed AST to a predicate; problems become validation errors with positions
+- Only fields discovered from the EF Core model (after property/navigation filters) and registered custom fields are queryable
+- Values are parsed invariantly and captured as SQL parameters; date math uses the configured `TimeProvider` and time zone
 
 ### Elasticsearch Integration
 
@@ -417,8 +444,9 @@ var query = parser.BuildQuery("author:john AND status:active");
 // Returns Elastic.Clients.Elasticsearch.QueryDsl.Query
 ```
 
-- `ElasticsearchQueryBuilderVisitor` converts AST to Elasticsearch Query DSL
-- Supports geo queries (distance, bounding box), date ranges, wildcards, regex
+- `ElasticsearchQueryBuilder` converts the processed AST to Query DSL using the mapping (`UseMappings`) to choose match/term/phrase/query_string/prefix/wildcard, typed values, keyword/sort sub-fields, nested queries, and geo distance/bounding box
+- `BuildAggregations` / `BuildSort` / `BuildSearch` use the same pipeline; per-request settings go in `ElasticsearchQueryOptions`
+- Async dependencies (server mappings, geo/runtime-field/nested-filter resolvers, include/field resolvers) require the `*Async` methods
 - Uses Elastic.Clients.Elasticsearch 9.x (official .NET client)
 
 ## Supported Query Syntax
@@ -426,13 +454,15 @@ var query = parser.BuildQuery("author:john AND status:active");
 - **Terms**: `hello`, `hello*`, `hel?o`
 - **Phrases**: `"hello world"`, `"hello world"~2` (proximity)
 - **Fields**: `title:test`, `user.name:john`
-- **Ranges**: `price:[100 TO 500]`, `date:[* TO 2024-01-01}`
-- **Boolean**: `AND`, `OR`, `NOT`, `+`, `-`
-- **Groups**: `(a OR b) AND c`
-- **Special**: `_exists_:field`, `_missing_:field`, `*:*` (match all)
+- **Ranges**: `price:[100 TO 500]`, `date:[* TO 2024-01-01}`, `price:[1..5]`, `price:>=10`, `temp:[-10 TO -5]`
+- **Boolean**: `AND`, `OR`, `NOT`, `&&`, `||`, `!`, `+`, `-` (precedence NOT > AND > OR; default operator AND)
+- **Groups**: `(a OR b) AND c`, field groups `title:(a OR b)`
+- **Special**: `_exists_:field`, `field:*`, `_missing_:field`, `*:*` (match all)
 - **Regex**: `/pattern/`
+- **Modifiers**: `~` (fuzzy, slop, geo distance, aggregation size/interval) and `^` (boost, date-range/histogram time zone) keep raw text
 - **Date math**: `now-1d`, `2024-01-01||+1M/d`
 - **Includes**: `@include:savedQuery`
+- **Sort**: `-created +name`; **Aggregations**: `terms:(status~10 max:created) date:created~1d` (see `docs/guide/sorting-and-aggregations.md`)
 
 ## Resources
 

@@ -11,31 +11,41 @@ This project is a modern replacement for [Foundatio.Parsers](https://github.com/
 
 ## ✨ Why Choose Foundatio Lucene?
 
-- 🔍 **Full Lucene Syntax** - Terms, phrases, fields, ranges, boolean operators, wildcards, regex
-- ⚡ **Entity Framework Integration** - Convert Lucene queries directly to LINQ expressions
-- 🔎 **Elasticsearch Support** - Generate Elasticsearch Query DSL using the official .NET 9.x client
-- 🧩 **Visitor Pattern** - Transform, validate, or analyze queries with composable visitors
-- 🗺️ **Field Aliasing** - Map user-friendly field names to your actual data model
-- ✅ **Query Validation** - Restrict allowed fields, operators, and patterns
-- 🔄 **Round-Trip Capable** - Parse queries to AST and convert back to query strings
-- 🛡️ **Error Recovery** - Resilient parser returns partial AST with detailed error information
+- 🔍 **Full Lucene syntax** - terms, phrases, fields, field groups, ranges, boolean logic with clear precedence, wildcards, fuzzy, regex, date math, includes
+- ⚡ **Fast** - 36-45× faster parsing and 7-11× faster Elasticsearch query building than Foundatio.Parsers, with a fraction of the allocations ([benchmarks](https://lucene.foundatio.dev/guide/performance.html))
+- 🔎 **Elasticsearch** - mapping-aware Query DSL, aggregations, and sorts (nested, geo, runtime fields, time zones) with the official 9.x client
+- 🗄️ **Entity Framework Core** - translate queries and sorts to LINQ expressions that run on the server
+- 📊 **Sort and aggregation expressions** - `-created +title`, `terms:(status~10 max:created) date:created~1d`
+- 🧭 **Synchronous core, explicit async phase** - no async overhead unless a resolver actually needs I/O
+- 🗺️ **Field aliasing and resolution** - friendly names, per-tenant maps, sync or async resolvers
+- 🛡️ **Safe for user input** - bounded depth and include expansion, field and operation allowlists enforced on every build
+- 🧩 **Visitors** - transform, validate, invert, or analyze queries
+- 🔄 **Round-trip** - turn a modified tree back into query text
 
 ## 🚀 Quick Example
 
 ```csharp
 using Foundatio.Lucene;
+using Foundatio.Lucene.Elasticsearch;
 using Foundatio.Lucene.EntityFramework;
 
-// Parse a Lucene query
-var result = LuceneQuery.Parse("title:hello AND status:active");
+// Parse a query (never throws for bad input; errors carry positions)
+var result = LuceneQuery.Parse("title:hello AND (status:open OR status:regressed) -tags:ignore");
 
-// Or build LINQ expressions for Entity Framework
-var parser = new EntityFrameworkQueryParser();
-Expression<Func<Employee, bool>> filter = parser.BuildFilter<Employee>(
-    "name:john AND salary:[50000 TO *]"
-);
+// Elasticsearch: query, aggregations, and sort from one call
+var esParser = new ElasticsearchQueryParser(c => c.UseMappings(ElasticMappingResolver.Create(client, "events")));
+var search = await esParser.BuildSearchAsync(
+    query: "type:error created:[now-7d TO now]",
+    aggregations: "terms:(status~10 max:created)",
+    sort: "-created");
+var response = await client.SearchAsync<Event>(s => s.Indices("events").Apply(search));
 
-var employees = await context.Employees.Where(filter).ToListAsync();
+// Entity Framework Core: LINQ expressions that run on the database, limited to the model's fields
+var efParser = new EntityFrameworkQueryParser();
+var employees = await db.Employees
+    .Where("name:john AND salary:[50000 TO *]", efParser)
+    .OrderBy("-salary", efParser)
+    .ToListAsync();
 ```
 
 ## 📚 Learn More
@@ -45,11 +55,12 @@ var employees = await context.Employees.Where(filter).ToListAsync();
 Key topics:
 
 - [Getting Started](https://lucene.foundatio.dev/guide/getting-started.html) - Installation and basic usage
-- [Query Syntax](https://lucene.foundatio.dev/guide/query-syntax.html) - Full syntax reference
+- [Query Syntax](https://lucene.foundatio.dev/guide/query-syntax.html) - Full syntax and semantics reference
+- [Elasticsearch](https://lucene.foundatio.dev/guide/elasticsearch.html) - Query DSL, mappings, nested, geo, runtime fields
 - [Entity Framework](https://lucene.foundatio.dev/guide/entity-framework.html) - EF Core integration
-- [Elasticsearch](https://lucene.foundatio.dev/guide/elasticsearch.html) - Elasticsearch Query DSL generation
-- [Visitors](https://lucene.foundatio.dev/guide/visitors.html) - AST transformation patterns
-- [Validation](https://lucene.foundatio.dev/guide/validation.html) - Query validation options
+- [Sorting and Aggregations](https://lucene.foundatio.dev/guide/sorting-and-aggregations.html) - Sort and aggregation expressions
+- [Validation](https://lucene.foundatio.dev/guide/validation.html) and [Security](https://lucene.foundatio.dev/guide/security.html) - Restricting what users can query
+- [Migrating from Foundatio.Parsers](https://lucene.foundatio.dev/guide/migrating-from-parsers.html) - What changes when you switch
 
 ## 📦 CI Packages (Feedz)
 

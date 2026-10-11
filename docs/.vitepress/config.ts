@@ -6,7 +6,7 @@ export default withMermaid(defineConfig({
   title: 'Foundatio Lucene',
   description: 'Dynamic Lucene-style query capabilities for .NET with Entity Framework and Elasticsearch support',
   base: '/',
-  ignoreDeadLinks: true,
+  ignoreDeadLinks: false,
   markdown: {
     lineNumbers: false
   },
@@ -37,31 +37,36 @@ export default withMermaid(defineConfig({
           text: 'Introduction',
           items: [
             { text: 'What is Foundatio.Lucene?', link: '/guide/what-is-foundatio-lucene' },
-            { text: 'Getting Started', link: '/guide/getting-started' }
+            { text: 'Getting Started', link: '/guide/getting-started' },
+            { text: 'Migrating from Foundatio.Parsers', link: '/guide/migrating-from-parsers' }
           ]
         },
         {
           text: 'Core Concepts',
           items: [
             { text: 'Query Syntax', link: '/guide/query-syntax' },
-            { text: 'Visitors', link: '/guide/visitors' },
+            { text: 'Sorting and Aggregations', link: '/guide/sorting-and-aggregations' },
             { text: 'Field Mapping', link: '/guide/field-mapping' },
-            { text: 'Validation', link: '/guide/validation' }
+            { text: 'Validation', link: '/guide/validation' },
+            { text: 'Configuration', link: '/guide/configuration' }
           ]
         },
         {
           text: 'Integrations',
           items: [
-            { text: 'Entity Framework', link: '/guide/entity-framework' },
-            { text: 'Elasticsearch', link: '/guide/elasticsearch' }
+            { text: 'Elasticsearch', link: '/guide/elasticsearch' },
+            { text: 'Elasticsearch Mappings', link: '/guide/elasticsearch-mappings' },
+            { text: 'Entity Framework', link: '/guide/entity-framework' }
           ]
         },
         {
           text: 'Advanced Topics',
           items: [
+            { text: 'Visitors', link: '/guide/visitors' },
             { text: 'Custom Visitors', link: '/guide/custom-visitors' },
             { text: 'Date Math', link: '/guide/date-math' },
-            { text: 'Configuration', link: '/guide/configuration' }
+            { text: 'Security', link: '/guide/security' },
+            { text: 'Performance', link: '/guide/performance' }
           ]
         }
       ]

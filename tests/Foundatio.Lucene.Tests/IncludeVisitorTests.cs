@@ -1,561 +1,449 @@
+using System.Diagnostics;
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Tests;
 
 public class IncludeVisitorTests
 {
-    private readonly Dictionary<string, string> _includes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["simple"] = "status:active",
-        ["complex"] = "status:active AND type:user",
-        ["nested"] = "@include:simple AND category:test",
-        ["recursive1"] = "@include:recursive2",
-        ["recursive2"] = "@include:recursive1",
-        ["self"] = "@include:self",
-        ["empty"] = "",
-        ["whitespace"] = "   ",
-        ["with-boost"] = "status:active^2",
-        ["with-group"] = "(status:active OR status:pending)",
-        ["nested2"] = "@include:nested",
-        ["invalid"] = "\"unclosed phrase",
-        ["term-only"] = "active"
-    };
-
-    private static string ToQueryString(QueryDocument document)
-    {
-        return new QueryStringBuilder().Visit(document);
-    }
-
-    #region Basic Include Expansion
-
-    [Fact]
-    public void ExpandIncludes_SimpleInclude_ReturnsExpandedQuery()
+    [Theory]
+    [InlineData("@include:simple", "(group status:active)")]
+    [InlineData("@include:complex", "(group (bool ?a:1 ?b:2))")]
+    [InlineData("x:1 @include:complex", "(bool +x:1 +(group (bool ?a:1 ?b:2)))")]
+    [InlineData("@include:simple OR @include:complex", "(bool ?(group status:active) ?(group (bool ?a:1 ?b:2)))")]
+    [InlineData("-@include:complex", "(bool -(group (bool ?a:1 ?b:2)))")]
+    [InlineData("NOT @include:complex", "(bool -(group (bool ?a:1 ?b:2)))")]
+    [InlineData("x:1 OR NOT @include:simple", "(bool ?x:1 ?(not (group status:active)))")]
+    [InlineData("(@include:simple)", "(group (group status:active))")]
+    [InlineData("@include:\"with space\"", "(group spaced:yes)")]
+    [InlineData("@INCLUDE:SIMPLE", "(group status:active)")]
+    [InlineData("@include:simple^2", "(group status:active^2)")]
+    [InlineData("@include:nested", "(group (bool +(group status:active) +c:3))")]
+    [InlineData("@include:deep", "(group (group (bool +(group status:active) +c:3)))")]
+    [InlineData("plain:query", "plain:query")]
+    public void ExpandIncludes_ValidIncludes_ExpandsInPlace(string query, string expected)
     {
         // Arrange
-        var query = "@include:simple";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_ComplexInclude_ReturnsExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:complex";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active AND type:user)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_IncludeWithOtherTerms_ReturnsExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:simple AND name:test";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active) AND name:test", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_MultipleIncludes_ReturnsExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:simple OR @include:complex";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active) OR (status:active AND type:user)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_NoIncludes_ReturnsOriginalQuery()
-    {
-        // Arrange
-        var query = "status:active AND name:test";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("status:active AND name:test", output);
-    }
-
-    #endregion
-
-    #region Nested Includes
-
-    [Fact]
-    public void ExpandIncludes_NestedInclude_ReturnsFullyExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:nested";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("((status:active) AND category:test)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_DeeplyNestedInclude_ReturnsFullyExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:nested2";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(((status:active) AND category:test))", output);
-    }
-
-    #endregion
-
-    #region Recursive Include Detection
-
-    [Fact]
-    public void ExpandIncludes_SelfRecursiveInclude_DetectsRecursion()
-    {
-        // Arrange
-        var query = "@include:self";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
+        var document = LuceneQuery.Parse(query).Document;
         var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
 
         // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
+        var result = document.ExpandIncludes(CreateIncludes(), context);
 
         // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.False(validationResult.IsValid);
-        Assert.Contains(validationResult.ValidationErrors, e => e.Message.Contains("Circular"));
+        Assert.Equal(expected, result.ToDebugString());
+        Assert.True(context.ValidationResult.IsValid, context.ValidationResult.Message);
     }
 
     [Fact]
-    public void ExpandIncludes_MutuallyRecursiveIncludes_DetectsRecursion()
+    public void ExpandIncludes_ExcludedInclude_ExcludesWholeExpansion()
     {
         // Arrange
-        var query = "@include:recursive1";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
+        var document = LuceneQuery.Parse("x:1 -@include:either").Document;
+        var includes = new Dictionary<string, string> { ["either"] = "a:1 OR b:2" };
 
         // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
+        var result = document.ExpandIncludes(includes);
 
         // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.False(validationResult.IsValid);
-        Assert.Contains(validationResult.ValidationErrors, e => e.Message.Contains("Circular"));
-    }
-
-    #endregion
-
-    #region Unresolved Includes
-
-    [Fact]
-    public void ExpandIncludes_UnresolvedInclude_TracksInResult()
-    {
-        // Arrange
-        var query = "@include:nonexistent";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
-
-        // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
-
-        // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("nonexistent", validationResult.UnresolvedIncludes);
+        var boolean = Assert.IsType<BooleanQueryNode>(result.Query);
+        Assert.Equal(Occur.MustNot, boolean.Clauses[1].Occur);
+        var group = Assert.IsType<GroupNode>(boolean.Clauses[1].Query);
+        Assert.Equal("either", group.GetData<string>(IncludeVisitor.IncludeNameKey));
+        Assert.Equal("x:1 -(a:1 OR b:2)", QueryStringBuilder.ToQueryString(result));
     }
 
     [Fact]
-    public void ExpandIncludes_EmptyInclude_TracksAsUnresolved()
+    public void ExpandIncludes_ExpansionGroup_KeepsReferencePosition()
     {
         // Arrange
-        var query = "@include:empty";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
+        var document = LuceneQuery.Parse("x:1 @include:simple").Document;
+        var reference = (FieldQueryNode)((BooleanQueryNode)document.Query!).Clauses[1].Query!;
 
         // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
+        var result = document.ExpandIncludes(CreateIncludes());
 
         // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("empty", validationResult.UnresolvedIncludes);
+        var group = (GroupNode)((BooleanQueryNode)result.Query!).Clauses[1].Query!;
+        Assert.Equal(reference.StartPosition, group.StartPosition);
+        Assert.Equal(reference.EndPosition, group.EndPosition);
     }
 
     [Fact]
-    public void ExpandIncludes_WhitespaceInclude_TracksAsUnresolved()
+    public void ExpandIncludes_IncludeUsesDefaultOperatorFromContext_ParsesIncludeWithIt()
     {
         // Arrange
-        var query = "@include:whitespace";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
+        var document = LuceneQuery.Parse("@include:pair").Document;
+        var context = new QueryVisitorContext { DefaultOperator = BooleanOperator.Or };
 
         // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
+        var result = document.ExpandIncludes(new Dictionary<string, string> { ["pair"] = "a b" }, context);
 
         // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("whitespace", validationResult.UnresolvedIncludes);
+        Assert.Equal("(group (bool ?a ?b))", result.ToDebugString());
     }
-
-    #endregion
-
-    #region Referenced Includes Tracking
 
     [Fact]
     public void ExpandIncludes_TracksReferencedIncludes()
     {
         // Arrange
-        var query = "@include:simple AND @include:complex";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
-
-        // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
-
-        // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("simple", validationResult.ReferencedIncludes);
-        Assert.Contains("complex", validationResult.ReferencedIncludes);
-    }
-
-    [Fact]
-    public void ExpandIncludes_NestedInclude_TracksAllIncludes()
-    {
-        // Arrange
-        var query = "@include:nested";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
-
-        // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
-
-        // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("nested", validationResult.ReferencedIncludes);
-        Assert.Contains("simple", validationResult.ReferencedIncludes);
-    }
-
-    #endregion
-
-    #region No Includes Configured
-
-    [Fact]
-    public void ExpandIncludes_NoIncludesConfigured_TracksAllAsUnresolved()
-    {
-        // Arrange
-        var query = "@include:simple";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
+        var document = LuceneQuery.Parse("@include:deep @include:simple").Document;
         var context = new QueryVisitorContext();
 
         // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
+        document.ExpandIncludes(CreateIncludes(), context);
 
         // Assert
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("simple", validationResult.UnresolvedIncludes);
+        Assert.Equal(["deep", "nested", "simple"], context.ValidationResult.ReferencedIncludes.Order());
     }
 
-    #endregion
-
-    #region Skip Include Function
-
-    [Fact]
-    public void ExpandIncludes_WithSkipFunction_SkipsSpecifiedIncludes()
+    [Theory]
+    [InlineData("@include:missing", "missing")]
+    [InlineData("@include:empty", "empty")]
+    [InlineData("@include:whitespace", "whitespace")]
+    public void ExpandIncludes_UnresolvableInclude_RecordsUnresolvedAndLeavesReference(string query, string name)
     {
         // Arrange
-        var query = "@include:simple AND @include:complex";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
+        var document = LuceneQuery.Parse(query).Document;
+        var context = new QueryVisitorContext();
+        var includes = new Dictionary<string, string> { ["empty"] = "", ["whitespace"] = "   " };
+
+        // Act
+        var result = document.ExpandIncludes(includes, context);
+
+        // Assert
+        Assert.Equal($"@include:{name}", result.ToDebugString());
+        Assert.Equal([name], context.ValidationResult.UnresolvedIncludes);
+        Assert.True(context.ValidationResult.IsValid);
+    }
+
+    [Fact]
+    public void Accept_NoIncludesConfigured_RecordsAllAsUnresolved()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:a @include:b").Document;
         var context = new QueryVisitorContext();
 
-        bool shouldSkip(FieldQueryNode node, IQueryVisitorContext ctx)
+        // Act
+        IncludeVisitor.Instance.Run(document, context);
+
+        // Assert
+        Assert.Equal(["a", "b"], context.ValidationResult.UnresolvedIncludes.Order());
+    }
+
+    [Fact]
+    public void ExpandIncludes_MissingName_AddsError()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:(a b)").Document;
+        var context = new QueryVisitorContext();
+
+        // Act
+        document.ExpandIncludes(CreateIncludes(), context);
+
+        // Assert
+        var error = Assert.Single(context.ValidationResult.ValidationErrors);
+        Assert.Equal(QueryErrorCode.UnresolvedInclude, error.Code);
+    }
+
+    [Fact]
+    public void ExpandIncludes_InvalidIncludeSyntax_AddsError()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:broken").Document;
+        var context = new QueryVisitorContext();
+
+        // Act
+        var result = document.ExpandIncludes(new Dictionary<string, string> { ["broken"] = "a:(b" }, context);
+
+        // Assert
+        Assert.Equal("@include:broken", result.ToDebugString());
+        var error = Assert.Single(context.ValidationResult.ValidationErrors);
+        Assert.Contains("broken", error.Message);
+        Assert.Equal(QueryErrorCode.UnresolvedInclude, error.Code);
+    }
+
+    [Theory]
+    [InlineData("self")]
+    [InlineData("a")]
+    [InlineData("B")]
+    public void ExpandIncludes_RecursiveIncludes_AddsRecursionError(string start)
+    {
+        // Arrange
+        var document = LuceneQuery.Parse($"@include:{start}").Document;
+        var context = new QueryVisitorContext();
+        var includes = new Dictionary<string, string>
         {
-            var name = (node.Query as TermNode)?.Term;
-            return name == "simple";
-        }
-
-        context.SetIncludes(_includes);
-        context.SetShouldSkipIncludeFunc(shouldSkip);
-
-        // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
-
-        // Assert
-        var output = ToQueryString(parseResult.Document);
-        Assert.Contains("@include:simple", output);
-        Assert.Contains("(status:active AND type:user)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_SkipFunctionFromContext_SkipsSpecifiedIncludes()
-    {
-        // Arrange
-        var query = "@include:simple";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-        var context = new QueryVisitorContext();
-
-        bool shouldSkip(FieldQueryNode node, IQueryVisitorContext ctx) => true;
-
-        context.SetIncludes(_includes);
-        context.SetShouldSkipIncludeFunc(shouldSkip);
-
-        // Act
-        var visitor = new IncludeVisitor();
-        visitor.Run(parseResult.Document, context);
-
-        // Assert
-        var output = ToQueryString(parseResult.Document);
-        Assert.Equal("@include:simple", output);
-    }
-
-    #endregion
-
-    #region Include with Boost and Other Modifiers
-
-    [Fact]
-    public void ExpandIncludes_IncludeWithBoost_ReturnsExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:with-boost";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active^2)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_IncludeWithGroup_ReturnsExpandedQuery()
-    {
-        // Arrange
-        var query = "@include:with-group";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("((status:active OR status:pending))", output);
-    }
-
-    #endregion
-
-    #region Include with Phrase Value
-
-    [Fact]
-    public void ExpandIncludes_IncludeWithPhraseValue_Works()
-    {
-        // Arrange
-        var includes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["my include"] = "status:active"
+            ["self"] = "x:1 OR @include:self",
+            ["a"] = "x:1 @include:b",
+            ["b"] = "y:1 @include:A"
         };
 
-        var query = "@include:\"my include\"";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
         // Act
-        var result = parseResult.Document.ExpandIncludes(includes);
+        document.ExpandIncludes(includes, context);
 
         // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active)", output);
+        var error = Assert.Single(context.ValidationResult.ValidationErrors);
+        Assert.Contains("Recursive", error.Message);
+        Assert.Equal(QueryErrorCode.UnresolvedInclude, error.Code);
     }
 
-    #endregion
-
-    #region Integration with ChainedVisitor
-
     [Fact]
-    public void IncludeVisitor_WithChainedVisitor_WorksCorrectly()
+    public void ExpandIncludes_SameIncludeUsedTwiceSideBySide_IsNotRecursion()
     {
         // Arrange
-        var query = "@include:simple AND name:Test";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
+        var document = LuceneQuery.Parse("@include:simple OR @include:simple").Document;
         var context = new QueryVisitorContext();
-        context.SetIncludes(_includes);
-
-        var chainedVisitor = new ChainedQueryVisitor()
-            .AddVisitor(new IncludeVisitor(), 0)
-            .AddVisitor(new LowercaseFieldVisitor(), 1);
 
         // Act
-        var result = chainedVisitor.Run(parseResult.Document, context);
+        var result = document.ExpandIncludes(CreateIncludes(), context);
 
         // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active) AND name:test", output);
+        Assert.True(context.ValidationResult.IsValid, context.ValidationResult.Message);
+        Assert.Equal("(bool ?(group status:active) ?(group status:active))", result.ToDebugString());
     }
 
-    // Helper visitor for chained test
-    private class LowercaseFieldVisitor : QueryVisitor
+    [Fact]
+    public void ExpandIncludes_DepthExceedsMaximum_AddsDepthError()
     {
-        protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
+        // Arrange
+        var includes = Enumerable.Range(0, 20).ToDictionary(i => $"i{i}", i => $"f{i}:x @include:i{i + 1}");
+        includes["i20"] = "end:1";
+        var document = LuceneQuery.Parse("@include:i0").Document;
+        var context = new QueryVisitorContext { ValidationOptions = new QueryValidationOptions { MaxIncludeDepth = 5 } };
+
+        // Act
+        document.ExpandIncludes(includes, context);
+
+        // Assert
+        var error = Assert.Single(context.ValidationResult.ValidationErrors);
+        Assert.Equal(QueryErrorCode.MaxDepthExceeded, error.Code);
+        Assert.Contains("i5", error.Message);
+        Assert.Equal(["f0", "f1", "f2", "f3", "f4"], document.GetReferencedFields().Order());
+    }
+
+    [Fact]
+    public void ExpandIncludes_DefaultDepthLimit_AllowsTenLevels()
+    {
+        // Arrange
+        var includes = Enumerable.Range(0, 10).ToDictionary(i => $"i{i}", i => i == 9 ? "end:1" : $"@include:i{i + 1}");
+        var context = new QueryVisitorContext();
+
+        // Act
+        var result = LuceneQuery.Parse("@include:i0").Document.ExpandIncludes(includes, context);
+
+        // Assert
+        Assert.True(context.ValidationResult.IsValid, context.ValidationResult.Message);
+        Assert.Equal(["end"], result.GetReferencedFields());
+    }
+
+    [Fact]
+    public void ExpandIncludes_FanOutBomb_StopsAtExpansionCapQuickly()
+    {
+        // Arrange
+        string fanOut(string next) => string.Join(" OR ", Enumerable.Repeat($"@include:{next}", 10));
+        var includes = new Dictionary<string, string>
         {
-            base.Visit(node, context);
+            ["l0"] = fanOut("l1"),
+            ["l1"] = fanOut("l2"),
+            ["l2"] = fanOut("l3"),
+            ["l3"] = fanOut("l4"),
+            ["l4"] = fanOut("l5"),
+            ["l5"] = fanOut("l6"),
+            ["l6"] = fanOut("l7"),
+            ["l7"] = fanOut("l8"),
+            ["l8"] = "leaf:1"
+        };
+        var document = LuceneQuery.Parse("@include:l0").Document;
+        var context = new QueryVisitorContext();
+        var stopwatch = Stopwatch.StartNew();
 
-            if (node.Query is TermNode term && term.Term is not null)
-                term.Term = term.Term.ToLowerInvariant();
+        // Act
+        var result = document.ExpandIncludes(includes, context);
 
-            return node;
+        // Assert
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"Expansion took {stopwatch.Elapsed}.");
+        var error = Assert.Single(context.ValidationResult.ValidationErrors);
+        Assert.Equal(QueryErrorCode.MaxDepthExceeded, error.Code);
+        Assert.Contains("100", error.Message);
+
+        int groups = 0;
+        result.Walk(n =>
+        {
+            if (n is GroupNode)
+                groups++;
+        });
+        Assert.Equal(100, groups);
+    }
+
+    [Fact]
+    public void ExpandIncludes_CustomExpansionLimit_IsEnforced()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:simple @include:simple @include:simple").Document;
+        var context = new QueryVisitorContext { ValidationOptions = new QueryValidationOptions { MaxIncludeExpansions = 2 } };
+
+        // Act
+        var result = document.ExpandIncludes(CreateIncludes(), context);
+
+        // Assert
+        Assert.Equal("(bool +(group status:active) +(group status:active) +@include:simple)", result.ToDebugString());
+        Assert.Single(context.ValidationResult.ValidationErrors);
+    }
+
+    [Fact]
+    public void ExpandIncludes_SameIncludeManyTimes_ParsesIncludeTextOnce()
+    {
+        // Arrange
+        var includes = new CountingDictionary(new Dictionary<string, string> { ["simple"] = "status:active" });
+        var document = LuceneQuery.Parse(string.Join(" OR ", Enumerable.Repeat("@include:simple", 20))).Document;
+
+        // Act
+        document.ExpandIncludes(includes);
+
+        // Assert
+        Assert.Equal(1, includes.Lookups);
+    }
+
+    [Fact]
+    public void ExpandIncludes_ExpandedIncludes_AreIndependentCopies()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:simple OR @include:simple").Document;
+
+        // Act
+        var result = document.ExpandIncludes(CreateIncludes());
+        var boolean = (BooleanQueryNode)result.Query!;
+        var first = (FieldQueryNode)((GroupNode)boolean.Clauses[0].Query!).Query!;
+        first.Field = "changed";
+
+        // Assert
+        Assert.Equal("(bool ?(group changed:active) ?(group status:active))", result.ToDebugString());
+    }
+
+    [Fact]
+    public void ExpandIncludes_ShouldSkipInclude_LeavesReferenceUnexpanded()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:simple @include:complex").Document;
+        var context = new QueryVisitorContext
+        {
+            ShouldSkipInclude = (node, _) => IncludeVisitor.GetIncludeName(node) == "complex"
+        };
+
+        // Act
+        var result = document.ExpandIncludes(CreateIncludes(), context);
+
+        // Assert
+        Assert.Equal("(bool +(group status:active) +@include:complex)", result.ToDebugString());
+        Assert.Equal(["complex", "simple"], context.ValidationResult.ReferencedIncludes.Order());
+        Assert.Empty(context.ValidationResult.UnresolvedIncludes);
+    }
+
+    [Fact]
+    public void ExpandIncludes_AggregationExpression_ExpandsOnlyReferencesOutsideAggregations()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:aggs terms:(status @include:simple)").Document;
+        var context = new QueryVisitorContext { QueryType = QueryType.Aggregation };
+        var includes = new Dictionary<string, string> { ["aggs"] = "min:(created @include:simple)", ["simple"] = "status:active" };
+
+        // Act
+        var result = document.ExpandIncludes(includes, context);
+
+        // Assert
+        Assert.Equal("(bool +(group min:(group (bool +created +@include:simple))) +terms:(group (bool +status +@include:simple)))", result.ToDebugString());
+        Assert.Equal(["aggs"], context.ValidationResult.ReferencedIncludes);
+        Assert.Empty(context.ValidationResult.UnresolvedIncludes);
+    }
+
+    [Fact]
+    public void ExpandIncludes_CaseInsensitiveDictionaryLookup_FallsBackToScan()
+    {
+        // Arrange
+        var includes = new Dictionary<string, string>(StringComparer.Ordinal) { ["MixedCase"] = "m:1" };
+        var document = LuceneQuery.Parse("@include:mixedcase").Document;
+
+        // Act
+        var result = document.ExpandIncludes(includes);
+
+        // Assert
+        Assert.Equal("(group m:1)", result.ToDebugString());
+    }
+
+    [Fact]
+    public void IsInclude_And_GetIncludeName_IdentifyReferences()
+    {
+        var include = (FieldQueryNode)LuceneQuery.Parse("@Include:\"my query\"").Document.Query!;
+        var other = (FieldQueryNode)LuceneQuery.Parse("include:x").Document.Query!;
+
+        Assert.True(IncludeVisitor.IsInclude(include));
+        Assert.Equal("my query", IncludeVisitor.GetIncludeName(include));
+        Assert.False(IncludeVisitor.IsInclude(other));
+    }
+
+    [Fact]
+    public void ExpandIncludes_NullArguments_ThrowArgumentNullException()
+    {
+        var document = LuceneQuery.Parse("a").Document;
+
+        Assert.Throws<ArgumentNullException>(() => IncludeVisitor.ExpandIncludes(null!, CreateIncludes()));
+        Assert.Throws<ArgumentNullException>(() => IncludeVisitor.ExpandIncludes(document, null!));
+    }
+
+    [Fact]
+    public void ExpandIncludes_SharedIncludesConcurrently_ProducesConsistentResults()
+    {
+        // Arrange
+        var includes = CreateIncludes();
+        var failures = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        // Act
+        Parallel.For(0, 500, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i =>
+        {
+            var context = new QueryVisitorContext();
+            string result = LuceneQuery.Parse($"n:{i} @include:deep").Document.ExpandIncludes(includes, context).ToDebugString();
+            if (result != $"(bool +n:{i} +(group (group (bool +(group status:active) +c:3))))" || !context.ValidationResult.IsValid)
+                failures.Add(result);
+        });
+
+        // Assert
+        Assert.Empty(failures);
+    }
+
+    private static Dictionary<string, string> CreateIncludes() => new()
+    {
+        ["simple"] = "status:active",
+        ["complex"] = "a:1 OR b:2",
+        ["with space"] = "spaced:yes",
+        ["nested"] = "@include:simple c:3",
+        ["deep"] = "@include:nested"
+    };
+
+    private sealed class CountingDictionary(Dictionary<string, string> inner) : IReadOnlyDictionary<string, string>
+    {
+        public int Lookups { get; private set; }
+
+        public string this[string key] => inner[key];
+
+        public IEnumerable<string> Keys => inner.Keys;
+
+        public IEnumerable<string> Values => inner.Values;
+
+        public int Count => inner.Count;
+
+        public bool ContainsKey(string key) => inner.ContainsKey(key);
+
+        public bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out string value)
+        {
+            Lookups++;
+            return inner.TryGetValue(key, out value);
         }
+
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => inner.GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
-
-    #endregion
-
-    #region Edge Cases
-
-    [Fact]
-    public void ExpandIncludes_IncludeWithTermOnlyValue_Works()
-    {
-        // Arrange
-        var query = "@include:term-only";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(active)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_CaseInsensitiveIncludeName_Works()
-    {
-        // Arrange
-        var query = "@include:SIMPLE";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_CaseInsensitiveFieldName_Works()
-    {
-        // Arrange
-        var query = "@INCLUDE:simple";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:active)", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_InGroup_Works()
-    {
-        // Arrange
-        var query = "(status:pending OR @include:simple)";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("(status:pending OR (status:active))", output);
-    }
-
-    [Fact]
-    public void ExpandIncludes_WithNot_Works()
-    {
-        // Arrange
-        var query = "NOT @include:simple";
-        var parseResult = LuceneQuery.Parse(query);
-        Assert.True(parseResult.IsSuccess);
-
-        // Act
-        var result = parseResult.Document.ExpandIncludes(_includes);
-
-        // Assert
-        var output = ToQueryString(result);
-        Assert.Equal("NOT (status:active)", output);
-    }
-
-    #endregion
 }
