@@ -268,27 +268,28 @@ public static class DateMath
             return false;
 
         const DateTimeStyles styles = DateTimeStyles.AllowWhiteSpaces;
-        if (HasExplicitOffset(expression) && DateTimeOffset.TryParse(expression, CultureInfo.InvariantCulture, styles, out result))
-        {
-            if (isUpperLimit && result.TimeOfDay == TimeSpan.Zero)
-                result = new DateTimeOffset(RoundUp(result.DateTime, Precision.Day), result.Offset);
-            return true;
-        }
-
-        if (!DateTime.TryParse(expression, CultureInfo.InvariantCulture, styles, out var local))
-            return false;
-
-        if (isUpperLimit && local.TimeOfDay == TimeSpan.Zero)
-            local = RoundUp(local, Precision.Day);
-
-        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
         try
         {
+            if (HasExplicitOffset(expression) && DateTimeOffset.TryParse(expression, CultureInfo.InvariantCulture, styles, out result))
+            {
+                if (isUpperLimit && result.TimeOfDay == TimeSpan.Zero)
+                    result = new DateTimeOffset(RoundUp(result.DateTime, Precision.Day), result.Offset);
+                return true;
+            }
+
+            if (!DateTime.TryParse(expression, CultureInfo.InvariantCulture, styles, out var local))
+                return false;
+
+            if (isUpperLimit && local.TimeOfDay == TimeSpan.Zero)
+                local = RoundUp(local, Precision.Day);
+
+            local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
             result = new Clock(timeZone, now.Offset).FromLocal(local);
             return true;
         }
         catch (ArgumentException)
         {
+            result = default;
             return false;
         }
     }

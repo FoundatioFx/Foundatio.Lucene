@@ -171,11 +171,15 @@ public class DateMathTests
         Assert.False(DateMath.IsValidExpression(null));
     }
 
-    [Fact]
-    public void TryParse_NullTimeZone_ThrowsArgumentNullException()
+    [Theory]
+    [InlineData("now", false)]
+    [InlineData("12/31/9999", true)]
+    public void TryParse_NullTimeZone_ThrowsArgumentNullException(string expression, bool isUpperLimit)
     {
-        Assert.Throws<ArgumentNullException>(() => DateMath.TryParse("now", Now, null!, false, out _));
-        Assert.Throws<ArgumentNullException>(() => DateMath.Parse("now", Now, (TimeZoneInfo)null!));
+        Assert.Throws<ArgumentNullException>(() => DateMath.TryParse(expression, Now, null!, isUpperLimit, out _));
+        Assert.Throws<ArgumentNullException>(() => DateMath.TryParse(expression, (TimeZoneInfo)null!, isUpperLimit, out _));
+        Assert.Throws<ArgumentNullException>(() => DateMath.Parse(expression, Now, null!, isUpperLimit));
+        Assert.Throws<ArgumentNullException>(() => DateMath.Parse(expression, (TimeZoneInfo)null!, isUpperLimit));
     }
 
     [Fact]
@@ -199,6 +203,84 @@ public class DateMathTests
         var result = DateMath.Parse(expression, Now, isUpperLimit);
 
         AssertDate(expected, result);
+    }
+
+    [Theory]
+    [InlineData("12/31/9999")]
+    [InlineData("12/31/9999 00:00:00 +00:00")]
+    [InlineData("12/31/9999 00:00:00 +02:00")]
+    [InlineData("9999-12-31")]
+    [InlineData("9999-12-31+02:00")]
+    public void TryParse_UpperLimitRoundingOverflow_ReturnsFalseAndDefault(string expression)
+    {
+        // Act
+        bool fixedOffsetSuccess = DateMath.TryParse(expression, Now, true, out var fixedOffsetResult);
+        bool timeZoneSuccess = DateMath.TryParse(expression, Now, TimeZoneInfo.Utc, true, out var timeZoneResult);
+        bool systemClockSuccess = DateMath.TryParse(expression, TimeZoneInfo.Utc, true, out var systemClockResult);
+
+        // Assert
+        Assert.False(fixedOffsetSuccess);
+        Assert.Equal(default, fixedOffsetResult);
+        Assert.False(timeZoneSuccess);
+        Assert.Equal(default, timeZoneResult);
+        Assert.False(systemClockSuccess);
+        Assert.Equal(default, systemClockResult);
+    }
+
+    [Theory]
+    [InlineData("12/30/9999", true, "9999-12-30T23:59:59.9999999+00:00")]
+    [InlineData("12/30/9999 00:00:00 +02:00", true, "9999-12-30T23:59:59.9999999+02:00")]
+    [InlineData("12/31/9999", false, "9999-12-31T00:00:00+00:00")]
+    [InlineData("12/31/9999 00:00:00 +02:00", false, "9999-12-31T00:00:00+02:00")]
+    [InlineData("12/31/9999 23:59:59.9999999 +00:00", true, "9999-12-31T23:59:59.9999999+00:00")]
+    [InlineData("01/01/0001", false, "0001-01-01T00:00:00+00:00")]
+    [InlineData("01/01/0001", true, "0001-01-01T23:59:59.9999999+00:00")]
+    [InlineData("9999-12-30", true, "9999-12-30T23:59:59.9999999+00:00")]
+    [InlineData("9999-12-31", false, "9999-12-31T00:00:00+00:00")]
+    [InlineData("9999-12-31T00:00:00+02:00", true, "9999-12-31T00:00:00.9999999+02:00")]
+    [InlineData("9999-12-31T23:59:59.9999999Z", true, "9999-12-31T23:59:59.9999999+00:00")]
+    [InlineData("0001-01-01", false, "0001-01-01T00:00:00+00:00")]
+    [InlineData("0001-01-01", true, "0001-01-01T23:59:59.9999999+00:00")]
+    public void TryParse_RepresentableDateBoundary_ReturnsExpectedDate(string expression, bool isUpperLimit, string expected)
+    {
+        // Act
+        bool fixedOffsetSuccess = DateMath.TryParse(expression, Now, isUpperLimit, out var fixedOffsetResult);
+        bool timeZoneSuccess = DateMath.TryParse(expression, Now, TimeZoneInfo.Utc, isUpperLimit, out var timeZoneResult);
+        bool systemClockSuccess = DateMath.TryParse(expression, TimeZoneInfo.Utc, isUpperLimit, out var systemClockResult);
+
+        // Assert
+        Assert.True(fixedOffsetSuccess);
+        AssertDate(expected, fixedOffsetResult);
+        Assert.True(timeZoneSuccess);
+        AssertDate(expected, timeZoneResult);
+        Assert.True(systemClockSuccess);
+        AssertDate(expected, systemClockResult);
+    }
+
+    [Theory]
+    [InlineData("01/01/0001", 2)]
+    [InlineData("0001-01-01", 2)]
+    [InlineData("12/31/9999 23:00:00", -2)]
+    [InlineData("9999-12-31T23:00:00", -2)]
+    public void TryParse_TimeZoneConversionOverflow_ReturnsFalseAndDefault(string expression, int offsetHours)
+    {
+        // Arrange
+        var offset = TimeSpan.FromHours(offsetHours);
+        var timeZone = TimeZoneInfo.CreateCustomTimeZone("Boundary", offset, "Boundary", "Boundary");
+        var now = Now.ToOffset(offset);
+
+        // Act
+        bool fixedOffsetSuccess = DateMath.TryParse(expression, now, false, out var fixedOffsetResult);
+        bool timeZoneSuccess = DateMath.TryParse(expression, Now, timeZone, false, out var timeZoneResult);
+        bool systemClockSuccess = DateMath.TryParse(expression, timeZone, false, out var systemClockResult);
+
+        // Assert
+        Assert.False(fixedOffsetSuccess);
+        Assert.Equal(default, fixedOffsetResult);
+        Assert.False(timeZoneSuccess);
+        Assert.Equal(default, timeZoneResult);
+        Assert.False(systemClockSuccess);
+        Assert.Equal(default, systemClockResult);
     }
 
     [Fact]
