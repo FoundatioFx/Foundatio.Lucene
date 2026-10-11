@@ -333,8 +333,22 @@ internal static class ElasticsearchAggregationBuilder
                 GeohashGrid = new GeohashGridAggregation { Field = field, Precision = new GeohashPrecision(precision) },
                 Aggregations = new Dictionary<string, Aggregation>(StringComparer.Ordinal)
                 {
-                    ["avg_lat"] = new AverageAggregation { Script = new Script { Source = $"doc['{field}'].lat" } },
-                    ["avg_lon"] = new AverageAggregation { Script = new Script { Source = $"doc['{field}'].lon" } }
+                    ["avg_lat"] = new AverageAggregation
+                    {
+                        Script = new Script
+                        {
+                            Source = "doc[params.field].lat",
+                            Params = new Dictionary<string, object> { ["field"] = field }
+                        }
+                    },
+                    ["avg_lon"] = new AverageAggregation
+                    {
+                        Script = new Script
+                        {
+                            Source = "doc[params.field].lon",
+                            Params = new Dictionary<string, object> { ["field"] = field }
+                        }
+                    }
                 }
             };
         }

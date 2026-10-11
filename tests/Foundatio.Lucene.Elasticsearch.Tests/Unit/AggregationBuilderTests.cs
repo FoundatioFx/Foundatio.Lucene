@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Elastic.Clients.Elasticsearch.Mapping;
 using Elastic.Clients.Elasticsearch.QueryDsl;
 using Foundatio.Lucene.Elasticsearch.Tests.Utility;
 
@@ -47,9 +48,44 @@ public class AggregationBuilderTests
 
         ElasticAssert.Json("""
             {"geogrid_geo":{"geohash_grid":{"field":"geo","precision":6},"aggregations":{
-              "avg_lat":{"avg":{"script":{"source":"doc['geo'].lat"}}},
-              "avg_lon":{"avg":{"script":{"source":"doc['geo'].lon"}}}}}}
+              "avg_lat":{"avg":{"script":{"source":"doc[params.field].lat","params":{"field":"geo"}}}},
+              "avg_lon":{"avg":{"script":{"source":"doc[params.field].lon","params":{"field":"geo"}}}}}}}
             """, result);
+    }
+
+    [Theory]
+    [InlineData("geo_field")]
+    [InlineData("geo'field")]
+    [InlineData(@"geo\field")]
+    public void BuildAggregations_WithMappedGeoField_ParameterizesCentroidScripts(string mappedField)
+    {
+        // Arrange
+        var mapping = TestMapping.Create();
+        mapping.Properties!.Add(mappedField, new GeoPointProperty());
+        var parser = new ElasticsearchQueryParser(c =>
+        {
+            c.UseMappings(mapping);
+            c.FieldMap = new FieldMap { { "location", mappedField } };
+        });
+
+        // Act
+        var result = parser.BuildAggregations("geogrid:location~6");
+        var json = JsonNode.Parse(ElasticAssert.Serialize(result["geogrid_location"]))!;
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal(mappedField, json["geohash_grid"]!["field"]!.GetValue<string>());
+        Assert.Equal(6, json["geohash_grid"]!["precision"]!.GetValue<int>());
+        var aggregations = Assert.IsType<JsonObject>(json["aggregations"]);
+        Assert.Equal(2, aggregations.Count);
+        foreach (string coordinate in new[] { "lat", "lon" })
+        {
+            var script = aggregations[$"avg_{coordinate}"]!["avg"]!["script"]!;
+            Assert.Equal($"doc[params.field].{coordinate}", script["source"]!.GetValue<string>());
+            var parameters = Assert.IsType<JsonObject>(script["params"]);
+            Assert.Single(parameters);
+            Assert.Equal(mappedField, parameters["field"]!.GetValue<string>());
+        }
     }
 
     [Fact]
@@ -70,7 +106,7 @@ public class AggregationBuilderTests
               "missing_keyword":{"missing":{"field":"keyword"}},
               "date_date":{"date_histogram":{"calendar_interval":"day","field":"date","format":"date_optional_time","min_doc_count":0}},
               "histogram_number":{"histogram":{"field":"number","interval":50,"min_doc_count":0}},
-              "geogrid_geo":{"geohash_grid":{"field":"geo","precision":1},"aggregations":{"avg_lat":{"avg":{"script":{"source":"doc['geo'].lat"}}},"avg_lon":{"avg":{"script":{"source":"doc['geo'].lon"}}}}},
+              "geogrid_geo":{"geohash_grid":{"field":"geo","precision":1},"aggregations":{"avg_lat":{"avg":{"script":{"source":"doc[params.field].lat","params":{"field":"geo"}}}},"avg_lon":{"avg":{"script":{"source":"doc[params.field].lon","params":{"field":"geo"}}}}}},
               "terms_text":{"terms":{"field":"text.keyword"},"meta":{"@field_type":"keyword"}}
             }
             """, result);
