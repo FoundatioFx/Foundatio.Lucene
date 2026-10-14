@@ -1,374 +1,99 @@
-# Query Validation
+# Validation
 
-Query validation allows you to restrict what users can query, preventing expensive or dangerous operations and enforcing business rules.
+Validation restricts what users can do with queries, sorts, and aggregations: which fields they can use, which operations are allowed, and how complex a query may be. The parsers enforce the configured rules on every build; you can also validate without building.
 
-## Basic Validation
-
-Use `QueryValidationOptions` and `QueryValidator`:
+## Configuring rules
 
 ```csharp
-using Foundatio.Lucene;
-
-var result = LuceneQuery.Parse("*wildcard AND title:test");
-
-var options = new QueryValidationOptions
+var validation = new QueryValidationOptions
 {
-    AllowLeadingWildcards = false
+    AllowLeadingWildcards = false,
+    AllowedMaxNodeDepth = 5
 };
-options.AllowedFields.Add("title");
-options.AllowedFields.Add("status");
+validation.AllowedFields.Add("title");
+validation.AllowedFields.Add("status");
+validation.RestrictedOperations.Add(QueryOperations.Regex);
 
-var validationResult = QueryValidator.Validate(result.Document, options);
+var parser = new ElasticsearchQueryParser(c => c.ValidationOptions = validation);
 
-if (!validationResult.IsValid)
+parser.BuildQuery("title:hello");   // OK
+parser.BuildQuery("secret:x");      // throws QueryValidationException
+```
+
+Rules can also be set per request with `options.ValidationOptions`. Configure an options instance once and share it; don't modify it while it is in use.
+
+## Options
+
+| Option | Default | Effect |
+|---|---|---|
+| `AllowedFields` | empty (all) | Field names that may be used, as written by the user. A name also allows its sub-fields (`data` allows `data.age`). |
+| `RestrictedFields` | empty | Field names that may not be used, checked against the name as written and the resolved name, including sub-fields. |
+| `AllowLeadingWildcards` | `true` | Whether terms may start with `*` or `?`. |
+| `AllowUnresolvedFields` | `true` | Whether fields the resolvers (or the Elasticsearch mapping) can't resolve are allowed. The Entity Framework provider always rejects fields that aren't in the model. |
+| `AllowUnresolvedIncludes` | `false` | Whether `@include` references that can't be resolved are allowed. |
+| `AllowedOperations` / `RestrictedOperations` | empty | `QueryOperations` names for queries; aggregation types for aggregation expressions. |
+| `AllowedMaxNodeDepth` | 0 (no limit) | Maximum nesting of parenthesized groups. |
+| `AllowedMaxSortFields` | 0 (no limit) | Maximum number of sort fields. |
+| `MaxIncludeDepth` | 10 | Maximum depth of nested includes. |
+| `MaxIncludeExpansions` | 100 | Maximum number of include expansions in one query. |
+| `ShouldThrow` | `false` | Whether the `Validate` methods throw instead of returning an invalid result (building always throws). |
+
+When `AllowedFields` or `RestrictedFields` is configured, wildcard field names (`sec*:x`) are rejected, and terms without a field are checked against the default fields they search.
+
+## Validating without building
+
+```csharp
+QueryValidationResult result = QueryValidator.ValidateQuery("title:hello AND secret:x", validation);
+if (!result.IsValid)
+    Console.WriteLine(result.Message); // Query uses field(s) (secret) that are not allowed to be used.
+```
+
+`QueryValidator` applies includes, field maps, and resolvers from an optional context, so it validates what would actually be queried:
+
+```csharp
+var context = new QueryVisitorContext
 {
-    Console.WriteLine(validationResult.Message);
-    // "Leading wildcards are not allowed"
-}
-```
-
-## Validation Options
-
-### AllowLeadingWildcards
-
-Control whether wildcards can appear at the start of terms:
-
-```csharp
-var options = new QueryValidationOptions
-{
-    AllowLeadingWildcards = false  // Disallow *suffix patterns
-};
-
-// Allowed:  prefix*, mid*dle
-// Blocked:  *suffix, *
-```
-
-::: tip
-Leading wildcards cause expensive full-index scans in most databases and search engines.
-:::
-
-### AllowedFields
-
-Restrict which fields can be queried:
-
-```csharp
-var options = new QueryValidationOptions();
-options.AllowedFields.Add("title");
-options.AllowedFields.Add("author");
-options.AllowedFields.Add("status");
-options.AllowedFields.Add("date");
-
-// Allowed: title:hello, author:john
-// Blocked: password:*, salary:[* TO *]
-```
-
-### DisallowedFields
-
-Explicitly block certain fields:
-
-```csharp
-var options = new QueryValidationOptions();
-options.DisallowedFields.Add("password");
-options.DisallowedFields.Add("ssn");
-options.DisallowedFields.Add("internalId");
-
-// Even if AllowedFields is empty, these fields are blocked
-```
-
-### AllowWildcardOnlyQueries
-
-Control whether `*` or `*:*` queries are allowed:
-
-```csharp
-var options = new QueryValidationOptions
-{
-    AllowWildcardOnlyQueries = false
+    FieldMap = new FieldMap { { "user", "account.username" } },
+    Includes = new Dictionary<string, string> { ["mine"] = "owner:me" }
 };
 
-// Blocked: *, *:*
-// Allowed: title:*, title:hello*
+var result = QueryValidator.ValidateQuery("user:john @include:mine", validation, context);
 ```
 
-## Using with Field Mapping
+Use `QueryValidator.ValidateSort` and `QueryValidator.ValidateAggregations` for the other expression types. The providers have their own `ValidateQuery` and `ValidateSort` methods (and `ValidateAggregations` for Elasticsearch) that also resolve fields against the Elasticsearch mapping or the Entity Framework model.
 
-When using field mapping, validate against the user-facing field names:
+## What the result tells you
+
+Besides errors, a validation result describes the query, which is useful for logging or for rules of your own:
+
+| Property | Contents |
+|---|---|
+| `IsValid`, `ValidationErrors`, `Message` | errors, each with a message, position, and `QueryErrorCode` |
+| `ReferencedFields` | fields as written |
+| `ResolvedFields` | fields after resolution |
+| `UnresolvedFields`, `ReferencedIncludes`, `UnresolvedIncludes` | fields and includes by resolution outcome |
+| `Operations` | each operation used, with the fields it was used on |
+| `MaxNodeDepth` | deepest nesting of parenthesized groups |
 
 ```csharp
-var fieldMap = new FieldMap
-{
-    { "name", "fullName" },
-    { "dept", "department.name" },
-    { "hired", "hireDate" }
-};
-
-var validationOptions = new QueryValidationOptions
-{
-    AllowLeadingWildcards = false
-};
-// Validate the aliased names
-validationOptions.AllowedFields.AddRange(fieldMap.Keys);
-
-// Parse and validate
-var result = LuceneQuery.Parse(userQuery);
-
-var validation = QueryValidator.Validate(result.Document, validationOptions);
-if (!validation.IsValid)
-{
-    return BadRequest(validation.Message);
-}
-
-// Then resolve and execute
-FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-var filter = parser.BuildFilter<Employee>(QueryStringBuilder.ToQueryString(result.Document));
+var result = QueryValidator.ValidateQuery("title:hel* AND price:[1 TO 5]");
+// result.Operations: prefix → {title}, range → {price}
 ```
 
-## Custom Validation
+## Handling validation errors
 
-For complex validation rules, create a custom visitor:
-
-```csharp
-public class CustomValidationVisitor : QueryVisitor
-{
-    private readonly List<string> _errors = new();
-
-    public IReadOnlyList<string> Errors => _errors;
-    public bool IsValid => _errors.Count == 0;
-
-    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
-    {
-        // Validate date ranges don't span more than 1 year
-        if (node.Min != null && node.Max != null)
-        {
-            if (DateTime.TryParse(node.Min, out var minDate) &&
-                DateTime.TryParse(node.Max, out var maxDate))
-            {
-                if ((maxDate - minDate).TotalDays > 365)
-                {
-                    _errors.Add("Date ranges cannot span more than 1 year");
-                }
-            }
-        }
-
-        return base.Visit(node, context);
-    }
-
-    protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
-    {
-        // Validate specific field requirements
-        if (node.Field == "email" && node.Query is TermNode term)
-        {
-            if (!term.Term?.Contains("@") == true)
-            {
-                _errors.Add("Email searches must contain @");
-            }
-        }
-
-        return base.Visit(node, context);
-    }
-}
-
-// Usage
-var validator = new CustomValidationVisitor();
-validator.Accept(result.Document, new QueryVisitorContext());
-
-if (!validator.IsValid)
-{
-    return BadRequest(new { Errors = validator.Errors });
-}
-```
-
-## Validation in API Endpoints
-
-Complete validation example for an API:
+Building throws `QueryValidationException` (with the full `Result`) for syntax errors and rule violations. Its message is meant for users. (`QueryParseException` is only thrown by `LuceneParseResult.GetDocumentOrThrow` when you parse with `LuceneQuery` yourself.) In an API:
 
 ```csharp
-[HttpGet("search")]
-public async Task<IActionResult> Search([FromQuery] string q)
+app.MapGet("/search", (string q, ElasticsearchQueryParser parser) =>
 {
-    // 1. Parse the query
-    var parseResult = LuceneQuery.Parse(q);
-    if (!parseResult.IsSuccess)
-    {
-        return BadRequest(new
-        {
-            Error = "Invalid query syntax",
-            Details = parseResult.Errors.Select(e => new
-            {
-                e.Message,
-                e.Line,
-                e.Column
-            })
-        });
-    }
-
-    // 2. Validate the query
-    var validation = QueryValidator.Validate(
-        parseResult.Document,
-        _validationOptions
-    );
-    if (!validation.IsValid)
-    {
-        return BadRequest(new { Error = validation.Message });
-    }
-
-    // 3. Run custom validation
-    var customValidator = new CustomValidationVisitor();
-    customValidator.Accept(parseResult.Document, new QueryVisitorContext());
-    if (!customValidator.IsValid)
-    {
-        return BadRequest(new { Errors = customValidator.Errors });
-    }
-
-    // 4. Resolve fields and execute
-    FieldResolverQueryVisitor.Run(parseResult.Document, _fieldMap);
-    var filter = _parser.BuildFilter<Document>(
-        QueryStringBuilder.ToQueryString(parseResult.Document)
-    );
-
-    var results = await _context.Documents.Where(filter).ToListAsync();
-    return Ok(results);
-}
-```
-
-## Error Messages
-
-Customize validation error messages:
-
-```csharp
-public class ValidationResult
-{
-    public bool IsValid { get; set; }
-    public string? Message { get; set; }
-    public List<ValidationError> Errors { get; set; } = new();
-}
-
-public class ValidationError
-{
-    public string Field { get; set; } = "";
-    public string Code { get; set; } = "";
-    public string Message { get; set; } = "";
-}
-
-// Return user-friendly errors
-return BadRequest(new ValidationResult
-{
-    IsValid = false,
-    Message = "Query validation failed",
-    Errors = new List<ValidationError>
-    {
-        new() { Field = "salary", Code = "FIELD_NOT_ALLOWED", Message = "The 'salary' field is not searchable" },
-        new() { Field = "*", Code = "LEADING_WILDCARD", Message = "Searches cannot start with a wildcard" }
-    }
+    var result = parser.TryBuildQuery(q);
+    return result.IsSuccess
+        ? Results.Ok(result.Value)
+        : Results.BadRequest(new { error = result.ErrorMessage });
 });
 ```
 
-## Rate Limiting Complex Queries
+## Custom rules
 
-Track query complexity for rate limiting:
-
-```csharp
-public class QueryComplexityVisitor : QueryVisitor
-{
-    public int Complexity { get; private set; } = 0;
-
-    protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
-    {
-        Complexity += 1;
-        
-        // Wildcards are more expensive
-        if (node.Term?.Contains('*') == true || node.Term?.Contains('?') == true)
-        {
-            Complexity += 5;
-            
-            // Leading wildcards are very expensive
-            if (node.Term?.StartsWith('*') == true || node.Term?.StartsWith('?') == true)
-            {
-                Complexity += 20;
-            }
-        }
-        
-        return base.Visit(node, context);
-    }
-
-    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
-    {
-        Complexity += 3;
-        return base.Visit(node, context);
-    }
-
-    protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
-    {
-        Complexity += 10;
-        return base.Visit(node, context);
-    }
-}
-
-// Usage
-var complexityVisitor = new QueryComplexityVisitor();
-complexityVisitor.Accept(result.Document, new QueryVisitorContext());
-
-if (complexityVisitor.Complexity > 50)
-{
-    return BadRequest("Query is too complex");
-}
-```
-
-## Best Practices
-
-### 1. Always Validate User Input
-
-```csharp
-// Always validate before executing
-var parseResult = LuceneQuery.Parse(userQuery);
-if (!parseResult.IsSuccess) { /* handle error */ }
-
-var validation = QueryValidator.Validate(parseResult.Document, options);
-if (!validation.IsValid) { /* handle error */ }
-```
-
-### 2. Whitelist Over Blacklist
-
-```csharp
-// Better: Explicitly allow fields
-options.AllowedFields.Add("title");
-options.AllowedFields.Add("author");
-
-// Worse: Try to block sensitive fields
-options.DisallowedFields.Add("password");  // Easy to forget fields
-```
-
-### 3. Combine Multiple Validations
-
-```csharp
-// Parse error + Standard validation + Custom validation
-var pipeline = new List<Func<QueryDocument, Task<ValidationResult>>>
-{
-    doc => QueryValidator.Validate(doc, standardOptions),
-    doc => ValidateDateRanges(doc),
-    doc => ValidateUserPermissions(doc, currentUser)
-};
-
-foreach (var validator in pipeline)
-{
-    var result = await validator(document);
-    if (!result.IsValid) return BadRequest(result.Message);
-}
-```
-
-### 4. Log Validation Failures
-
-```csharp
-if (!validation.IsValid)
-{
-    _logger.LogWarning("Query validation failed for user {UserId}: {Query} - {Error}",
-        currentUser.Id, userQuery, validation.Message);
-    
-    return BadRequest(validation.Message);
-}
-```
-
-## Next Steps
-
-- [Visitors](./visitors) - Custom validation visitors
-- [Field Mapping](./field-mapping) - Secure field aliasing
-- [Configuration](./configuration) - Parser configuration
+Add rules with a visitor that reports errors on the context — see [Custom Visitors](./custom-visitors#adding-validation-rules). Register it before `ValidationVisitor` (priority 30) and the build fails the same way as for built-in rules.

@@ -1,614 +1,266 @@
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Tests;
 
-/// <summary>
-/// Tests for the FieldResolverQueryVisitor.
-/// </summary>
 public class FieldResolverQueryVisitorTests
 {
-    private static string ToQueryString(QueryDocument document)
+    [Theory]
+    [InlineData("user:john", "account.user:john")]
+    [InlineData("USER:john", "account.user:john")]
+    [InlineData("user.name:john", "account.user.name:john")]
+    [InlineData("data.age:>5", "resolved.age:{5 TO *]")]
+    [InlineData("data.nested.deep:1", "resolved.nested.deep:1")]
+    [InlineData("data.exact:1", "exact.target:1")]
+    [InlineData("data.exact.child:1", "exact.target.child:1")]
+    [InlineData("other:1", "other:1")]
+    [InlineData("user:\"john smith\"", "account.user:\"john smith\"")]
+    [InlineData("user:[a TO b]", "account.user:[a TO b]")]
+    [InlineData("user:/jo.*/", "account.user:/jo.*/")]
+    [InlineData("user:john~2^3", "account.user:john~2^3")]
+    [InlineData("_exists_:user", "(exists account.user)")]
+    [InlineData("user:*", "(exists account.user)")]
+    [InlineData("_missing_:user", "(missing account.user)")]
+    [InlineData("-user:john", "(bool -account.user:john)")]
+    [InlineData("user:(john OR jane)", "account.user:(group (bool ?john ?jane))")]
+    [InlineData("(user:a OR (data.x:b AND NOT other:c))", "(group (bool ?account.user:a ?(group (bool +resolved.x:b -other:c))))")]
+    public void Run_FieldMap_ResolvesFieldsEverywhere(string query, string expected)
     {
-        return QueryStringBuilder.ToQueryString(document);
-    }
+        // Arrange
+        var document = LuceneQuery.Parse(query).Document;
+        var fieldMap = new FieldMap { { "user", "account.user" }, { "data", "resolved" }, { "data.exact", "exact.target" } };
 
-    #region Simple Field Resolution
+        // Act
+        var result = FieldResolverQueryVisitor.Run(document, fieldMap);
 
-    [Fact]
-    public async Task CanResolveSimpleField()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("alias:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("actualField:value", query);
-    }
-
-    [Fact]
-    public async Task CanResolveCaseInsensitiveField()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "ALIAS", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("alias:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("actualField:value", query);
+        // Assert
+        Assert.Equal(expected, result.ToDebugString());
     }
 
     [Fact]
-    public async Task CanResolveMultipleFields()
+    public void Run_ResolvedField_RecordsOriginalField()
     {
-        var fieldMap = new FieldMap
+        // Arrange
+        var document = LuceneQuery.Parse("user:john AND _exists_:user AND _missing_:user AND other:x").Document;
+
+        // Act
+        FieldResolverQueryVisitor.Run(document, new FieldMap { { "user", "account.user" } });
+
+        // Assert
+        var fieldNodes = new List<QueryNode>();
+        document.Walk(n =>
         {
-            { "field1", "resolved1" },
-            { "field2", "resolved2" }
-        };
-
-        var result = LuceneQuery.Parse("field1:value1 AND field2:value2");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("resolved1:value1 AND resolved2:value2", query);
+            if (n is IFieldNode)
+                fieldNodes.Add(n);
+        });
+        var field = Assert.IsType<FieldQueryNode>(fieldNodes[0]);
+        Assert.Equal("account.user", field.Field);
+        Assert.Equal("user", field.GetOriginalField());
+        Assert.Equal("user", ((ExistsNode)fieldNodes[1]).GetOriginalField());
+        Assert.Equal("user", ((MissingNode)fieldNodes[2]).GetOriginalField());
+        var unchanged = (FieldQueryNode)fieldNodes[3];
+        Assert.Equal("other", unchanged.GetOriginalField());
+        Assert.False(unchanged.HasData);
     }
 
     [Fact]
-    public async Task UnresolvedFieldsAreTracked()
+    public void Run_ResolverAndFieldMap_ResolverTakesPrecedence()
     {
-        var fieldMap = new FieldMap
+        // Arrange
+        var document = LuceneQuery.Parse("a:1 b:2 c:3").Document;
+        var context = new QueryVisitorContext
         {
-            { "known", "resolved" }
+            FieldMap = new FieldMap { { "a", "map.a" }, { "b", "map.b" } }
         };
-        fieldMap.ReportUnmappedFields = true; // Enable tracking of unresolved fields
 
-        var result = LuceneQuery.Parse("known:value1 unknown:value2");
-        Assert.True(result.IsSuccess);
+        // Act
+        FieldResolverQueryVisitor.Run(document, (field, _) => field == "a" ? "resolver.a" : null, context);
 
-        var context = new QueryVisitorContext();
-        context.SetFieldMap(fieldMap);
-        new FieldResolverQueryVisitor().Run(result.Document, context);
-
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("unknown", validationResult.UnresolvedFields);
-        Assert.DoesNotContain("known", validationResult.UnresolvedFields);
+        // Assert
+        Assert.Equal("(bool +resolver.a:1 +map.b:2 +c:3)", document.ToDebugString());
+        Assert.Empty(context.ValidationResult.UnresolvedFields);
     }
 
     [Fact]
-    public async Task FieldNotInMapRemainsUnchangedWithHierarchicalResolver()
+    public void Run_ResolverReturnsNullAndNoFieldMap_RecordsUnresolvedField()
     {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("other:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        // Hierarchical resolver returns original field if no match
-        Assert.Equal("other:value", query);
-    }
-
-    #endregion
-
-    #region Hierarchical Field Resolution
-
-    [Fact]
-    public async Task CanResolveNestedField()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "data", "resolved" }
-        };
-
-        var result = LuceneQuery.Parse("data.subfield:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("resolved.subfield:value", query);
-    }
-
-    [Fact]
-    public async Task CanResolveDeeplyNestedField()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "root", "mappedRoot" }
-        };
-
-        var result = LuceneQuery.Parse("root.level1.level2.level3:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("mappedRoot.level1.level2.level3:value", query);
-    }
-
-    [Fact]
-    public async Task CanResolveMiddleOfPath()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "data.nested", "resolved.path" }
-        };
-
-        var result = LuceneQuery.Parse("data.nested.field:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("resolved.path.field:value", query);
-    }
-
-    [Fact]
-    public async Task ExactMatchTakesPrecedenceOverHierarchical()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "data", "wrong" },
-            { "data.subfield", "exactMatch" }
-        };
-
-        var result = LuceneQuery.Parse("data.subfield:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("exactMatch:value", query);
-    }
-
-    [Fact]
-    public void HierarchicalResolverWithPrefix()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "field", "mappedField" }
-        };
-        fieldMap.ResultPrefix = "prefix.";
-
-        var result = LuceneQuery.Parse("field:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        context.SetFieldMap(fieldMap);
-        new FieldResolverQueryVisitor().Run(result.Document, context);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("prefix.mappedField:value", query);
-    }
-
-    #endregion
-
-    #region Exists and Missing Nodes
-
-    [Fact]
-    public async Task CanResolveExistsNode()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("_exists_:alias");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("_exists_:actualField", query);
-    }
-
-    [Fact]
-    public async Task CanResolveMissingNode()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("_missing_:alias");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("_missing_:actualField", query);
-    }
-
-    [Fact]
-    public async Task CanResolveExistsWithWildcardSyntax()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("alias:*");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("actualField:*", query);
-    }
-
-    #endregion
-
-    #region Range Queries
-
-    [Fact]
-    public async Task CanResolveRangeField()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "date", "timestamp" }
-        };
-
-        var result = LuceneQuery.Parse("date:[2020-01-01 TO 2020-12-31]");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("timestamp:[2020-01-01 TO 2020-12-31]", query);
-    }
-
-    [Fact]
-    public async Task CanResolveShortFormRangeField()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "age", "person.age" }
-        };
-
-        var result = LuceneQuery.Parse("age:>18");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("person.age:>18", query);
-    }
-
-    #endregion
-
-    #region Phrase and Boolean Queries
-
-    [Fact]
-    public async Task CanResolveFieldWithPhrase()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "title", "document.title" }
-        };
-
-        var result = LuceneQuery.Parse("title:\"hello world\"");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("document.title:\"hello world\"", query);
-    }
-
-    [Fact]
-    public async Task CanResolveFieldsInBooleanQuery()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "name", "person.name" },
-            { "age", "person.age" }
-        };
-
-        var result = LuceneQuery.Parse("name:John AND age:25");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("person.name:John AND person.age:25", query);
-    }
-
-    [Fact]
-    public async Task CanResolveFieldsInNestedGroups()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "field1", "resolved1" },
-            { "field2", "resolved2" }
-        };
-
-        var result = LuceneQuery.Parse("(field1:value1 OR field2:value2)");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("(resolved1:value1 OR resolved2:value2)", query);
-    }
-
-    #endregion
-
-    #region Custom Resolvers
-
-    [Fact]
-    public void CanUseFieldMapDictionary()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "resolvedField" }
-        };
-
-        var result = LuceneQuery.Parse("alias:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("resolvedField:value", query);
-    }
-
-    [Fact]
-    public void CanUseRawDictionary()
-    {
-        var map = new Dictionary<string, string>
-        {
-            { "alias", "resolvedField" }
-        };
-
-        var result = LuceneQuery.Parse("alias:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, map);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("resolvedField:value", query);
-    }
-
-    [Fact]
-    public void ContextFieldMapTakesPrecedenceOverConstructorFieldMap()
-    {
-        var globalFieldMap = new FieldMap
-        {
-            { "special", "global.special" },
-            { "other", "global.other" }
-        };
-
-        var contextFieldMap = new FieldMap
-        {
-            { "special", "context.special" }
-        };
-
-        var result = LuceneQuery.Parse("special:value other:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        context.SetFieldMap(contextFieldMap);
-        var visitor = new FieldResolverQueryVisitor(globalFieldMap);
-        visitor.Run(result.Document, context);
-
-        var query = ToQueryString(result.Document);
-        // Context field map takes precedence for 'special', but 'other' is not in context map
-        // so it falls through unchanged since context map doesn't have it
-        Assert.Equal("context.special:value other:value", query);
-    }
-
-    #endregion
-
-    #region Original Field Tracking
-
-    [Fact]
-    public async Task OriginalFieldIsTracked()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("alias:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        FieldResolverQueryVisitor.Run(result.Document!, fieldMap, context);
-
-        // Find the FieldQueryNode
-        var fieldNode = FindFirstFieldQueryNode(result.Document!.Query!);
-        Assert.NotNull(fieldNode);
-        Assert.Equal("actualField", fieldNode.Field);
-
-        var originalField = fieldNode.GetOriginalField(context);
-        Assert.Equal("alias", originalField);
-    }
-
-    [Fact]
-    public async Task OriginalFieldNotSetWhenNoChange()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "actualField" }
-        };
-
-        var result = LuceneQuery.Parse("other:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        FieldResolverQueryVisitor.Run(result.Document!, fieldMap, context);
-
-        // Find the FieldQueryNode
-        var fieldNode = FindFirstFieldQueryNode(result.Document!.Query!);
-        Assert.NotNull(fieldNode);
-        Assert.Equal("other", fieldNode.Field); // Unchanged due to hierarchical resolver
-
-        var originalField = fieldNode.GetOriginalField(context);
-        Assert.Null(originalField); // Not set because field didn't change
-    }
-
-    #endregion
-
-    #region Error Handling
-
-    [Fact]
-    public void UnmappedFieldsReportedWhenConfigured()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "known", "resolved" }
-        };
-        fieldMap.ReportUnmappedFields = true;
-
-        var result = LuceneQuery.Parse("unknown:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
-
-        var validationResult = context.GetValidationResult();
-        Assert.Contains("unknown", validationResult.UnresolvedFields);
-    }
-
-    [Fact]
-    public void NoFieldMapDoesNothing()
-    {
-        var result = LuceneQuery.Parse("field:value");
-        Assert.True(result.IsSuccess);
-
-        var context = new QueryVisitorContext();
-        // No resolver set
-        new FieldResolverQueryVisitor().Run(result.Document, context);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("field:value", query);
-        Assert.True(context.GetValidationResult().IsValid);
-    }
-
-    #endregion
-
-    #region Complex Scenarios
-
-    [Fact]
-    public async Task CanResolveComplexQuery()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "user", "account.user" },
-            { "created", "metadata.timestamp" },
-            { "status", "workflow.status" }
-        };
-
-        var result = LuceneQuery.Parse("(user:john OR user:jane) AND created:[2020-01-01 TO 2020-12-31] AND status:active");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("(account.user:john OR account.user:jane) AND metadata.timestamp:[2020-01-01 TO 2020-12-31] AND workflow.status:active", query);
-    }
-
-    [Fact]
-    public async Task CanResolveNotQueries()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "field", "resolved" }
-        };
-
-        var result = LuceneQuery.Parse("NOT field:value");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("NOT resolved:value", query);
-    }
-
-    [Fact]
-    public async Task CanResolveBoostAndFuzzy()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "title", "document.title" }
-        };
-
-        // Use ~1 instead of ~2 since ~2 is the default and won't be output
-        var result = LuceneQuery.Parse("title:search~1^2");
-        Assert.True(result.IsSuccess);
-
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("document.title:search~1^2", query);
-    }
-
-    [Fact]
-    public async Task CanCombineWithIncludeVisitor()
-    {
-        var fieldMap = new FieldMap
-        {
-            { "alias", "resolved" }
-        };
-
-        var includes = new Dictionary<string, string>
-        {
-            { "myfilter", "alias:value" }
-        };
-
-        var result = LuceneQuery.Parse("@include:myfilter");
-        Assert.True(result.IsSuccess);
-
+        // Arrange
+        var document = LuceneQuery.Parse("known:1 unknown:2 _exists_:missing").Document;
         var context = new QueryVisitorContext();
 
-        // First run include visitor
-        context.SetIncludes(includes);
-        new IncludeVisitor().Run(result.Document, context);
+        // Act
+        FieldResolverQueryVisitor.Run(document, (field, _) => field == "known" ? "resolved.known" : null, context);
 
-        // Then run field resolver
-        FieldResolverQueryVisitor.Run(result.Document, fieldMap, context);
-
-        var query = ToQueryString(result.Document);
-        Assert.Equal("(resolved:value)", query);
+        // Assert
+        Assert.Equal("(bool +resolved.known:1 +unknown:2 +(exists missing))", document.ToDebugString());
+        Assert.Equal(["missing", "unknown"], context.ValidationResult.UnresolvedFields.Order());
+        Assert.True(context.ValidationResult.IsValid);
     }
 
-    #endregion
-
-    #region Helpers
-
-    private static FieldQueryNode? FindFirstFieldQueryNode(QueryNode node)
+    [Fact]
+    public void Run_FieldMapReportsUnmappedFields_RecordsUnresolvedField()
     {
-        return node switch
-        {
-            FieldQueryNode fieldNode => fieldNode,
-            BooleanQueryNode boolNode => boolNode.Clauses
-                .Select(c => FindFirstFieldQueryNode(c.Query!))
-                .FirstOrDefault(n => n != null),
-            GroupNode groupNode when groupNode.Query != null => FindFirstFieldQueryNode(groupNode.Query),
-            NotNode notNode when notNode.Query != null => FindFirstFieldQueryNode(notNode.Query),
-            _ => null
-        };
+        // Arrange
+        var document = LuceneQuery.Parse("mapped:1 unmapped:2").Document;
+        var context = new QueryVisitorContext();
+        var fieldMap = new FieldMap { ReportUnmappedFields = true }.Add("mapped", "target");
+
+        // Act
+        FieldResolverQueryVisitor.Run(document, fieldMap, context);
+
+        // Assert
+        Assert.Equal("(bool +target:1 +unmapped:2)", document.ToDebugString());
+        Assert.Equal(["unmapped"], context.ValidationResult.UnresolvedFields);
     }
 
-    #endregion
+    [Fact]
+    public void Run_ResolverThrows_RecordsValidationErrorAndLeavesField()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("boom:1 ok:2").Document;
+        var context = new QueryVisitorContext();
+
+        // Act
+        FieldResolverQueryVisitor.Run(document, (field, _) => field == "boom" ? throw new InvalidOperationException("kaboom") : "x." + field, context);
+
+        // Assert
+        Assert.Equal("(bool +boom:1 +x.ok:2)", document.ToDebugString());
+        var error = Assert.Single(context.ValidationResult.ValidationErrors);
+        Assert.Equal(QueryErrorCode.UnresolvedField, error.Code);
+        Assert.Contains("boom", error.Message);
+        Assert.Contains("kaboom", error.Message);
+        Assert.Contains("boom", context.ValidationResult.UnresolvedFields);
+    }
+
+    [Fact]
+    public void Run_SpecialFields_AreNotResolved()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:saved @custom:x").Document;
+        var calls = new List<string>();
+
+        // Act
+        FieldResolverQueryVisitor.Run(document, (field, _) =>
+        {
+            calls.Add(field);
+            return "resolved";
+        });
+
+        // Assert
+        Assert.Empty(calls);
+        Assert.Equal("(bool +@include:saved +@custom:x)", document.ToDebugString());
+    }
+
+    [Fact]
+    public void Run_AlreadyResolvedDocument_DoesNotResolveTwice()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("a:1").Document;
+        var fieldMap = new FieldMap { { "a", "b" }, { "b", "c" } };
+
+        // Act
+        FieldResolverQueryVisitor.Run(document, fieldMap);
+        FieldResolverQueryVisitor.Run(document, fieldMap);
+
+        // Assert
+        Assert.Equal("b:1", document.ToDebugString());
+        Assert.Equal("a", ((FieldQueryNode)document.Query!).GetOriginalField());
+    }
+
+    [Fact]
+    public void Run_ResolverReturnsSameName_DoesNotRecordOriginalField()
+    {
+        var document = LuceneQuery.Parse("a:1").Document;
+
+        FieldResolverQueryVisitor.Run(document, (field, _) => field);
+
+        Assert.False(document.Query!.HasData);
+    }
+
+    [Fact]
+    public void Run_ResolverReceivesContext_CanUseContextData()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("name:x").Document;
+        var context = new QueryVisitorContext();
+        context.SetValue("tenant", "t1");
+
+        // Act
+        FieldResolverQueryVisitor.Run(document, (field, ctx) => $"{ctx.GetValue<string>("tenant")}.{field}", context);
+
+        // Assert
+        Assert.Equal("t1.name:x", document.ToDebugString());
+    }
+
+    [Fact]
+    public void Run_NullArguments_ThrowsArgumentNullException()
+    {
+        var document = LuceneQuery.Parse("a").Document;
+
+        Assert.Throws<ArgumentNullException>(() => FieldResolverQueryVisitor.Run(null!, new FieldMap()));
+        Assert.Throws<ArgumentNullException>(() => FieldResolverQueryVisitor.Run(document, (FieldMap)null!));
+        Assert.Throws<ArgumentNullException>(() => FieldResolverQueryVisitor.Run(document, (QueryFieldResolver)null!));
+    }
+
+    [Fact]
+    public void TryResolveField_NoResolverOrFieldMap_ResolvesToItself()
+    {
+        bool success = FieldResolverQueryVisitor.TryResolveField("anything", new QueryVisitorContext(), out string resolved);
+
+        Assert.True(success);
+        Assert.Equal("anything", resolved);
+    }
+
+    [Fact]
+    public void TryResolveField_Unresolvable_ReturnsFalseAndOriginalName()
+    {
+        var context = new QueryVisitorContext { FieldResolver = (_, _) => null };
+
+        bool success = FieldResolverQueryVisitor.TryResolveField("field", context, out string resolved);
+
+        Assert.False(success);
+        Assert.Equal("field", resolved);
+    }
+
+    [Fact]
+    public void Run_WithIncludeVisitorInChain_ResolvesFieldsInsideExpandedIncludes()
+    {
+        // Arrange
+        var document = LuceneQuery.Parse("@include:active AND user:john").Document;
+        var context = new QueryVisitorContext
+        {
+            Includes = new Dictionary<string, string> { ["active"] = "status:active" },
+            FieldMap = new FieldMap { { "status", "data.status" }, { "user", "account.user" } }
+        };
+        var chain = new ChainedQueryVisitor()
+            .AddVisitor(FieldResolverQueryVisitor.Instance, 10)
+            .AddVisitor(IncludeVisitor.Instance, 0);
+
+        // Act
+        var result = chain.Run(document, context);
+
+        // Assert
+        Assert.Equal("(bool +(group data.status:active) +account.user:john)", result.ToDebugString());
+    }
+
+    [Fact]
+    public void Run_SharedFieldMapConcurrently_ProducesConsistentResults()
+    {
+        // Arrange
+        var fieldMap = new FieldMap { { "user", "account.user" }, { "data", "resolved" } };
+        var failures = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        // Act
+        Parallel.For(0, 500, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i =>
+        {
+            var document = LuceneQuery.Parse($"user:{i} data.x{i}:y").Document;
+            string result = FieldResolverQueryVisitor.Run(document, fieldMap).ToDebugString();
+            if (result != $"(bool +account.user:{i} +resolved.x{i}:y)")
+                failures.Add(result);
+        });
+
+        // Assert
+        Assert.Empty(failures);
+    }
 }

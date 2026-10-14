@@ -1,69 +1,47 @@
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Represents a range query.
+/// Represents a range query (<c>[min TO max]</c>, <c>{min TO max}</c>, or a short form such as <c>&gt;=min</c>).
 /// </summary>
-public class RangeNode : QueryNode
+public class RangeNode : QueryNode, IBoostable, IProximityModifiable
 {
-    private ReadOnlyMemory<char> _field;
-    private ReadOnlyMemory<char> _min;
-    private ReadOnlyMemory<char> _max;
+    private TextValue _min;
+    private TextValue _max;
 
     /// <summary>
-    /// The field name as a memory slice (zero allocation).
-    /// </summary>
-    public ReadOnlyMemory<char> FieldMemory
-    {
-        get => _field;
-        set => _field = value;
-    }
-
-    /// <summary>
-    /// The field name (optional, may be set at FieldQueryNode level).
-    /// Use FieldMemory for zero-allocation access.
-    /// </summary>
-    public string? Field
-    {
-        get => _field.Length == 0 ? null : _field.Span.ToString();
-        set => _field = value?.AsMemory() ?? ReadOnlyMemory<char>.Empty;
-    }
-
-    /// <summary>
-    /// The lower bound as a memory slice (zero allocation).
+    /// The lower bound (escape sequences processed) as a memory slice. Empty when unbounded.
     /// </summary>
     public ReadOnlyMemory<char> MinMemory
     {
-        get => _min;
-        set => _min = value;
+        get => _min.Memory;
+        set => _min.Memory = value;
     }
 
     /// <summary>
-    /// The lower bound of the range (null for unbounded).
-    /// Use MinMemory for zero-allocation access.
+    /// The lower bound, or null when unbounded.
     /// </summary>
     public string? Min
     {
-        get => _min.Length == 0 ? null : _min.Span.ToString();
-        set => _min = value?.AsMemory() ?? ReadOnlyMemory<char>.Empty;
+        get => _min.IsEmpty ? null : _min.GetString();
+        set => _min.SetString(value);
     }
 
     /// <summary>
-    /// The upper bound as a memory slice (zero allocation).
+    /// The upper bound (escape sequences processed) as a memory slice. Empty when unbounded.
     /// </summary>
     public ReadOnlyMemory<char> MaxMemory
     {
-        get => _max;
-        set => _max = value;
+        get => _max.Memory;
+        set => _max.Memory = value;
     }
 
     /// <summary>
-    /// The upper bound of the range (null for unbounded).
-    /// Use MaxMemory for zero-allocation access.
+    /// The upper bound, or null when unbounded.
     /// </summary>
     public string? Max
     {
-        get => _max.Length == 0 ? null : _max.Span.ToString();
-        set => _max = value?.AsMemory() ?? ReadOnlyMemory<char>.Empty;
+        get => _max.IsEmpty ? null : _max.GetString();
+        set => _max.SetString(value);
     }
 
     /// <summary>
@@ -77,14 +55,37 @@ public class RangeNode : QueryNode
     public bool MaxInclusive { get; set; } = true;
 
     /// <summary>
-    /// Optional boost value.
-    /// </summary>
-    public float? Boost { get; set; }
-
-    /// <summary>
-    /// The operator used for short-form ranges (&gt;, &gt;=, &lt;, &lt;=).
+    /// The operator used for short-form ranges (&gt;, &gt;=, &lt;, &lt;=), or null for bracketed ranges.
     /// </summary>
     public RangeOperator? Operator { get; set; }
+
+    /// <inheritdoc/>
+    public string? BoostText { get; set; }
+
+    /// <inheritdoc/>
+    public float? Boost
+    {
+        get => Modifiers.ParseBoost(BoostText);
+        set => BoostText = Modifiers.FormatBoost(value);
+    }
+
+    /// <inheritdoc/>
+    public string? ProximityText { get; set; }
+
+    /// <inheritdoc/>
+    public override QueryNode Clone()
+    {
+        return CopyCommonTo(new RangeNode
+        {
+            MinMemory = MinMemory,
+            MaxMemory = MaxMemory,
+            MinInclusive = MinInclusive,
+            MaxInclusive = MaxInclusive,
+            Operator = Operator,
+            BoostText = BoostText,
+            ProximityText = ProximityText
+        });
+    }
 }
 
 /// <summary>

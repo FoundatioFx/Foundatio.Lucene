@@ -1,37 +1,52 @@
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Represents a phrase query (quoted string).
+/// Represents a quoted phrase.
 /// </summary>
-public class PhraseNode : QueryNode
+public class PhraseNode : QueryNode, IBoostable, IProximityModifiable
 {
-    private ReadOnlyMemory<char> _phrase;
+    private TextValue _phrase;
 
     /// <summary>
-    /// The phrase value as a memory slice (zero allocation).
+    /// The phrase text (without quotes, escape sequences processed) as a memory slice.
     /// </summary>
     public ReadOnlyMemory<char> PhraseMemory
     {
-        get => _phrase;
-        set => _phrase = value;
+        get => _phrase.Memory;
+        set => _phrase.Memory = value;
     }
 
     /// <summary>
-    /// The phrase value (without quotes) as a string. Use PhraseMemory for zero-allocation access.
+    /// The phrase text without quotes, with escape sequences processed.
     /// </summary>
     public string Phrase
     {
-        get => _phrase.Span.ToString();
-        set => _phrase = value.AsMemory();
+        get => _phrase.GetString();
+        set => _phrase.SetString(value);
     }
 
-    /// <summary>
-    /// Optional boost value.
-    /// </summary>
-    public float? Boost { get; set; }
+    /// <inheritdoc/>
+    public string? BoostText { get; set; }
+
+    /// <inheritdoc/>
+    public float? Boost
+    {
+        get => Modifiers.ParseBoost(BoostText);
+        set => BoostText = Modifiers.FormatBoost(value);
+    }
+
+    /// <inheritdoc/>
+    public string? ProximityText { get; set; }
 
     /// <summary>
-    /// Optional slop value for proximity queries (phrase~N).
+    /// The phrase slop for proximity queries (<c>"a b"~N</c>), or null when not specified or not an integer.
     /// </summary>
-    public int? Slop { get; set; }
+    public int? Slop
+    {
+        get => Modifiers.ParseInt(ProximityText);
+        set => ProximityText = Modifiers.FormatInt(value);
+    }
+
+    /// <inheritdoc/>
+    public override QueryNode Clone() => CopyCommonTo(new PhraseNode { PhraseMemory = PhraseMemory, BoostText = BoostText, ProximityText = ProximityText });
 }

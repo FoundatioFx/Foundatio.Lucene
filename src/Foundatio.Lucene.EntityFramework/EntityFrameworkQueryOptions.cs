@@ -1,223 +1,252 @@
+using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Visitors;
+using Microsoft.EntityFrameworkCore.Metadata;
+
 namespace Foundatio.Lucene.EntityFramework;
 
 /// <summary>
-/// Represents per-request options for building Entity Framework filter expressions.
-/// These options are merged with the global parser configuration and can be cached by consuming applications (e.g., per-tenant).
+/// Per-request (or per-scope, such as per-tenant) options for <see cref="EntityFrameworkQueryParser"/>. They override
+/// the options registered for the entity type with <see cref="EntityFrameworkQueryParser.SetOptions{TEntity}(EntityFrameworkQueryOptions)"/>,
+/// which override the parser configuration. Instances are immutable and can be cached and shared.
 /// </summary>
 public sealed record EntityFrameworkQueryOptions : QueryOptionsBase
 {
     /// <summary>
-    /// Additional fields to include for this request, merged with global field discovery.
+    /// Options that override nothing.
+    /// </summary>
+    public static EntityFrameworkQueryOptions Empty { get; } = new();
+
+    /// <summary>
+    /// The EF Core model used to discover fields. The <c>DbSet</c> and <c>IQueryable</c> extension methods set it
+    /// automatically.
+    /// </summary>
+    public IModel? Model { get; init; }
+
+    /// <summary>
+    /// Overrides how terms without a field are matched against string default fields.
+    /// </summary>
+    public SearchOperator? DefaultSearchOperator { get; init; }
+
+    /// <summary>
+    /// Overrides the time zone used for <c>now</c>, date math rounding, and dates written without an offset.
+    /// </summary>
+    public TimeZoneInfo? DefaultTimeZone { get; init; }
+
+    /// <summary>
+    /// Custom fields (for example dynamic or EAV fields) that can be queried in addition to the model's fields. A
+    /// custom field with the same name as a model field replaces it. Queries on custom fields need a
+    /// <see cref="CustomFieldExpressionBuilder"/>. Registered and per-request fields are combined.
     /// </summary>
     public IReadOnlyList<EntityFieldInfo>? AdditionalFields { get; init; }
 
     /// <summary>
-    /// Custom data to attach to specific fields for this request.
-    /// </summary>
-    public IReadOnlyDictionary<string, object?>? FieldData { get; init; }
-
-    /// <summary>
-    /// Custom field expression builder for this request. Overrides global builder if provided.
+    /// Overrides the builder for custom field expressions.
     /// </summary>
     public CustomFieldExpressionBuilder? CustomFieldExpressionBuilder { get; init; }
 
     /// <summary>
-    /// Creates a new instance of EntityFrameworkQueryOptions.
+    /// Creates a builder for options.
     /// </summary>
-    public static EntityFrameworkQueryOptions Empty { get; } = new();
+    public static EntityFrameworkQueryOptionsBuilder CreateBuilder() => new();
 }
 
 /// <summary>
-/// Builder for creating EntityFrameworkQueryOptions with fluent configuration.
+/// Fluent builder for <see cref="EntityFrameworkQueryOptions"/>.
 /// </summary>
 public class EntityFrameworkQueryOptionsBuilder
 {
-    private FieldMap? _fieldMap;
-    private IReadOnlyDictionary<string, string>? _includes;
-    private QueryValidationOptions? _validationOptions;
-    private string[]? _defaultFields;
+    private EntityFrameworkQueryOptions _options = EntityFrameworkQueryOptions.Empty;
     private List<EntityFieldInfo>? _additionalFields;
-    private Dictionary<string, object?>? _fieldData;
-    private CustomFieldExpressionBuilder? _customFieldExpressionBuilder;
 
     /// <summary>
-    /// Sets the field map for alias resolution.
+    /// Sets the field aliases.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithFieldMap(FieldMap fieldMap)
     {
-        _fieldMap = fieldMap;
+        _options = _options with { FieldMap = fieldMap };
         return this;
     }
 
     /// <summary>
-    /// Sets the field map using a builder action.
+    /// Sets the field aliases using a <see cref="FieldMapBuilder"/>.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithFieldMap(Action<FieldMapBuilder> configure)
     {
+        ArgumentNullException.ThrowIfNull(configure);
         var builder = FieldMapBuilder.Create();
         configure(builder);
-        _fieldMap = builder.Build();
+        return WithFieldMap(builder.Build());
+    }
+
+    /// <summary>
+    /// Sets the synchronous field resolver.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithFieldResolver(QueryFieldResolver resolver)
+    {
+        _options = _options with { FieldResolver = resolver };
         return this;
     }
 
     /// <summary>
-    /// Sets the includes dictionary.
+    /// Sets the asynchronous field resolver (requires the <c>Async</c> build methods).
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithAsyncFieldResolver(AsyncQueryFieldResolver resolver)
+    {
+        _options = _options with { AsyncFieldResolver = resolver };
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the query text for <c>@include:name</c> references.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithIncludes(IReadOnlyDictionary<string, string> includes)
     {
-        _includes = includes;
+        _options = _options with { Includes = includes };
         return this;
     }
 
     /// <summary>
-    /// Sets the validation options.
+    /// Sets the asynchronous include resolver (requires the <c>Async</c> build methods).
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithIncludeResolver(IncludeResolver resolver)
+    {
+        _options = _options with { IncludeResolver = resolver };
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the validation rules.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithValidationOptions(QueryValidationOptions options)
     {
-        _validationOptions = options;
+        _options = _options with { ValidationOptions = options };
         return this;
     }
 
     /// <summary>
-    /// Sets the validation options using a configuration action.
+    /// Sets the validation rules using a configuration action.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithValidationOptions(Action<QueryValidationOptions> configure)
     {
-        _validationOptions = new QueryValidationOptions();
-        configure(_validationOptions);
+        ArgumentNullException.ThrowIfNull(configure);
+        var options = new QueryValidationOptions();
+        configure(options);
+        return WithValidationOptions(options);
+    }
+
+    /// <summary>
+    /// Sets the operator used between clauses written without AND or OR.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithDefaultOperator(BooleanOperator op)
+    {
+        _options = _options with { DefaultOperator = op };
         return this;
     }
 
     /// <summary>
-    /// Sets the default fields to search when no field is specified.
+    /// Sets the fields searched by terms that have no field.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithDefaultFields(params string[] fields)
     {
-        _defaultFields = fields;
+        _options = _options with { DefaultFields = fields };
         return this;
     }
 
     /// <summary>
-    /// Adds additional fields for this entity type.
+    /// Sets how terms without a field are matched against string default fields.
     /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithAdditionalFields(params EntityFieldInfo[] fields)
+    public EntityFrameworkQueryOptionsBuilder WithDefaultSearchOperator(SearchOperator searchOperator)
     {
-        _additionalFields ??= [];
-        _additionalFields.AddRange(fields);
+        _options = _options with { DefaultSearchOperator = searchOperator };
         return this;
     }
 
     /// <summary>
-    /// Adds additional fields for this entity type.
+    /// Sets the time zone used for <c>now</c>, date math rounding, and dates written without an offset.
     /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithAdditionalFields(IEnumerable<EntityFieldInfo> fields)
+    public EntityFrameworkQueryOptionsBuilder WithDefaultTimeZone(TimeZoneInfo timeZone)
     {
-        _additionalFields ??= [];
-        _additionalFields.AddRange(fields);
+        _options = _options with { DefaultTimeZone = timeZone };
         return this;
     }
 
     /// <summary>
-    /// Adds a custom field with the specified properties.
+    /// Sets the EF Core model used to discover fields.
     /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithAdditionalField(string name, Type clrType, Action<EntityFieldInfo>? configure = null)
+    public EntityFrameworkQueryOptionsBuilder WithModel(IModel model)
     {
-        _additionalFields ??= [];
-        var underlyingType = Nullable.GetUnderlyingType(clrType) ?? clrType;
-        var field = new EntityFieldInfo
-        {
-            Name = name,
-            FullName = name,
-            ClrType = clrType,
-            IsNumber = EntityFrameworkQueryParser.IsNumericType(underlyingType),
-            IsDate = underlyingType == typeof(DateTime),
-            IsDateOnly = underlyingType == typeof(DateOnly),
-            IsBoolean = underlyingType == typeof(bool),
-            IsString = underlyingType == typeof(string)
-        };
-        configure?.Invoke(field);
-        _additionalFields.Add(field);
+        _options = _options with { Model = model };
         return this;
     }
 
     /// <summary>
-    /// Adds a string field.
-    /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithStringField(string name, Action<EntityFieldInfo>? configure = null)
-    {
-        return WithAdditionalField(name, typeof(string), configure);
-    }
-
-    /// <summary>
-    /// Adds an integer field.
-    /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithIntField(string name, Action<EntityFieldInfo>? configure = null)
-    {
-        return WithAdditionalField(name, typeof(int), configure);
-    }
-
-    /// <summary>
-    /// Adds a decimal field.
-    /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithDecimalField(string name, Action<EntityFieldInfo>? configure = null)
-    {
-        return WithAdditionalField(name, typeof(decimal), configure);
-    }
-
-    /// <summary>
-    /// Adds a boolean field.
-    /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithBooleanField(string name, Action<EntityFieldInfo>? configure = null)
-    {
-        return WithAdditionalField(name, typeof(bool), configure);
-    }
-
-    /// <summary>
-    /// Adds a DateTime field.
-    /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithDateTimeField(string name, Action<EntityFieldInfo>? configure = null)
-    {
-        return WithAdditionalField(name, typeof(DateTime), configure);
-    }
-
-    /// <summary>
-    /// Attaches custom data to a field.
-    /// </summary>
-    public EntityFrameworkQueryOptionsBuilder WithFieldData(string fieldName, string key, object value)
-    {
-        _fieldData ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        if (!_fieldData.TryGetValue(fieldName, out var existingData) || existingData is not Dictionary<string, object?> dict)
-        {
-            dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            _fieldData[fieldName] = dict;
-        }
-        dict[key] = value;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a custom field expression builder.
+    /// Sets the builder for custom field expressions.
     /// </summary>
     public EntityFrameworkQueryOptionsBuilder WithCustomFieldExpressionBuilder(CustomFieldExpressionBuilder builder)
     {
-        _customFieldExpressionBuilder = builder;
+        _options = _options with { CustomFieldExpressionBuilder = builder };
         return this;
     }
+
+    /// <summary>
+    /// Adds custom fields.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithAdditionalFields(params IEnumerable<EntityFieldInfo> fields)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        _additionalFields ??= [];
+        _additionalFields.AddRange(fields);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a custom field.
+    /// </summary>
+    /// <param name="name">The field name used in queries.</param>
+    /// <param name="clrType">The type of the field's values, used to parse query values.</param>
+    /// <param name="data">Application data for the custom field expression builder.</param>
+    public EntityFrameworkQueryOptionsBuilder WithAdditionalField(string name, Type clrType, IReadOnlyDictionary<string, object?>? data = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        ArgumentNullException.ThrowIfNull(clrType);
+        return WithAdditionalFields(new EntityFieldInfo
+        {
+            Name = name,
+            ClrType = clrType,
+            Data = data ?? EntityFieldInfo.EmptyData
+        });
+    }
+
+    /// <summary>
+    /// Adds a custom string field.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithStringField(string name, IReadOnlyDictionary<string, object?>? data = null) => WithAdditionalField(name, typeof(string), data);
+
+    /// <summary>
+    /// Adds a custom integer field.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithIntField(string name, IReadOnlyDictionary<string, object?>? data = null) => WithAdditionalField(name, typeof(int), data);
+
+    /// <summary>
+    /// Adds a custom decimal field.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithDecimalField(string name, IReadOnlyDictionary<string, object?>? data = null) => WithAdditionalField(name, typeof(decimal), data);
+
+    /// <summary>
+    /// Adds a custom boolean field.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithBooleanField(string name, IReadOnlyDictionary<string, object?>? data = null) => WithAdditionalField(name, typeof(bool), data);
+
+    /// <summary>
+    /// Adds a custom date and time field.
+    /// </summary>
+    public EntityFrameworkQueryOptionsBuilder WithDateTimeField(string name, IReadOnlyDictionary<string, object?>? data = null) => WithAdditionalField(name, typeof(DateTime), data);
 
     /// <summary>
     /// Builds the options.
     /// </summary>
     public EntityFrameworkQueryOptions Build()
     {
-        return new EntityFrameworkQueryOptions
-        {
-            FieldMap = _fieldMap,
-            Includes = _includes,
-            ValidationOptions = _validationOptions,
-            DefaultFields = _defaultFields,
-            AdditionalFields = _additionalFields?.ToList(),
-            FieldData = _fieldData,
-            CustomFieldExpressionBuilder = _customFieldExpressionBuilder
-        };
+        return _additionalFields is null ? _options : _options with { AdditionalFields = [.. _additionalFields] };
     }
 }

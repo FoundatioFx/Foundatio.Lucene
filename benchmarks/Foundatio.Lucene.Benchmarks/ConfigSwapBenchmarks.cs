@@ -4,6 +4,7 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.Emit;
 using Foundatio.Lucene.Elasticsearch;
 using Foundatio.Lucene.EntityFramework;
+using Microsoft.EntityFrameworkCore;
 
 namespace Foundatio.Lucene.Benchmarks;
 
@@ -49,7 +50,8 @@ public class ConfigSwapBenchmarks
             };
         }
 
-        _efParser = new EntityFrameworkQueryParser();
+        using var db = new BenchmarkDbContext(new DbContextOptionsBuilder<BenchmarkDbContext>().UseInMemoryDatabase("ConfigSwap").Options);
+        _efParser = new EntityFrameworkQueryParser(c => c.UseModel(db.Model));
         _efScopes = new EntityFrameworkQueryOptions[ScopeCount];
         for (int n = 0; n < ScopeCount; n++)
         {
@@ -71,6 +73,6 @@ public class ConfigSwapBenchmarks
     public object EntityFramework_SwapScopePerQuery()
     {
         var scope = _efScopes[_index++ % ScopeCount];
-        return _efParser.BuildFilter<Employee>(Query, context: null, options: scope);
+        return _efParser.BuildFilter<Employee>(Query, scope);
     }
 }

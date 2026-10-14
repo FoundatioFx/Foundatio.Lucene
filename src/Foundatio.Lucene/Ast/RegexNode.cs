@@ -1,32 +1,40 @@
 namespace Foundatio.Lucene.Ast;
 
 /// <summary>
-/// Represents a regular expression query.
+/// Represents a regular expression query (<c>/pattern/</c>).
 /// </summary>
-public class RegexNode : QueryNode
+public class RegexNode : QueryNode, IBoostable
 {
-    private ReadOnlyMemory<char> _pattern;
+    private TextValue _pattern;
 
     /// <summary>
-    /// The regex pattern as a memory slice (zero allocation).
+    /// The regex pattern (without the enclosing slashes) as a memory slice.
     /// </summary>
     public ReadOnlyMemory<char> PatternMemory
     {
-        get => _pattern;
-        set => _pattern = value;
+        get => _pattern.Memory;
+        set => _pattern.Memory = value;
     }
 
     /// <summary>
-    /// The regex pattern (without enclosing /) as a string. Use PatternMemory for zero-allocation access.
+    /// The regex pattern without the enclosing slashes. Escape sequences are preserved.
     /// </summary>
     public string Pattern
     {
-        get => _pattern.Span.ToString();
-        set => _pattern = value.AsMemory();
+        get => _pattern.GetString();
+        set => _pattern.SetString(value);
     }
 
-    /// <summary>
-    /// Optional boost value.
-    /// </summary>
-    public float? Boost { get; set; }
+    /// <inheritdoc/>
+    public string? BoostText { get; set; }
+
+    /// <inheritdoc/>
+    public float? Boost
+    {
+        get => Modifiers.ParseBoost(BoostText);
+        set => BoostText = Modifiers.FormatBoost(value);
+    }
+
+    /// <inheritdoc/>
+    public override QueryNode Clone() => CopyCommonTo(new RegexNode { PatternMemory = PatternMemory, BoostText = BoostText });
 }

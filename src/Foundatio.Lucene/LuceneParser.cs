@@ -1,165 +1,91 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using Foundatio.Lucene.Ast;
 
 namespace Foundatio.Lucene;
 
 /// <summary>
-/// Parser for Lucene query language with Elasticsearch extensions.
-/// Converts tokens into an Abstract Syntax Tree (AST).
+/// Recursive-descent parser for the Lucene query language with Elasticsearch extensions.
 /// </summary>
-public class LuceneParser
+/// <remarks>
+/// Operator precedence is NOT, then AND, then OR; juxtaposed clauses use <see cref="LuceneParserOptions.DefaultOperator"/>.
+/// <c>+x</c> makes a clause required and <c>-x</c> prohibits it within its boolean level (Lucene semantics).
+/// <c>NOT x</c> prohibits like <c>-x</c>, except when it is an alternative of an explicit OR (<c>a OR NOT b</c>),
+/// where it is a boolean negation.
+/// </remarks>
+internal sealed class LuceneParser
 {
     private readonly List<Token> _tokens;
+    private readonly LuceneParserOptions _options;
     private int _position;
     private int _depth;
+    private int _lastEnd;
     private List<ParseError>? _errors;
 
-    /// <summary>
-    /// The default operator to use when no explicit operator is specified.
-    /// </summary>
-    public BooleanOperator DefaultOperator { get; set; } = BooleanOperator.Or;
-
-    /// <summary>
-    /// The maximum nesting depth of grouped expressions the parser will recurse into.
-    /// Input exceeding this depth records a <see cref="ParseError"/> and stops recursing,
-    /// guarding against stack-overflow denial-of-service from deeply nested queries.
-    /// </summary>
-    public int MaxDepth { get; set; } = 100;
-
-    /// <summary>
-    /// Whether to split on whitespace when parsing groups.
-    /// When false, consecutive terms in a group are combined into a MultiTermNode.
-    /// When true, terms are parsed as separate clauses with implicit operators.
-    /// Default is true for backward compatibility.
-    /// </summary>
-    public bool SplitOnWhitespace { get; set; } = true;
-
-    public LuceneParser(List<Token> tokens)
+    public LuceneParser(List<Token> tokens, LuceneParserOptions options)
     {
-        _tokens = tokens ?? throw new ArgumentNullException(nameof(tokens));
-        _position = 0;
+        _tokens = tokens;
+        _options = options;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool SpanEquals(ReadOnlySpan<char> a, ReadOnlySpan<char> b)
-        => a.SequenceEqual(b);
+    public List<ParseError>? Errors => _errors;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool SpanEqualsIgnoreCase(ReadOnlySpan<char> a, ReadOnlySpan<char> b)
-        => a.Equals(b, StringComparison.OrdinalIgnoreCase);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsStar(ReadOnlySpan<char> span)
-        => span.Length == 1 && span[0] == '*';
-
-    /// <summary>
-    /// Gets the list of errors encountered during parsing.
-    /// </summary>
-    public List<ParseError> Errors => _errors ??= [];
-
-    /// <summary>
-    /// Parses the tokens into a query document AST.
-    /// </summary>
     public QueryDocument Parse()
     {
-        SkipWhitespace();
+        var document = new QueryDocument { StartLine = 1, StartColumn = 1 };
 
-        var document = new QueryDocument();
-
-        if (IsAtEnd())
+        var query = ParseOr();
+        while (!IsAtEnd)
         {
-            return document;
+            ReportUnexpected(Current);
+            Advance();
+            query = Combine(query, ParseOr());
         }
 
-        try
+        document.Query = query;
+        if (query is not null)
         {
-            document.Query = ParseQuery();
-            document.StartPosition = document.Query?.StartPosition ?? 0;
-            document.EndPosition = document.Query?.EndPosition ?? 0;
-            document.StartLine = document.Query?.StartLine ?? 1;
-            document.StartColumn = document.Query?.StartColumn ?? 1;
-        }
-        catch (Exception ex)
-        {
-            Errors.Add(new ParseError(ex.Message, CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column));
+            document.StartPosition = query.StartPosition;
+            document.EndPosition = query.EndPosition;
+            document.StartLine = query.StartLine;
+            document.StartColumn = query.StartColumn;
         }
 
         return document;
     }
 
-    /// <summary>
-    /// Parses a query expression (handles OR at the lowest precedence).
-    /// </summary>
-    private QueryNode? ParseQuery()
+    private readonly record struct Clause(QueryNode Node, ClauseModifier Modifier, BooleanOperator Operator);
+
+    private QueryNode? ParseOr()
     {
-        // When SplitOnWhitespace is false, try to parse as MultiTerm first
-        if (!SplitOnWhitespace)
+        var first = ParseAnd();
+        if (first is null)
+            return null;
+
+        List<Clause>? clauses = null;
+        while (!IsAtEnd)
         {
-            var multiTerm = TryParseMultiTerm();
-            if (multiTerm != null)
+            BooleanOperator op;
+            if (Current.Type == TokenType.Or)
             {
-                return multiTerm;
-            }
-        }
-
-        return ParseOrQuery();
-    }
-
-    /// <summary>
-    /// Parses OR expressions.
-    /// </summary>
-    private QueryNode? ParseOrQuery()
-    {
-        var left = ParseAndQuery();
-        if (left == null) return null;
-
-        var clauses = new List<BooleanClause>
-        {
-            new() { Query = left, Occur = Occur.Should, Operator = BooleanOperator.Implicit }
-        };
-
-        while (!IsAtEnd())
-        {
-            SkipWhitespace();
-            if (IsAtEnd()) break;
-
-            int positionBeforeParse = _position;
-
-            // Check for explicit OR
-            if (CurrentToken.Type == TokenType.Or)
-            {
-                Advance(); // Skip OR
-                SkipWhitespace();
-
-                var right = ParseAndQuery();
-                if (right != null)
+                var orToken = Current;
+                Advance();
+                op = BooleanOperator.Or;
+                var next = ParseAnd();
+                if (next is null)
                 {
-                    clauses.Add(new BooleanClause { Query = right, Occur = Occur.Should, Operator = BooleanOperator.Or });
-                }
-                else if (_position == positionBeforeParse + 1)
-                {
-                    // No progress after OR, break to avoid infinite loop
+                    AddError($"Expected a query after '{orToken.GetString()}'", orToken, QueryErrorCode.UnexpectedToken);
                     break;
                 }
-            }
-            // Check for implicit OR (next clause without explicit operator)
-            else if (DefaultOperator == BooleanOperator.Or &&
-                     !IsAtEndOfClause() &&
-                     CurrentToken.Type != TokenType.And &&
-                     CurrentToken.Type != TokenType.RightParen)
-            {
-                var right = ParseAndQuery();
-                if (right != null)
-                {
-                    clauses.Add(new BooleanClause { Query = right, Occur = Occur.Should, Operator = BooleanOperator.Implicit });
-                }
 
-                // If no progress was made, break to avoid infinite loop
-                if (_position == positionBeforeParse)
-                {
+                (clauses ??= [first.Value]).Add(next.Value with { Operator = op });
+            }
+            else if (_options.DefaultOperator == BooleanOperator.Or && CanStartClause(Current.Type))
+            {
+                var next = ParseAnd();
+                if (next is null)
                     break;
-                }
+
+                (clauses ??= [first.Value]).Add(next.Value with { Operator = BooleanOperator.Implicit });
             }
             else
             {
@@ -167,75 +93,64 @@ public class LuceneParser
             }
         }
 
-        if (clauses.Count == 1)
+        if (clauses is null)
+            return Unwrap(first.Value);
+
+        var node = new BooleanQueryNode { Clauses = new List<BooleanClause>(clauses.Count) };
+        for (int i = 0; i < clauses.Count; i++)
         {
-            return left;
+            var clause = clauses[i];
+            bool orAdjacent = clause.Operator == BooleanOperator.Or
+                || i + 1 < clauses.Count && clauses[i + 1].Operator == BooleanOperator.Or;
+
+            var booleanClause = clause.Modifier switch
+            {
+                ClauseModifier.Plus => new BooleanClause(clause.Node, Occur.Must),
+                ClauseModifier.Minus => new BooleanClause(clause.Node, Occur.MustNot),
+                ClauseModifier.Not or ClauseModifier.Bang when orAdjacent => new BooleanClause(Negate(clause.Node), Occur.Should),
+                ClauseModifier.Not or ClauseModifier.Bang => new BooleanClause(clause.Node, Occur.MustNot),
+                _ => new BooleanClause(clause.Node, Occur.Should)
+            };
+
+            booleanClause.Operator = clause.Operator;
+            if (booleanClause.Query == clause.Node)
+                booleanClause.Modifier = clause.Modifier;
+
+            node.Clauses.Add(booleanClause);
         }
 
-        return new BooleanQueryNode
-        {
-            Clauses = clauses,
-            StartPosition = left.StartPosition,
-            EndPosition = clauses[^1].Query?.EndPosition ?? left.EndPosition,
-            StartLine = left.StartLine,
-            StartColumn = left.StartColumn
-        };
+        return SetSpan(node, node.Clauses[0].Query!, clauses[^1].Node);
     }
 
-    /// <summary>
-    /// Parses AND expressions.
-    /// </summary>
-    private QueryNode? ParseAndQuery()
+    private Clause? ParseAnd()
     {
-        var left = ParseClause();
-        if (left == null) return null;
+        var first = ParseUnary();
+        if (first is null)
+            return null;
 
-        var clauses = new List<BooleanClause>
+        List<Clause>? clauses = null;
+        while (!IsAtEnd)
         {
-            new() { Query = left, Occur = Occur.Must, Operator = BooleanOperator.Implicit }
-        };
-
-        while (!IsAtEnd())
-        {
-            SkipWhitespace();
-            if (IsAtEnd()) break;
-
-            int positionBeforeParse = _position;
-
-            // Check for explicit AND
-            if (CurrentToken.Type == TokenType.And)
+            if (Current.Type == TokenType.And)
             {
-                Advance(); // Skip AND
-                SkipWhitespace();
-
-                var right = ParseClause();
-                if (right != null)
+                var andToken = Current;
+                Advance();
+                var next = ParseUnary();
+                if (next is null)
                 {
-                    clauses.Add(new BooleanClause { Query = right, Occur = Occur.Must, Operator = BooleanOperator.And });
-                }
-                else if (_position == positionBeforeParse + 1)
-                {
-                    // No progress after AND, break to avoid infinite loop
+                    AddError($"Expected a query after '{andToken.GetString()}'", andToken, QueryErrorCode.UnexpectedToken);
                     break;
                 }
+
+                (clauses ??= [first.Value]).Add(next.Value with { Operator = BooleanOperator.And });
             }
-            // Check for implicit AND when default operator is AND
-            else if (DefaultOperator == BooleanOperator.And &&
-                     !IsAtEndOfClause() &&
-                     CurrentToken.Type != TokenType.Or &&
-                     CurrentToken.Type != TokenType.RightParen)
+            else if (_options.DefaultOperator == BooleanOperator.And && CanStartClause(Current.Type))
             {
-                var right = ParseClause();
-                if (right != null)
-                {
-                    clauses.Add(new BooleanClause { Query = right, Occur = Occur.Must, Operator = BooleanOperator.Implicit });
-                }
-
-                // If no progress was made, break to avoid infinite loop
-                if (_position == positionBeforeParse)
-                {
+                var next = ParseUnary();
+                if (next is null)
                     break;
-                }
+
+                (clauses ??= [first.Value]).Add(next.Value with { Operator = BooleanOperator.Implicit });
             }
             else
             {
@@ -243,216 +158,444 @@ public class LuceneParser
             }
         }
 
-        if (clauses.Count == 1)
+        if (clauses is null)
+            return first;
+
+        var node = new BooleanQueryNode { Clauses = new List<BooleanClause>(clauses.Count) };
+        foreach (var clause in clauses)
         {
-            // Single clause in AND mode - adjust occur to Should for proper handling
-            clauses[0].Occur = Occur.Should;
-            return left;
+            var occur = clause.Modifier is ClauseModifier.Minus or ClauseModifier.Not or ClauseModifier.Bang ? Occur.MustNot : Occur.Must;
+            node.Clauses.Add(new BooleanClause(clause.Node, occur) { Operator = clause.Operator, Modifier = clause.Modifier });
         }
 
-        return new BooleanQueryNode
-        {
-            Clauses = clauses,
-            StartPosition = left.StartPosition,
-            EndPosition = clauses[^1].Query?.EndPosition ?? left.EndPosition,
-            StartLine = left.StartLine,
-            StartColumn = left.StartColumn
-        };
+        SetSpan(node, clauses[0].Node, clauses[^1].Node);
+        return new Clause(node, ClauseModifier.None, BooleanOperator.Implicit);
     }
 
-    /// <summary>
-    /// Parses a single clause (with optional modifiers + - NOT).
-    /// </summary>
-    private QueryNode? ParseClause()
+    private Clause? ParseUnary()
     {
-        SkipWhitespace();
+        var startToken = Current;
+        var modifier = ClauseModifier.None;
 
-        if (IsAtEnd()) return null;
-
-        var startToken = CurrentToken;
-        Occur occur = Occur.Should;
-        bool isNot = false;
-
-        // Check for +/- modifiers
-        if (CurrentToken.Type == TokenType.Plus)
+        if (startToken.Type is TokenType.Plus or TokenType.Minus or TokenType.Not)
         {
-            occur = Occur.Must;
-            Advance();
-            SkipWhitespace();
-        }
-        else if (CurrentToken.Type == TokenType.Minus)
-        {
-            occur = Occur.MustNot;
-            Advance();
-            SkipWhitespace();
-        }
-        else if (CurrentToken.Type == TokenType.Not)
-        {
-            isNot = true;
-            Advance();
-            SkipWhitespace();
-        }
-
-        var query = ParsePrimary();
-
-        if (query == null) return null;
-
-        // Handle NOT wrapping
-        if (isNot)
-        {
-            query = new NotNode
+            modifier = startToken.Type switch
             {
-                Query = query,
-                StartPosition = startToken.Position,
-                EndPosition = query.EndPosition,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
+                TokenType.Plus => ClauseModifier.Plus,
+                TokenType.Minus => ClauseModifier.Minus,
+                _ => startToken.Span.SequenceEqual("!") ? ClauseModifier.Bang : ClauseModifier.Not
             };
-        }
+            Advance();
 
-        // If we have a modifier, wrap in a boolean query if needed
-        if (occur != Occur.Should && query is not BooleanQueryNode)
-        {
-            return new BooleanQueryNode
+            while (Current.Type is TokenType.Plus or TokenType.Minus or TokenType.Not)
             {
-                Clauses = [new BooleanClause { Query = query, Occur = occur, Operator = BooleanOperator.Implicit }],
-                StartPosition = startToken.Position,
-                EndPosition = query.EndPosition,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
-            };
+                AddError($"Unexpected operator '{Current.GetString()}'", Current, QueryErrorCode.UnexpectedToken);
+                Advance();
+            }
         }
 
-        return query;
+        var node = ParsePrimary();
+        if (node is null)
+        {
+            if (modifier != ClauseModifier.None)
+                AddError($"Expected a query after '{startToken.GetString()}'", startToken, QueryErrorCode.UnexpectedToken);
+
+            return null;
+        }
+
+        if (modifier != ClauseModifier.None)
+        {
+            node.StartPosition = startToken.Position;
+            node.StartLine = startToken.Line;
+            node.StartColumn = startToken.Column;
+        }
+
+        return new Clause(node, modifier, BooleanOperator.Implicit);
     }
 
-    /// <summary>
-    /// Parses a primary expression (groups, fields, terms, etc.).
-    /// </summary>
     private QueryNode? ParsePrimary()
     {
-        if (IsAtEnd()) return null;
-
-        // Check for grouping
-        if (CurrentToken.Type == TokenType.LeftParen)
-        {
-            return ParseGroup();
-        }
-
-        // Check for range query
-        if (CurrentToken.Type == TokenType.LeftBracket || CurrentToken.Type == TokenType.LeftBrace)
-        {
-            return ParseRange();
-        }
-
-        // Check for short-form range (>, >=, <, <=)
-        if (CurrentToken.Type == TokenType.GreaterThan ||
-            CurrentToken.Type == TokenType.GreaterThanOrEqual ||
-            CurrentToken.Type == TokenType.LessThan ||
-            CurrentToken.Type == TokenType.LessThanOrEqual)
-        {
-            return ParseShortRange();
-        }
-
-        // Check for term with potential field prefix
-        return ParseFieldOrTerm();
-    }
-
-    /// <summary>
-    /// Parses a grouped expression.
-    /// When SplitOnWhitespace is false, consecutive simple terms are combined into a MultiTermNode.
-    /// </summary>
-    private GroupNode ParseGroup()
-    {
-        var startToken = CurrentToken;
-        Advance(); // Skip (
-
-        _depth++;
-        try
-        {
-            // Guard against stack-overflow from deeply nested groups. Recursion only
-            // ever re-enters ParseQuery via ParseGroup, so bounding it here is sufficient.
-            if (_depth > MaxDepth)
-            {
-                Errors.Add(new ParseError($"Query nesting depth exceeds the maximum of {MaxDepth}.", startToken.Position, startToken.Length, startToken.Line, startToken.Column, QueryErrorCode.MaxDepthExceeded));
-                ConsumeBalancedGroup();
-                return new GroupNode
-                {
-                    Query = null,
-                    StartPosition = startToken.Position,
-                    EndPosition = CurrentToken.Position,
-                    StartLine = startToken.Line,
-                    StartColumn = startToken.Column
-                };
-            }
-
-            SkipWhitespace();
-
-            QueryNode? innerQuery;
-
-            if (!SplitOnWhitespace)
-            {
-                // Try to parse as MultiTerm first (consecutive simple terms without operators)
-                innerQuery = TryParseMultiTerm();
-                if (innerQuery == null)
-                {
-                    // Fall back to normal query parsing
-                    innerQuery = ParseQuery();
-                }
-            }
-            else
-            {
-                innerQuery = ParseQuery();
-            }
-
-            SkipWhitespace();
-
-            if (CurrentToken.Type == TokenType.RightParen)
-            {
-                Advance(); // Skip )
-            }
-            else
-            {
-                Errors.Add(new ParseError("Expected ')'", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column, QueryErrorCode.UnmatchedBracket));
-            }
-
-            var group = new GroupNode
-            {
-                Query = innerQuery,
-                StartPosition = startToken.Position,
-                EndPosition = CurrentToken.Position,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
-            };
-
-            // Check for boost
-            SkipWhitespace();
-            if (CurrentToken.Type == TokenType.Caret)
-            {
-                group.Boost = ParseBoost();
-            }
-
-            return group;
-        }
-        finally
-        {
-            _depth--;
-        }
-    }
-
-    /// <summary>
-    /// Consumes tokens up to and including the closing parenthesis that matches the
-    /// already-consumed opening parenthesis, balancing nested parentheses iteratively.
-    /// Used to discard an over-deep group without further recursion.
-    /// </summary>
-    private void ConsumeBalancedGroup()
-    {
-        int balance = 1;
-        while (!IsAtEnd() && balance > 0)
-        {
-            var type = CurrentToken.Type;
+        while (Current.Type == TokenType.Invalid)
             Advance();
 
+        return Current.Type switch
+        {
+            TokenType.LeftParen => ParseGroup(),
+            TokenType.LeftBracket or TokenType.LeftBrace => ParseRange(),
+            TokenType.GreaterThan or TokenType.GreaterThanOrEqual or TokenType.LessThan or TokenType.LessThanOrEqual => ParseShortRange(),
+            TokenType.QuotedString => ParsePhrase(),
+            TokenType.Regex => ParseRegex(),
+            TokenType.Term => Peek(1).Type == TokenType.Colon ? ParseFieldQuery() : ParseTerm(),
+            _ => null
+        };
+    }
+
+    private GroupNode ParseGroup()
+    {
+        var startToken = Current;
+        Advance();
+
+        if (++_depth > _options.MaxDepth)
+        {
+            AddError($"Query nesting depth exceeds the maximum of {_options.MaxDepth}", startToken, QueryErrorCode.MaxDepthExceeded);
+            SkipBalancedGroup();
+            _depth--;
+            return SetSpan(new GroupNode(), startToken);
+        }
+
+        var inner = ParseOr();
+        while (!IsAtEnd && Current.Type != TokenType.RightParen)
+        {
+            ReportUnexpected(Current);
+            Advance();
+            inner = Combine(inner, ParseOr());
+        }
+
+        if (Current.Type == TokenType.RightParen)
+        {
+            if (inner is null)
+                AddError("Empty group '()'", startToken, QueryErrorCode.UnexpectedToken);
+            Advance();
+        }
+        else
+        {
+            AddError("Missing closing ')' for group", startToken, QueryErrorCode.UnmatchedBracket);
+        }
+
+        _depth--;
+
+        var group = SetSpan(new GroupNode { Query = inner }, startToken);
+        ParseModifiers(group);
+        return group;
+    }
+
+    private QueryNode ParseFieldQuery()
+    {
+        var fieldToken = Current;
+        Advance(); // field
+        var colonToken = Current;
+        Advance(); // :
+
+        var field = fieldToken.HasEscapes ? QueryText.UnescapeMemory(fieldToken.Value) : fieldToken.Value;
+        var fieldSpan = field.Span;
+
+        bool isExists = fieldSpan.Equals("_exists_", StringComparison.OrdinalIgnoreCase);
+        if (isExists || fieldSpan.Equals("_missing_", StringComparison.OrdinalIgnoreCase))
+            return ParseExistsOrMissing(fieldToken, isExists);
+
+        if (Current.Type is TokenType.Plus or TokenType.Minus or TokenType.Not)
+        {
+            AddError("Place '+', '-', '!', or 'NOT' before the field name, not after ':'. Quote or escape literal values.", Current, QueryErrorCode.UnexpectedToken);
+            Advance();
+        }
+
+        QueryNode? value;
+        switch (Current.Type)
+        {
+            case TokenType.Term when IsStar(Current):
+                var starToken = Current;
+                Advance();
+                if (fieldSpan is "*")
+                    return SetSpan(new MatchAllNode(), fieldToken);
+
+                var exists = SetSpan(new ExistsNode { FieldMemory = field }, fieldToken);
+                exists.EndPosition = starToken.EndPosition;
+                return exists;
+            case TokenType.LeftParen:
+                value = ParseGroup();
+                break;
+            case TokenType.LeftBracket or TokenType.LeftBrace:
+                value = ParseRange();
+                break;
+            case TokenType.GreaterThan or TokenType.GreaterThanOrEqual or TokenType.LessThan or TokenType.LessThanOrEqual:
+                value = ParseShortRange();
+                break;
+            case TokenType.QuotedString:
+                value = ParsePhrase();
+                break;
+            case TokenType.Regex:
+                value = ParseRegex();
+                break;
+            case TokenType.Term:
+                value = ParseTerm();
+                break;
+            default:
+                AddError($"Expected a value after '{fieldToken.GetString()}:'", IsAtEnd ? colonToken : Current, QueryErrorCode.UnexpectedToken);
+                value = null;
+                break;
+        }
+
+        var node = SetSpan(new FieldQueryNode { FieldMemory = field, Query = value }, fieldToken);
+        if (value is null)
+            node.EndPosition = colonToken.EndPosition;
+
+        return node;
+    }
+
+    private QueryNode ParseExistsOrMissing(Token fieldToken, bool isExists)
+    {
+        var nameToken = Current;
+        ReadOnlyMemory<char> name = default;
+        if (nameToken.Type is TokenType.Term or TokenType.QuotedString)
+        {
+            name = nameToken.HasEscapes ? QueryText.UnescapeMemory(nameToken.Value) : nameToken.Value;
+            Advance();
+        }
+        else
+        {
+            AddError($"Expected a field name after '{fieldToken.GetString()}:'", IsAtEnd ? fieldToken : nameToken, QueryErrorCode.InvalidFieldName);
+        }
+
+        QueryNode node = isExists
+            ? new ExistsNode { FieldMemory = name, IsExistsSyntax = true }
+            : new MissingNode { FieldMemory = name };
+
+        return SetSpan(node, fieldToken);
+    }
+
+    private QueryNode ParseTerm()
+    {
+        var token = Current;
+        Advance();
+
+        if (IsStar(token))
+        {
+            var matchAll = SetSpan(new MatchAllNode(), token);
+            ParseModifiers(matchAll);
+            return matchAll;
+        }
+
+        var value = token.Value;
+        bool isPrefix = false, isWildcard = false;
+        if (token.HasWildcard)
+        {
+            if (IsSimplePrefix(value.Span))
+            {
+                isPrefix = true;
+                value = value[..^1];
+            }
+            else
+            {
+                isWildcard = true;
+            }
+        }
+
+        var node = SetSpan(new TermNode { TermMemory = value, IsPrefix = isPrefix, IsWildcard = isWildcard }, token);
+        ParseModifiers(node);
+        return node;
+    }
+
+    private PhraseNode ParsePhrase()
+    {
+        var token = Current;
+        Advance();
+
+        var phrase = token.HasEscapes ? QueryText.UnescapeMemory(token.Value) : token.Value;
+        var node = SetSpan(new PhraseNode { PhraseMemory = phrase }, token);
+        ParseModifiers(node);
+        return node;
+    }
+
+    private RegexNode ParseRegex()
+    {
+        var token = Current;
+        Advance();
+
+        var node = SetSpan(new RegexNode { PatternMemory = token.Value }, token);
+        ParseModifiers(node);
+        return node;
+    }
+
+    private RangeNode ParseRange()
+    {
+        var startToken = Current;
+        Advance();
+
+        var node = new RangeNode { MinInclusive = startToken.Type == TokenType.LeftBracket };
+
+        if (Current.Type is TokenType.To or TokenType.RangeDots)
+            AddError("Expected a lower bound for the range (use '*' for an unbounded range)", Current, QueryErrorCode.InvalidRange);
+        else if (TryReadRangeBound(out var min))
+            node.MinMemory = min;
+
+        if (Current.Type is TokenType.To or TokenType.RangeDots)
+        {
+            Advance();
+        }
+        else
+        {
+            AddError("Expected 'TO' in range", IsAtEnd ? startToken : Current, QueryErrorCode.InvalidRange);
+        }
+
+        if (Current.Type is TokenType.RightBracket or TokenType.RightBrace)
+            AddError("Expected an upper bound for the range (use '*' for an unbounded range)", Current, QueryErrorCode.InvalidRange);
+        else if (TryReadRangeBound(out var max))
+            node.MaxMemory = max;
+
+        if (Current.Type is TokenType.RightBracket or TokenType.RightBrace)
+        {
+            node.MaxInclusive = Current.Type == TokenType.RightBracket;
+            Advance();
+        }
+        else
+        {
+            AddError("Missing closing ']' or '}' for range", startToken, QueryErrorCode.UnmatchedBracket);
+        }
+
+        SetSpan(node, startToken);
+        ParseModifiers(node);
+        return node;
+    }
+
+    private bool TryReadRangeBound(out ReadOnlyMemory<char> value)
+    {
+        var token = Current;
+        if (token.Type is TokenType.Term)
+        {
+            Advance();
+            value = IsStar(token) ? default : token.HasEscapes ? QueryText.UnescapeMemory(token.Value) : token.Value;
+            return true;
+        }
+
+        if (token.Type is TokenType.QuotedString)
+        {
+            Advance();
+            value = token.HasEscapes ? QueryText.UnescapeMemory(token.Value) : token.Value;
+            return true;
+        }
+
+        AddError("Expected a range bound", token, QueryErrorCode.InvalidRange);
+        value = default;
+        return false;
+    }
+
+    private RangeNode ParseShortRange()
+    {
+        var opToken = Current;
+        Advance();
+
+        var op = opToken.Type switch
+        {
+            TokenType.GreaterThan => RangeOperator.GreaterThan,
+            TokenType.GreaterThanOrEqual => RangeOperator.GreaterThanOrEqual,
+            TokenType.LessThan => RangeOperator.LessThan,
+            _ => RangeOperator.LessThanOrEqual
+        };
+
+        var node = new RangeNode { Operator = op };
+        ReadOnlyMemory<char> value = default;
+        if (Current.Type is TokenType.Term or TokenType.QuotedString)
+        {
+            var token = Current;
+            Advance();
+            value = token.HasEscapes ? QueryText.UnescapeMemory(token.Value) : token.Value;
+        }
+        else
+        {
+            AddError($"Expected a value after '{opToken.GetString()}'", opToken, QueryErrorCode.InvalidRange);
+        }
+
+        if (op is RangeOperator.GreaterThan or RangeOperator.GreaterThanOrEqual)
+        {
+            node.MinMemory = value;
+            node.MinInclusive = op == RangeOperator.GreaterThanOrEqual;
+        }
+        else
+        {
+            node.MaxMemory = value;
+            node.MaxInclusive = op == RangeOperator.LessThanOrEqual;
+        }
+
+        SetSpan(node, opToken);
+        ParseModifiers(node);
+        return node;
+    }
+
+    private void ParseModifiers(QueryNode node)
+    {
+        while (Current.Type is TokenType.Tilde or TokenType.Caret)
+        {
+            var modifierToken = Current;
+            Advance();
+
+            string? text = null;
+            if (Current.Type == TokenType.ModifierValue)
+            {
+                text = Current.HasEscapes ? QueryText.Unescape(Current.Span) : Current.GetString();
+                Advance();
+            }
+
+            if (modifierToken.Type == TokenType.Tilde)
+            {
+                if (node is not IProximityModifiable proximity)
+                    AddError($"'~' is not supported on this kind of query", modifierToken, QueryErrorCode.UnexpectedToken);
+                else if (proximity.ProximityText is not null)
+                    AddError("Duplicate '~' modifier", modifierToken, QueryErrorCode.UnexpectedToken);
+                else
+                    proximity.ProximityText = text ?? string.Empty;
+            }
+            else if (text is null)
+            {
+                AddError("Expected a value after '^'", modifierToken, QueryErrorCode.UnexpectedToken);
+            }
+            else if (node is not IBoostable boostable)
+            {
+                AddError($"'^' is not supported on this kind of query", modifierToken, QueryErrorCode.UnexpectedToken);
+            }
+            else if (boostable.BoostText is not null)
+            {
+                AddError("Duplicate '^' modifier", modifierToken, QueryErrorCode.UnexpectedToken);
+            }
+            else
+            {
+                boostable.BoostText = text;
+            }
+
+            node.EndPosition = _lastEnd;
+        }
+    }
+
+    private static NotNode Negate(QueryNode node)
+    {
+        return new NotNode
+        {
+            Query = node,
+            StartPosition = node.StartPosition,
+            EndPosition = node.EndPosition,
+            StartLine = node.StartLine,
+            StartColumn = node.StartColumn
+        };
+    }
+
+    private QueryNode Unwrap(Clause clause)
+    {
+        if (clause.Modifier == ClauseModifier.None)
+            return clause.Node;
+
+        var occur = clause.Modifier == ClauseModifier.Plus ? Occur.Must : Occur.MustNot;
+        var node = new BooleanQueryNode { Clauses = [new BooleanClause(clause.Node, occur) { Modifier = clause.Modifier }] };
+        return SetSpan(node, clause.Node, clause.Node);
+    }
+
+    private QueryNode? Combine(QueryNode? left, QueryNode? right)
+    {
+        if (left is null)
+            return right;
+        if (right is null)
+            return left;
+
+        var occur = _options.DefaultOperator == BooleanOperator.And ? Occur.Must : Occur.Should;
+        var node = new BooleanQueryNode { Clauses = [new BooleanClause(left, occur), new BooleanClause(right, occur)] };
+        return SetSpan(node, left, right);
+    }
+
+    private void SkipBalancedGroup()
+    {
+        int balance = 1;
+        while (!IsAtEnd && balance > 0)
+        {
+            var type = Current.Type;
+            Advance();
             if (type == TokenType.LeftParen)
                 balance++;
             else if (type == TokenType.RightParen)
@@ -460,704 +603,100 @@ public class LuceneParser
         }
     }
 
-    /// <summary>
-    /// Tries to parse consecutive simple terms as a MultiTermNode.
-    /// Returns null if the content is not suitable for MultiTerm (contains operators, ranges, etc.).
-    /// </summary>
-    private MultiTermNode? TryParseMultiTerm()
+    private static bool CanStartClause(TokenType type)
     {
-        int savedPosition = _position;
-        var startToken = CurrentToken;
-        var terms = new List<ReadOnlyMemory<char>>();
+        return type is TokenType.Term or TokenType.QuotedString or TokenType.Regex
+            or TokenType.Plus or TokenType.Minus or TokenType.Not
+            or TokenType.LeftParen or TokenType.LeftBracket or TokenType.LeftBrace
+            or TokenType.GreaterThan or TokenType.GreaterThanOrEqual or TokenType.LessThan or TokenType.LessThanOrEqual
+            or TokenType.Invalid;
+    }
 
-        while (!IsAtEnd() && CurrentToken.Type != TokenType.RightParen)
+    /// <summary>
+    /// A term is a simple prefix when its only unescaped wildcard is a single trailing <c>*</c>.
+    /// </summary>
+    private static bool IsSimplePrefix(ReadOnlySpan<char> value)
+    {
+        if (value.Length < 2 || value[^1] != '*')
+            return false;
+
+        for (int i = 0; i < value.Length - 1; i++)
         {
-            SkipWhitespace();
-            if (IsAtEnd() || CurrentToken.Type == TokenType.RightParen)
-                break;
-
-            // If we encounter an operator or modifier, this isn't a simple multi-term
-            // Boost (^) and fuzzy (~) on individual terms means we should not combine into MultiTerm
-            if (CurrentToken.Type == TokenType.And ||
-                CurrentToken.Type == TokenType.Or ||
-                CurrentToken.Type == TokenType.Not ||
-                CurrentToken.Type == TokenType.Plus ||
-                CurrentToken.Type == TokenType.Minus ||
-                CurrentToken.Type == TokenType.LeftParen ||
-                CurrentToken.Type == TokenType.LeftBracket ||
-                CurrentToken.Type == TokenType.LeftBrace ||
-                CurrentToken.Type == TokenType.Colon ||
-                CurrentToken.Type == TokenType.Caret ||
-                CurrentToken.Type == TokenType.Tilde ||
-                CurrentToken.Type == TokenType.GreaterThan ||
-                CurrentToken.Type == TokenType.GreaterThanOrEqual ||
-                CurrentToken.Type == TokenType.LessThan ||
-                CurrentToken.Type == TokenType.LessThanOrEqual)
+            char c = value[i];
+            if (c == '\\')
             {
-                // Not a simple multi-term, backtrack
-                _position = savedPosition;
-                return null;
+                i++;
+                if (i == value.Length - 1)
+                    return false; // the trailing * is escaped
+                continue;
             }
 
-            // Accept simple terms
-            if (CurrentToken.Type == TokenType.Term)
-            {
-                terms.Add(CurrentToken.Value);
-                Advance();
-            }
-            else
-            {
-                // Unexpected token type, backtrack
-                _position = savedPosition;
-                return null;
-            }
-
-            SkipWhitespace();
+            if (c is '*' or '?')
+                return false;
         }
 
-        if (terms.Count == 0)
-        {
-            _position = savedPosition;
-            return null;
-        }
-
-        // Build combined text - this requires allocation but only for MultiTermNode
-        var combinedText = BuildCombinedText(terms);
-
-        // If only one term, still create MultiTerm for consistency when SplitOnWhitespace is false
-        return new MultiTermNode
-        {
-            TermsMemory = terms,
-            CombinedTextMemory = combinedText,
-            StartPosition = startToken.Position,
-            EndPosition = CurrentToken.Position,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlyMemory<char> BuildCombinedText(List<ReadOnlyMemory<char>> terms)
+    private static bool IsStar(Token token) => token.Type == TokenType.Term && token.Length == 1 && token.Span[0] == '*';
+
+    private void ReportUnexpected(Token token)
     {
-        if (terms.Count == 1)
-            return terms[0];
-
-        int totalLength = terms.Count - 1; // spaces
-        foreach (var term in terms)
-            totalLength += term.Length;
-
-        var chars = new char[totalLength];
-        int pos = 0;
-        for (int i = 0; i < terms.Count; i++)
-        {
-            if (i > 0)
-                chars[pos++] = ' ';
-            terms[i].Span.CopyTo(chars.AsSpan(pos));
-            pos += terms[i].Length;
-        }
-        return chars.AsMemory();
+        string text = token.Type == TokenType.EndOfFile ? "end of query" : $"'{token.GetString()}'";
+        AddError($"Unexpected {text}", token, QueryErrorCode.UnexpectedToken);
     }
 
-    /// <summary>
-    /// Parses a field:value expression or a simple term.
-    /// </summary>
-    private QueryNode? ParseFieldOrTerm()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void AddError(string message, Token token, QueryErrorCode code)
     {
-        var startToken = CurrentToken;
-
-        // Check if this is a field:value pattern
-        if (CurrentToken.Type == TokenType.Term ||
-            CurrentToken.Type == TokenType.Wildcard ||
-            CurrentToken.Type == TokenType.Prefix)
-        {
-            var potentialField = CurrentToken.Value;
-            int savedPosition = _position;
-
-            Advance();
-            SkipWhitespace();
-
-            if (CurrentToken.Type == TokenType.Colon)
-            {
-                // This is a field query
-                Advance(); // Skip :
-                SkipWhitespace();
-
-                return ParseFieldValue(potentialField, startToken);
-            }
-            else
-            {
-                // Backtrack - this is just a term
-                _position = savedPosition;
-                return ParseTerm();
-            }
-        }
-
-        return ParseTerm();
+        (_errors ??= []).Add(new ParseError(message, token.Position, token.Length, token.Line, token.Column, code));
     }
 
-    /// <summary>
-    /// Parses the value part of a field:value expression.
-    /// </summary>
-    private QueryNode ParseFieldValue(ReadOnlyMemory<char> field, Token startToken)
+    private T SetSpan<T>(T node, Token startToken) where T : QueryNode
     {
-        QueryNode? valueQuery;
-        var fieldSpan = field.Span;
-
-        // Check for match-all query (*:*)
-        if (IsStar(fieldSpan) && CurrentToken.Type == TokenType.Prefix && IsStar(CurrentToken.Span))
-        {
-            Advance();
-            return new MatchAllNode
-            {
-                StartPosition = startToken.Position,
-                EndPosition = CurrentToken.Position,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
-            };
-        }
-
-        // Check for _exists_:fieldname syntax
-        if (SpanEqualsIgnoreCase(fieldSpan, "_exists_"))
-        {
-            var fieldNameToken = CurrentToken;
-            if (fieldNameToken.Type == TokenType.Term || fieldNameToken.Type == TokenType.Wildcard || fieldNameToken.Type == TokenType.Prefix)
-            {
-                Advance();
-                return new ExistsNode
-                {
-                    FieldMemory = fieldNameToken.Value,
-                    IsExistsSyntax = true,
-                    StartPosition = startToken.Position,
-                    EndPosition = CurrentToken.Position,
-                    StartLine = startToken.Line,
-                    StartColumn = startToken.Column
-                };
-            }
-        }
-
-        // Check for _missing_:fieldname syntax
-        if (SpanEqualsIgnoreCase(fieldSpan, "_missing_"))
-        {
-            var fieldNameToken = CurrentToken;
-            if (fieldNameToken.Type == TokenType.Term || fieldNameToken.Type == TokenType.Wildcard || fieldNameToken.Type == TokenType.Prefix)
-            {
-                Advance();
-                return new MissingNode
-                {
-                    FieldMemory = fieldNameToken.Value,
-                    StartPosition = startToken.Position,
-                    EndPosition = CurrentToken.Position,
-                    StartLine = startToken.Line,
-                    StartColumn = startToken.Column
-                };
-            }
-        }
-
-        // Check for exists query (field:*)
-        if (CurrentToken.Type == TokenType.Prefix && IsStar(CurrentToken.Span))
-        {
-            Advance();
-            var existsNode = new ExistsNode
-            {
-                FieldMemory = field,
-                IsExistsSyntax = false,
-                StartPosition = startToken.Position,
-                EndPosition = CurrentToken.Position,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
-            };
-            return existsNode;
-        }
-
-        // Check for grouping within field
-        if (CurrentToken.Type == TokenType.LeftParen)
-        {
-            valueQuery = ParseGroup();
-        }
-        // Check for range query
-        else if (CurrentToken.Type == TokenType.LeftBracket || CurrentToken.Type == TokenType.LeftBrace)
-        {
-            valueQuery = ParseRange();
-        }
-        // Check for short-form range
-        else if (CurrentToken.Type == TokenType.GreaterThan ||
-                 CurrentToken.Type == TokenType.GreaterThanOrEqual ||
-                 CurrentToken.Type == TokenType.LessThan ||
-                 CurrentToken.Type == TokenType.LessThanOrEqual)
-        {
-            valueQuery = ParseShortRange();
-        }
-        else
-        {
-            valueQuery = ParseTerm();
-        }
-
-        if (valueQuery == null)
-        {
-            Errors.Add(new ParseError($"Expected value after field '{field.Span.ToString()}:'", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column));
-            return new TermNode
-            {
-                TermMemory = ReadOnlyMemory<char>.Empty,
-                StartPosition = startToken.Position,
-                EndPosition = CurrentToken.Position,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
-            };
-        }
-
-        return new FieldQueryNode
-        {
-            FieldMemory = field,
-            Query = valueQuery,
-            StartPosition = startToken.Position,
-            EndPosition = valueQuery.EndPosition,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-    }
-
-    /// <summary>
-    /// Parses a term, phrase, regex, or wildcard.
-    /// </summary>
-    private QueryNode? ParseTerm()
-    {
-        if (IsAtEnd()) return null;
-
-        var startToken = CurrentToken;
-
-        // Check for match all
-        if (CurrentToken.Type == TokenType.Prefix && IsStar(CurrentToken.Span))
-        {
-            Advance();
-            return new MatchAllNode
-            {
-                StartPosition = startToken.Position,
-                EndPosition = startToken.Position + startToken.Length,
-                StartLine = startToken.Line,
-                StartColumn = startToken.Column
-            };
-        }
-
-        // Check for quoted phrase
-        if (CurrentToken.Type == TokenType.QuotedString)
-        {
-            return ParsePhrase();
-        }
-
-        // Check for regex
-        if (CurrentToken.Type == TokenType.Regex)
-        {
-            return ParseRegex();
-        }
-
-        // Regular term (may include wildcards)
-        if (CurrentToken.Type == TokenType.Term ||
-            CurrentToken.Type == TokenType.Wildcard ||
-            CurrentToken.Type == TokenType.Prefix)
-        {
-            return ParseTermNode();
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Parses a term node with optional modifiers.
-    /// </summary>
-    private TermNode ParseTermNode()
-    {
-        var startToken = CurrentToken;
-        var term = CurrentToken.Value;
-        var isWildcard = CurrentToken.Type == TokenType.Wildcard;
-        var isPrefix = CurrentToken.Type == TokenType.Prefix;
-
-        // For prefix terms, strip the trailing *
-        if (isPrefix && term.Span.EndsWith("*".AsSpan()))
-        {
-            term = term.Slice(0, term.Length - 1);
-        }
-
-        Advance();
-
-        var node = new TermNode
-        {
-            TermMemory = term,
-            UnescapedTermMemory = UnescapeTerm(term),
-            IsWildcard = isWildcard,
-            IsPrefix = isPrefix,
-            StartPosition = startToken.Position,
-            EndPosition = startToken.Position + startToken.Length,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-
-        // Check for fuzzy modifier
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Tilde)
-        {
-            Advance();
-            node.FuzzyDistance = ParseFuzzyDistance();
-            node.EndPosition = CurrentToken.Position;
-        }
-
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            node.Boost = ParseBoost();
-            node.EndPosition = CurrentToken.Position;
-        }
-
+        node.StartPosition = startToken.Position;
+        node.StartLine = startToken.Line;
+        node.StartColumn = startToken.Column;
+        node.EndPosition = Math.Max(_lastEnd, startToken.EndPosition);
         return node;
     }
 
-    /// <summary>
-    /// Parses a quoted phrase.
-    /// </summary>
-    private PhraseNode ParsePhrase()
+    private static T SetSpan<T>(T node, QueryNode first, QueryNode last) where T : QueryNode
     {
-        var startToken = CurrentToken;
-        var phrase = CurrentToken.Value;
-
-        Advance();
-
-        var node = new PhraseNode
-        {
-            PhraseMemory = phrase,
-            StartPosition = startToken.Position,
-            EndPosition = startToken.Position + startToken.Length,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-
-        // Check for proximity/slop modifier
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Tilde)
-        {
-            Advance();
-            node.Slop = ParseFuzzyDistance();
-            node.EndPosition = CurrentToken.Position;
-        }
-
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            node.Boost = ParseBoost();
-            node.EndPosition = CurrentToken.Position;
-        }
-
+        node.StartPosition = first.StartPosition;
+        node.StartLine = first.StartLine;
+        node.StartColumn = first.StartColumn;
+        node.EndPosition = last.EndPosition;
         return node;
     }
 
-    /// <summary>
-    /// Parses a regex pattern.
-    /// </summary>
-    private RegexNode ParseRegex()
-    {
-        var startToken = CurrentToken;
-        var pattern = CurrentToken.Value;
-
-        Advance();
-
-        var node = new RegexNode
-        {
-            PatternMemory = pattern,
-            StartPosition = startToken.Position,
-            EndPosition = startToken.Position + startToken.Length,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            node.Boost = ParseBoost();
-            node.EndPosition = CurrentToken.Position;
-        }
-
-        return node;
-    }
-
-    /// <summary>
-    /// Parses a range query [min TO max] or {min TO max}.
-    /// </summary>
-    private RangeNode ParseRange()
-    {
-        var startToken = CurrentToken;
-        bool minInclusive = CurrentToken.Type == TokenType.LeftBracket;
-
-        Advance(); // Skip [ or {
-        SkipWhitespace();
-
-        // Parse min value
-        ReadOnlyMemory<char>? min = null;
-        if (CurrentToken.Type != TokenType.To)
-        {
-            min = ParseRangeValue();
-        }
-
-        SkipWhitespace();
-
-        // Expect TO
-        if (CurrentToken.Type != TokenType.To)
-        {
-            Errors.Add(new ParseError("Expected 'TO' in range query", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column, QueryErrorCode.InvalidRange));
-        }
-        else
-        {
-            Advance(); // Skip TO
-        }
-
-        SkipWhitespace();
-
-        // Parse max value
-        ReadOnlyMemory<char>? max = null;
-        if (CurrentToken.Type != TokenType.RightBracket && CurrentToken.Type != TokenType.RightBrace)
-        {
-            max = ParseRangeValue();
-        }
-
-        SkipWhitespace();
-
-        // Expect ] or }
-        bool maxInclusive = CurrentToken.Type == TokenType.RightBracket;
-        if (CurrentToken.Type == TokenType.RightBracket || CurrentToken.Type == TokenType.RightBrace)
-        {
-            Advance();
-        }
-        else
-        {
-            Errors.Add(new ParseError("Expected ']' or '}' to close range query", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column, QueryErrorCode.UnmatchedBracket));
-        }
-
-        var node = new RangeNode
-        {
-            MinInclusive = minInclusive,
-            MaxInclusive = maxInclusive,
-            StartPosition = startToken.Position,
-            EndPosition = CurrentToken.Position,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-
-        // Set min/max, treating * as unbounded
-        if (min.HasValue && !IsStar(min.Value.Span))
-            node.MinMemory = min.Value;
-        if (max.HasValue && !IsStar(max.Value.Span))
-            node.MaxMemory = max.Value;
-
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            node.Boost = ParseBoost();
-            node.EndPosition = CurrentToken.Position;
-        }
-
-        return node;
-    }
-
-    /// <summary>
-    /// Parses a value in a range query.
-    /// This method handles compound values like dates (2020-01-01) by collecting
-    /// adjacent number tokens (since -01 is tokenized as a negative number).
-    /// </summary>
-    private ReadOnlyMemory<char>? ParseRangeValue()
-    {
-        if (CurrentToken.Type == TokenType.Term ||
-            CurrentToken.Type == TokenType.QuotedString ||
-            CurrentToken.Type == TokenType.Wildcard ||
-            CurrentToken.Type == TokenType.Prefix)
-        {
-            var value = CurrentToken.Value;
-            Advance();
-            return value;
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Parses a short-form range query (&gt;, &gt;=, &lt;, &lt;=).
-    /// </summary>
-    private RangeNode ParseShortRange()
-    {
-        var startToken = CurrentToken;
-        RangeOperator op;
-        bool inclusive = false;
-
-        switch (CurrentToken.Type)
-        {
-            case TokenType.GreaterThan:
-                op = RangeOperator.GreaterThan;
-                break;
-            case TokenType.GreaterThanOrEqual:
-                op = RangeOperator.GreaterThanOrEqual;
-                inclusive = true;
-                break;
-            case TokenType.LessThan:
-                op = RangeOperator.LessThan;
-                break;
-            case TokenType.LessThanOrEqual:
-                op = RangeOperator.LessThanOrEqual;
-                inclusive = true;
-                break;
-            default:
-                throw new InvalidOperationException("Unexpected operator type");
-        }
-
-        Advance();
-        SkipWhitespace();
-
-        var value = ParseRangeValue();
-
-        var node = new RangeNode
-        {
-            Operator = op,
-            StartPosition = startToken.Position,
-            EndPosition = CurrentToken.Position,
-            StartLine = startToken.Line,
-            StartColumn = startToken.Column
-        };
-
-        // Set min/max based on operator
-        switch (op)
-        {
-            case RangeOperator.GreaterThan:
-            case RangeOperator.GreaterThanOrEqual:
-                if (value.HasValue)
-                    node.MinMemory = value.Value;
-                node.MinInclusive = inclusive;
-                node.MaxInclusive = true;
-                break;
-            case RangeOperator.LessThan:
-            case RangeOperator.LessThanOrEqual:
-                node.MinInclusive = true;
-                if (value.HasValue)
-                    node.MaxMemory = value.Value;
-                node.MaxInclusive = inclusive;
-                break;
-        }
-
-        // Check for boost
-        SkipWhitespace();
-        if (CurrentToken.Type == TokenType.Caret)
-        {
-            node.Boost = ParseBoost();
-            node.EndPosition = CurrentToken.Position;
-        }
-
-        return node;
-    }
-
-    /// <summary>
-    /// Parses a boost value after ^.
-    /// </summary>
-    private float ParseBoost()
-    {
-        Advance(); // Skip ^
-        SkipWhitespace();
-
-        if (CurrentToken.Type == TokenType.Term)
-        {
-            if (float.TryParse(CurrentToken.Span, NumberStyles.Float, CultureInfo.InvariantCulture, out float boost))
-            {
-                Advance();
-                return boost;
-            }
-        }
-
-        Errors.Add(new ParseError("Expected numeric boost value after '^'", CurrentToken.Position, CurrentToken.Length, CurrentToken.Line, CurrentToken.Column));
-        return 1.0f;
-    }
-
-    /// <summary>
-    /// Parses a fuzzy distance value after ~.
-    /// </summary>
-    /// <returns>
-    /// The explicit fuzzy distance if specified, or <see cref="TermNode.DefaultFuzzyDistance"/>
-    /// to indicate the default should be used.
-    /// </returns>
-    private int ParseFuzzyDistance()
-    {
-        SkipWhitespace();
-
-        if (CurrentToken.Type == TokenType.Term)
-        {
-            if (int.TryParse(CurrentToken.Span, NumberStyles.Integer, CultureInfo.InvariantCulture, out int distance))
-            {
-                Advance();
-                return distance;
-            }
-        }
-
-        // Return sentinel value to indicate default fuzzy distance
-        return TermNode.DefaultFuzzyDistance;
-    }
-
-    /// <summary>
-    /// Unescapes special characters in a term.
-    /// </summary>
-    private static ReadOnlyMemory<char> UnescapeTerm(ReadOnlyMemory<char> term)
-    {
-        var span = term.Span;
-
-        // Fast path: no backslash means no escaping needed
-        if (span.IndexOf('\\') < 0)
-            return term;
-
-        var sb = new System.Text.StringBuilder(span.Length);
-        bool escaped = false;
-
-        foreach (char c in span)
-        {
-            if (escaped)
-            {
-                sb.Append(c);
-                escaped = false;
-            }
-            else if (c == '\\')
-            {
-                escaped = true;
-            }
-            else
-            {
-                sb.Append(c);
-            }
-        }
-
-        return sb.ToString().AsMemory();
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void SkipWhitespace()
-    {
-        while (!IsAtEnd() && CurrentToken.Type == TokenType.Whitespace)
-        {
-            Advance();
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsAtEndOfClause()
-    {
-        return IsAtEnd() ||
-               CurrentToken.Type == TokenType.RightParen ||
-               CurrentToken.Type == TokenType.And ||
-               CurrentToken.Type == TokenType.Or;
-    }
-
-    private Token CurrentToken
+    private Token Current
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _position < _tokens.Count ? _tokens[_position] : _tokens[^1];
+        get => _tokens[_position];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsAtEnd() => _position >= _tokens.Count || CurrentToken.Type == TokenType.EndOfFile;
+    private Token Peek(int offset)
+    {
+        int index = _position + offset;
+        return index < _tokens.Count ? _tokens[index] : _tokens[^1];
+    }
+
+    private bool IsAtEnd
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _tokens[_position].Type == TokenType.EndOfFile;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Advance() => _position++;
+    private void Advance()
+    {
+        if (_position < _tokens.Count - 1)
+        {
+            _lastEnd = _tokens[_position].EndPosition;
+            _position++;
+        }
+    }
 }

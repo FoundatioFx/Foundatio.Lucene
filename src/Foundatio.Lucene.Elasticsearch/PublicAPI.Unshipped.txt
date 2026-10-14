@@ -1,0 +1,251 @@
+#nullable enable
+const Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.KeywordFieldName = "keyword" -> string!
+const Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.SortFieldName = "sort" -> string!
+const Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.SortNormalizerName = "sort" -> string!
+const Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.QueryKey = "@Query" -> string!
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping.ElasticFieldMapping(string! fullPath, Elastic.Clients.Elasticsearch.Mapping.IProperty? property, System.Collections.Generic.IReadOnlyList<string!>? nestedPathChain = null) -> void
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping.Found.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping.FullPath.get -> string!
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping.NestedPath.get -> string?
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping.NestedPathChain.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Foundatio.Lucene.Elasticsearch.ElasticFieldMapping.Property.get -> Elastic.Clients.Elasticsearch.Mapping.IProperty?
+Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.CanResolveSynchronously.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.CopyPropertyMetadata(Elastic.Clients.Elasticsearch.Mapping.IProperty! source, Elastic.Clients.Elasticsearch.Mapping.IProperty! target) -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Dispose() -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.ElasticMappingResolver(Elastic.Clients.Elasticsearch.Mapping.TypeMapping! codeMapping, Elastic.Clients.Elasticsearch.Inferrer? inferrer = null, System.Func<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>? getMapping = null, System.TimeProvider? timeProvider = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.ElasticMappingResolver(System.Func<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>! getMapping, Elastic.Clients.Elasticsearch.Inferrer? inferrer = null, System.TimeProvider? timeProvider = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.EnsureFieldsAsync(System.Collections.Generic.IEnumerable<string!>! fields, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.EnsureLoadedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetAggregationsFieldName(Elastic.Clients.Elasticsearch.Field! field) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetAggregationsFieldName(string! field) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetFieldType(string! field) -> Elastic.Clients.Elasticsearch.Mapping.FieldType
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetMapping(Elastic.Clients.Elasticsearch.Field! field, bool followAlias = false) -> Foundatio.Lucene.Elasticsearch.ElasticFieldMapping!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetMapping(string! field, bool followAlias = false) -> Foundatio.Lucene.Elasticsearch.ElasticFieldMapping!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetMappingAsync(string! field, bool followAlias = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.Elasticsearch.ElasticFieldMapping!>
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetMappingProperty(Elastic.Clients.Elasticsearch.Field! field, bool followAlias = false) -> Elastic.Clients.Elasticsearch.Mapping.IProperty?
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetMappingProperty(string! field, bool followAlias = false) -> Elastic.Clients.Elasticsearch.Mapping.IProperty?
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetNonAnalyzedFieldName(Elastic.Clients.Elasticsearch.Field! field, string? preferredSubField = null) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetNonAnalyzedFieldName(string! field, string? preferredSubField = null) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetPropertyMetadata(Elastic.Clients.Elasticsearch.Mapping.IProperty! property) -> System.Collections.Generic.IDictionary<string!, object!>!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetPropertyMetadataValue<T>(Elastic.Clients.Elasticsearch.Mapping.IProperty! property, string! key, T? defaultValue = default(T?)) -> T?
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetResolvedField(Elastic.Clients.Elasticsearch.Field! field) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetResolvedField(string! field) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetSortFieldName(Elastic.Clients.Elasticsearch.Field! field) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetSortFieldName(string! field) -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsBooleanPropertyType(string! field) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsDatePropertyType(string! field) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsGeoPropertyType(string! field) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsLoaded.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsNestedPropertyType(string! field) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsNumericPropertyType(string! field) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsPropertyAnalyzed(Elastic.Clients.Elasticsearch.Mapping.IProperty? property) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.IsPropertyAnalyzed(string! field) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.KeywordSubFieldName.get -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.KeywordSubFieldName.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.MappingRefreshWaitTimeout.get -> System.TimeSpan
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.MappingRefreshWaitTimeout.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.RefreshAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.RefreshMapping() -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.ServerMappingRevisionResolver.get -> System.Func<Elastic.Clients.Elasticsearch.Mapping.TypeMapping!, string?>?
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.ServerMappingRevisionResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.SetPropertyMetadataValue(Elastic.Clients.Elasticsearch.Mapping.IProperty! property, string! key, object! value) -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.SortSubFieldName.get -> string!
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.SortSubFieldName.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.UnmappedFieldRefreshInterval.get -> System.TimeSpan
+Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.UnmappedFieldRefreshInterval.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.<Clone>$() -> Foundatio.Lucene.Elasticsearch.ElasticRuntimeField!
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Deconstruct(out string! Name, out Elastic.Clients.Elasticsearch.Mapping.RuntimeFieldType Type, out string? Script) -> void
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.ElasticRuntimeField(string! Name, Elastic.Clients.Elasticsearch.Mapping.RuntimeFieldType Type = Elastic.Clients.Elasticsearch.Mapping.RuntimeFieldType.Keyword, string? Script = null) -> void
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Equals(Foundatio.Lucene.Elasticsearch.ElasticRuntimeField? other) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Name.get -> string!
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Name.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Script.get -> string?
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Script.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.ToRuntimeField() -> Elastic.Clients.Elasticsearch.Mapping.RuntimeField!
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Type.get -> Elastic.Clients.Elasticsearch.Mapping.RuntimeFieldType
+Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Type.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.DefaultTimeZone.get -> string?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.DefaultTimeZone.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.ElasticsearchQueryOptions() -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EndDate.get -> System.DateTimeOffset?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EndDate.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.Equals(Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? other) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.GeoLocationResolver.get -> Foundatio.Lucene.Elasticsearch.GeoLocationResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.GeoLocationResolver.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.Index.get -> string?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.Index.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.MappingResolver.get -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.MappingResolver.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.NestedFilterResolver.get -> Foundatio.Lucene.Elasticsearch.NestedFilterResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.NestedFilterResolver.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.RuntimeFieldResolver.get -> Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.RuntimeFieldResolver.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.StartDate.get -> System.DateTimeOffset?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.StartDate.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.UseScoring.get -> bool?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.UseScoring.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildAggregations(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> System.Collections.Generic.IDictionary<string!, Elastic.Clients.Elasticsearch.Aggregations.Aggregation!>!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildAggregations(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context) -> System.Collections.Generic.IDictionary<string!, Elastic.Clients.Elasticsearch.Aggregations.Aggregation!>!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildAggregationsAsync(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IDictionary<string!, Elastic.Clients.Elasticsearch.Aggregations.Aggregation!>!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildAggregationsAsync(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IDictionary<string!, Elastic.Clients.Elasticsearch.Aggregations.Aggregation!>!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQuery(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Elastic.Clients.Elasticsearch.QueryDsl.Query!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQuery(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context) -> Elastic.Clients.Elasticsearch.QueryDsl.Query!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQuery(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Elastic.Clients.Elasticsearch.QueryDsl.Query!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQuery(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context) -> Elastic.Clients.Elasticsearch.QueryDsl.Query!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQueryAsync(Foundatio.Lucene.Ast.QueryDocument! document, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Elastic.Clients.Elasticsearch.QueryDsl.Query!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQueryAsync(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Elastic.Clients.Elasticsearch.QueryDsl.Query!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildQueryAsync(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Elastic.Clients.Elasticsearch.QueryDsl.Query!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildSearch(string? query, string? aggregations = null, string? sort = null, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.Elasticsearch.ElasticsearchSearch!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildSearchAsync(string? query, string? aggregations = null, string? sort = null, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.Elasticsearch.ElasticsearchSearch!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildSort(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> System.Collections.Generic.ICollection<Elastic.Clients.Elasticsearch.SortOptions!>!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildSort(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context) -> System.Collections.Generic.ICollection<Elastic.Clients.Elasticsearch.SortOptions!>!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildSortAsync(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.ICollection<Elastic.Clients.Elasticsearch.SortOptions!>!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.BuildSortAsync(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.ICollection<Elastic.Clients.Elasticsearch.SortOptions!>!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.Configuration.get -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.CreateContext(Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ElasticsearchQueryParser(System.Action<Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration!>? configure = null) -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.GetOptions(string! index) -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.RemoveOptions(string! index) -> bool
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.SetOptions(string! index, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions! options) -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.TryBuildQuery(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.QueryResult<Elastic.Clients.Elasticsearch.QueryDsl.Query!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.TryBuildQueryAsync(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryResult<Elastic.Clients.Elasticsearch.QueryDsl.Query!>>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateAggregations(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateQuery(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateQueryAsync(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateSort(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.QueryValidationResult!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.DefaultTimeZone.get -> string?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.DefaultTimeZone.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.ElasticsearchQueryParserConfiguration() -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.GeoLocationResolver.get -> Foundatio.Lucene.Elasticsearch.GeoLocationResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.GeoLocationResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.MappingResolver.get -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.MappingResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.NestedFilterResolver.get -> Foundatio.Lucene.Elasticsearch.NestedFilterResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.NestedFilterResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.RuntimeFieldResolver.get -> Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.RuntimeFieldResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseMappings(Elastic.Clients.Elasticsearch.Mapping.TypeMapping! mapping) -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseMappings(Foundatio.Lucene.Elasticsearch.ElasticMappingResolver! resolver) -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseNested.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseNested.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseScoring.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseScoring.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration.UseSearchMode() -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParserConfiguration!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.AddRuntimeField(Foundatio.Lucene.Elasticsearch.ElasticRuntimeField! field) -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.DefaultTimeZone.get -> string?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.DefaultTimeZone.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.ElasticsearchQueryVisitorContext() -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.EndDate.get -> System.DateTimeOffset?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.EndDate.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.GeoLocationResolver.get -> Foundatio.Lucene.Elasticsearch.GeoLocationResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.GeoLocationResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.MappingResolver.get -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.MappingResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.NestedFilterResolver.get -> Foundatio.Lucene.Elasticsearch.NestedFilterResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.NestedFilterResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.RuntimeFieldResolver.get -> Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.RuntimeFieldResolver.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.RuntimeFields.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.Elasticsearch.ElasticRuntimeField!>!
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.StartDate.get -> System.DateTimeOffset?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.StartDate.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.UseNested.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.UseNested.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.UseScoring.get -> bool
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext.UseScoring.set -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.Aggregations.get -> System.Collections.Generic.IDictionary<string!, Elastic.Clients.Elasticsearch.Aggregations.Aggregation!>?
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.Aggregations.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.ApplyTo(Elastic.Clients.Elasticsearch.SearchRequest! request) -> Elastic.Clients.Elasticsearch.SearchRequest!
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.ApplyTo<TDocument>(Elastic.Clients.Elasticsearch.SearchRequestDescriptor<TDocument> descriptor) -> Elastic.Clients.Elasticsearch.SearchRequestDescriptor<TDocument>
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.ElasticsearchSearch() -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.GetRuntimeMappings() -> System.Collections.Generic.IDictionary<Elastic.Clients.Elasticsearch.Field!, Elastic.Clients.Elasticsearch.Mapping.RuntimeField!>?
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.Query.get -> Elastic.Clients.Elasticsearch.QueryDsl.Query?
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.Query.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.RuntimeFields.get -> System.Collections.Generic.IReadOnlyList<Foundatio.Lucene.Elasticsearch.ElasticRuntimeField!>!
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.RuntimeFields.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.Sort.get -> System.Collections.Generic.ICollection<Elastic.Clients.Elasticsearch.SortOptions!>?
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearch.Sort.init -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchSearchExtensions
+Foundatio.Lucene.Elasticsearch.GeoLocationResolver
+Foundatio.Lucene.Elasticsearch.NestedFilterContext
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.Deconstruct(out string! NestedPath, out string! OriginalField, out string! ResolvedField) -> void
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.Equals(Foundatio.Lucene.Elasticsearch.NestedFilterContext other) -> bool
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.NestedFilterContext() -> void
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.NestedFilterContext(string! NestedPath, string! OriginalField, string! ResolvedField) -> void
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.NestedPath.get -> string!
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.NestedPath.init -> void
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.OriginalField.get -> string!
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.OriginalField.init -> void
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.ResolvedField.get -> string!
+Foundatio.Lucene.Elasticsearch.NestedFilterContext.ResolvedField.init -> void
+Foundatio.Lucene.Elasticsearch.NestedFilterResolver
+Foundatio.Lucene.Elasticsearch.NestedPathResolver
+Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver
+override Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.Equals(object? obj) -> bool
+override Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.GetHashCode() -> int
+override Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.ToString() -> string!
+override Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.<Clone>$() -> Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions!
+override Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.Equals(object? obj) -> bool
+override Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.GetHashCode() -> int
+override Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.ToString() -> string!
+override Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.OnResolveAsync(Foundatio.Lucene.Visitors.QueryType type, Foundatio.Lucene.Ast.QueryDocument! document, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! fields, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+override Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.RequiresResolution(Foundatio.Lucene.Elasticsearch.ElasticsearchQueryVisitorContext! context) -> bool
+override Foundatio.Lucene.Elasticsearch.NestedFilterContext.GetHashCode() -> int
+override sealed Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.Equals(Foundatio.Lucene.QueryOptionsBase? other) -> bool
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.AddKeywordAndSortFields<T>(this Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T> descriptor, bool keywordLowercase) -> Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T>
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.AddKeywordAndSortFields<T>(this Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T> descriptor, string! sortNormalizer = "sort", string? keywordNormalizer = null) -> Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T>
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.AddKeywordField<T>(this Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T> descriptor, bool lowercase) -> Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T>
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.AddKeywordField<T>(this Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T> descriptor, string? normalizer = null) -> Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T>
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.AddSortField<T>(this Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T> descriptor, string! normalizer = "sort") -> Elastic.Clients.Elasticsearch.Mapping.TextPropertyDescriptor<T>
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.AddSortNormalizer(this Elastic.Clients.Elasticsearch.IndexManagement.IndexSettingsAnalysisDescriptor descriptor) -> Elastic.Clients.Elasticsearch.IndexManagement.IndexSettingsAnalysisDescriptor
+static Foundatio.Lucene.Elasticsearch.ElasticMappingExtensions.GetFields(this Elastic.Clients.Elasticsearch.Mapping.IProperty! property) -> Elastic.Clients.Elasticsearch.Mapping.Properties?
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create(Elastic.Clients.Elasticsearch.ElasticsearchClient! client, string! index, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create(Elastic.Clients.Elasticsearch.Mapping.TypeMapping! codeMapping, Elastic.Clients.Elasticsearch.Inferrer? inferrer = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create(System.Func<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>! getMapping, Elastic.Clients.Elasticsearch.Inferrer? inferrer = null, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create<T>(Elastic.Clients.Elasticsearch.ElasticsearchClient! client, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create<T>(System.Action<Elastic.Clients.Elasticsearch.Mapping.TypeMappingDescriptor<T>>! mappingBuilder, Elastic.Clients.Elasticsearch.ElasticsearchClient! client, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create<T>(System.Action<Elastic.Clients.Elasticsearch.Mapping.TypeMappingDescriptor<T>>! mappingBuilder, Elastic.Clients.Elasticsearch.ElasticsearchClient! client, string! index, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.Create<T>(System.Action<Elastic.Clients.Elasticsearch.Mapping.TypeMappingDescriptor<T>>! mappingBuilder, Elastic.Clients.Elasticsearch.Inferrer! inferrer, System.Func<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>? getMapping = null, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.CreateWithAsyncLoader(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>!>! getMappingAsync, Elastic.Clients.Elasticsearch.Inferrer? inferrer = null, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.CreateWithAsyncLoader<T>(System.Action<Elastic.Clients.Elasticsearch.Mapping.TypeMappingDescriptor<T>>! mappingBuilder, Elastic.Clients.Elasticsearch.Inferrer! inferrer, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>!>! getMappingAsync, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.CreateWithLoaders(System.Func<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>! getMapping, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<Elastic.Clients.Elasticsearch.Mapping.TypeMapping?>!>! getMappingAsync, Elastic.Clients.Elasticsearch.Inferrer? inferrer = null, Elastic.Clients.Elasticsearch.Mapping.TypeMapping? codeMapping = null, Microsoft.Extensions.Logging.ILogger? logger = null, System.TimeProvider? timeProvider = null) -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.GetFieldType(Elastic.Clients.Elasticsearch.Mapping.IProperty? property) -> Elastic.Clients.Elasticsearch.Mapping.FieldType
+static Foundatio.Lucene.Elasticsearch.ElasticMappingResolver.NullInstance.get -> Foundatio.Lucene.Elasticsearch.ElasticMappingResolver!
+static Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.operator !=(Foundatio.Lucene.Elasticsearch.ElasticRuntimeField? left, Foundatio.Lucene.Elasticsearch.ElasticRuntimeField? right) -> bool
+static Foundatio.Lucene.Elasticsearch.ElasticRuntimeField.operator ==(Foundatio.Lucene.Elasticsearch.ElasticRuntimeField? left, Foundatio.Lucene.Elasticsearch.ElasticRuntimeField? right) -> bool
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.GetQuery(this Foundatio.Lucene.Ast.QueryNode! node) -> Elastic.Clients.Elasticsearch.QueryDsl.Query?
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SetQuery(this Foundatio.Lucene.Ast.QueryNode! node, Elastic.Clients.Elasticsearch.QueryDsl.Query? query) -> void
+static Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.operator !=(Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? left, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? right) -> bool
+static Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.operator ==(Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? left, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? right) -> bool
+static Foundatio.Lucene.Elasticsearch.ElasticsearchSearchExtensions.Apply<TDocument>(this Elastic.Clients.Elasticsearch.SearchRequestDescriptor<TDocument> descriptor, Foundatio.Lucene.Elasticsearch.ElasticsearchSearch! search) -> Elastic.Clients.Elasticsearch.SearchRequestDescriptor<TDocument>
+static Foundatio.Lucene.Elasticsearch.NestedFilterContext.operator !=(Foundatio.Lucene.Elasticsearch.NestedFilterContext left, Foundatio.Lucene.Elasticsearch.NestedFilterContext right) -> bool
+static Foundatio.Lucene.Elasticsearch.NestedFilterContext.operator ==(Foundatio.Lucene.Elasticsearch.NestedFilterContext left, Foundatio.Lucene.Elasticsearch.NestedFilterContext right) -> bool
+static Foundatio.Lucene.Elasticsearch.NestedPathResolver.GetDeepestNestedPath(string! fullName, Foundatio.Lucene.Elasticsearch.ElasticMappingResolver! mappingResolver) -> string?
+static Foundatio.Lucene.Elasticsearch.NestedPathResolver.GetNestedAggName(string! path) -> string!
+static Foundatio.Lucene.Elasticsearch.NestedPathResolver.GetNestedPathChain(string! deepestPath, Foundatio.Lucene.Elasticsearch.ElasticMappingResolver! mappingResolver) -> System.Collections.Generic.IReadOnlyList<string!>!
+virtual Foundatio.Lucene.Elasticsearch.GeoLocationResolver.Invoke(string! location, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<string?>
+virtual Foundatio.Lucene.Elasticsearch.NestedFilterResolver.Invoke(Foundatio.Lucene.Elasticsearch.NestedFilterContext filterContext, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Elastic.Clients.Elasticsearch.QueryDsl.Query?>
+virtual Foundatio.Lucene.Elasticsearch.RuntimeFieldResolver.Invoke(string! field, Foundatio.Lucene.Visitors.IQueryVisitorContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.Elasticsearch.ElasticRuntimeField?>
+~override Foundatio.Lucene.Elasticsearch.NestedFilterContext.Equals(object obj) -> bool
+~override Foundatio.Lucene.Elasticsearch.NestedFilterContext.ToString() -> string
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EnableRuntimeFieldResolver.get -> bool?
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions.EnableRuntimeFieldResolver.init -> void
+const Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.AggregationKey = "@Aggregation" -> string!
+const Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SortKey = "@Sort" -> string!
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.GetAggregation(this Foundatio.Lucene.Ast.QueryNode! node) -> Elastic.Clients.Elasticsearch.Aggregations.Aggregation?
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.GetSort(this Foundatio.Lucene.Ast.QueryNode! node) -> Elastic.Clients.Elasticsearch.SortOptions?
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SetAggregation(this Foundatio.Lucene.Ast.QueryNode! node, Elastic.Clients.Elasticsearch.Aggregations.Aggregation? aggregation) -> void
+static Foundatio.Lucene.Elasticsearch.ElasticsearchNodeExtensions.SetSort(this Foundatio.Lucene.Ast.QueryNode! node, Elastic.Clients.Elasticsearch.SortOptions? sort) -> void
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateAggregationsAsync(string! aggregations, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ValidateSortAsync(string! sort, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.QueryValidationResult!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.ParseAsync(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Foundatio.Lucene.Ast.QueryDocument!>
+Foundatio.Lucene.Elasticsearch.ElasticsearchQueryParser.Parse(string! query, Foundatio.Lucene.Elasticsearch.ElasticsearchQueryOptions? options = null) -> Foundatio.Lucene.Ast.QueryDocument!

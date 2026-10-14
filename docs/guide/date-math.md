@@ -1,282 +1,105 @@
 # Date Math
 
-Foundatio.Lucene supports Elasticsearch-style date math expressions for working with dates dynamically.
-
-## Basic Syntax
-
-### Current Time
-
-Use `now` to reference the current time:
+Date values in queries can be relative to the current time or to another date, using Elasticsearch date math.
 
 ```
-created:now           // Current timestamp
-modified:[now-1d TO now]   // Last 24 hours
+created:[now-7d TO now]
+created:>=now/d
+created:[2024-01-01||+1M/d TO *]
 ```
 
-### Adding/Subtracting Time
+## Syntax
 
-Add or subtract time from a base date:
+An expression is an **anchor**, an optional `||`, and zero or more **operations**.
 
-```
-now-1d     // 1 day ago
-now+1h     // 1 hour from now
-now-1w     // 1 week ago
-now+30m    // 30 minutes from now
-```
+| Anchor | Meaning |
+|---|---|
+| `now` | the current instant |
+| `2024-01-15`, `2024-01`, `2024`, `20240115` | a date (in the time zone, if no offset is given) |
+| `2024-01-15T10:30:00`, `2024-01-15T10:30:00.123Z`, `2024-01-15T10:30:00+05:00` | a date and time |
 
-### Time Units
+| Operation | Meaning |
+|---|---|
+| `+1d`, `-2h`, `+d` | add or subtract an amount (default 1) |
+| `/d` | round to the unit; must be the last operation |
 
-| Unit | Description |
-|------|-------------|
-| `y`  | Year        |
-| `M`  | Month       |
-| `w`  | Week        |
-| `d`  | Day         |
-| `h`  | Hour        |
-| `m`  | Minute      |
-| `s`  | Second      |
+| Unit | |
+|---|---|
+| `y` | years |
+| `M` | months |
+| `w` | weeks |
+| `d` | days |
+| `h`, `H` | hours |
+| `m` | minutes |
+| `s` | seconds |
 
-Examples:
-
-```
-now-1y     // 1 year ago
-now-6M     // 6 months ago
-now-2w     // 2 weeks ago
-now-3d     // 3 days ago
-now-12h    // 12 hours ago
-now-30m    // 30 minutes ago
-now-45s    // 45 seconds ago
-```
-
-## Rounding
-
-Use `/` to round to a time unit:
+Units are case-sensitive: `M` is months and `m` minutes.
 
 ```
-now/d      // Start of current day (00:00:00)
-now/M      // Start of current month
-now/y      // Start of current year
-now/h      // Start of current hour
+now-1h          one hour ago
+now/d           start of today
+now-1d/d        start of yesterday
+now/M           start of this month
+now+1w/w        start of next week (weeks start on Monday)
+2024-01-01||+1M the first of February 2024
 ```
 
-Combine with arithmetic:
+## Rounding and ranges
 
-```
-now-1d/d   // Start of yesterday
-now/M-1M   // Start of last month
-now/w      // Start of current week
-```
+Rounding goes down to the start of the period, except for bounds that must include the whole period, which round up to its last instant — the same rules Elasticsearch uses:
 
-## Anchored Date Math
+| Bound | Rounds |
+|---|---|
+| `[now/d TO ...` (inclusive lower) | down: start of today |
+| `{now/d TO ...` (exclusive lower) | up: end of today |
+| `... TO now/d]` (inclusive upper) | up: end of today |
+| `... TO now/d}` (exclusive upper) | down: start of today |
 
-Start from a specific date using `||`:
+Dates that leave out components are rounded the same way, so `created:[2024-01 TO 2024-02]` covers all of January and February, and `created:<=2024-01-31` includes the whole day.
 
-```
-2024-01-01||+1M      // January 1st 2024 plus one month
-2024-06-15||+1d      // June 15th 2024 plus one day
-2024-03-01||-1w      // March 1st 2024 minus one week
-```
+## Time zones
 
-With rounding:
-
-```
-2024-01-15||/M       // Start of January 2024
-2024-06-15||+1M/d    // July 15th 2024, rounded to start of day
-```
-
-## Using Date Math
-
-### In Queries
+`now/d` means midnight in some time zone. Configure it:
 
 ```csharp
-using Foundatio.Lucene;
-
-// Parse a query with date math
-var result = LuceneQuery.Parse("created:[now-7d TO now]");
-
-// Evaluate the date math expressions
-new DateMathEvaluatorVisitor().Evaluate(result.Document);
-
-// Now the date values are resolved to actual dates
+var parser = new ElasticsearchQueryParser(c => c.DefaultTimeZone = "America/Chicago");
 ```
 
-### In Elasticsearch Queries
+or per range with `^`: `created:[now/d TO *]^"America/Chicago"`. Days, weeks, months, and years are calendar arithmetic in the time zone (so `now+1d` keeps the local time across a daylight-saving change), while hours, minutes, and seconds are exact durations. Dates without an offset use the offset in effect on that date.
 
-The Elasticsearch parser automatically evaluates date math:
+## Where date math is evaluated
+
+- **Elasticsearch** evaluates date math itself. The provider passes expressions through unchanged and sets `time_zone` on date ranges.
+- **Entity Framework** evaluates date math in .NET using the configured `TimeProvider` and time zone, with the rounding rules above.
+- Anywhere else, use `DateMath` or `DateMathEvaluatorVisitor`.
+
+## Evaluating date math yourself
 
 ```csharp
-var parser = new ElasticsearchQueryParser(config =>
-{
-    config.IsDateField = field => 
-        field.EndsWith("date") || 
-        field.EndsWith("At") ||
-        field == "created" || 
-        field == "modified";
-    config.DefaultTimeZone = "America/Chicago";
-});
+DateTimeOffset start = DateMath.Parse("now-7d/d", DateTimeOffset.UtcNow);
 
-// Date math is automatically evaluated
-var query = parser.BuildQuery("created:[now-7d TO now]");
+var chicago = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+DateTimeOffset startOfDay = DateMath.Parse("now/d", DateTimeOffset.UtcNow, chicago);
+DateTimeOffset endOfDay = DateMath.Parse("now/d", DateTimeOffset.UtcNow, chicago, isUpperLimit: true);
+
+if (DateMath.TryParse("2024-01-01||+1M", DateTimeOffset.UtcNow, isUpperLimit: false, out var date))
+    Console.WriteLine(date);
 ```
 
-### Custom Evaluation
-
-Evaluate date math with custom options:
+`DateMathEvaluatorVisitor` replaces date math in a parsed query with absolute dates. It reads the clock once per query, so every `now` in a query is the same instant:
 
 ```csharp
-using Foundatio.Lucene;
-
-var result = LuceneQuery.Parse("date:[now-1d TO now]");
-
-// Custom "now" reference point
-var referenceTime = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
-new DateMathEvaluatorVisitor(referenceTime).Evaluate(result.Document);
+var visitor = new DateMathEvaluatorVisitor(timeProvider, chicago, isDateField: field => field is "created" or "updated");
+var document = (QueryDocument)visitor.Accept(LuceneQuery.Parse("created:[now-1d/d TO now]").Document, new QueryVisitorContext());
 ```
 
-## Common Patterns
+## Testing
 
-### Last N Days
-
-```
-created:[now-7d TO now]     // Last 7 days
-created:[now-30d TO now]    // Last 30 days
-created:[now-90d TO now]    // Last 90 days
-```
-
-### This Period
-
-```
-created:[now/d TO now]      // Today
-created:[now/w TO now]      // This week
-created:[now/M TO now]      // This month
-created:[now/y TO now]      // This year
-```
-
-### Previous Period
-
-```
-created:[now-1d/d TO now/d}    // Yesterday (exclusive of today)
-created:[now-1w/w TO now/w}    // Last week
-created:[now-1M/M TO now/M}    // Last month
-```
-
-### Date Ranges
-
-```
-created:[2024-01-01 TO 2024-12-31]           // Full year
-created:[2024-01-01||/M TO 2024-01-01||+1M}  // January 2024
-```
-
-### Relative to Specific Date
-
-```
-event_date:[2024-06-15||-7d TO 2024-06-15]   // Week before event
-event_date:[2024-06-15 TO 2024-06-15||+7d]   // Week after event
-```
-
-## Date Formats
-
-The parser accepts various date formats:
-
-```
-2024-01-15                    // ISO date
-2024-01-15T10:30:00          // ISO datetime
-2024-01-15T10:30:00Z         // ISO datetime UTC
-2024-01-15T10:30:00+05:00    // ISO datetime with offset
-```
-
-## Timezone Handling
-
-### Elasticsearch Integration
-
-Configure the default timezone:
+Inject a `TimeProvider` (every parser configuration has a `TimeProvider` property, and `DateMathEvaluatorVisitor` takes one) so date math is deterministic:
 
 ```csharp
-var parser = new ElasticsearchQueryParser(config =>
-{
-    config.DefaultTimeZone = "America/Chicago";
-});
+var time = new FakeTimeProvider(new DateTimeOffset(2024, 3, 15, 12, 0, 0, TimeSpan.Zero));
+var visitor = new DateMathEvaluatorVisitor(time);
+var document = visitor.Accept(LuceneQuery.Parse("created:>=now/d").Document, new QueryVisitorContext());
+// created:>=2024-03-15T00:00:00.000+00:00
 ```
-
-### Manual Evaluation
-
-Specify timezone during evaluation:
-
-```csharp
-var timeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
-// Use with DateMathEvaluatorVisitor
-```
-
-## API Examples
-
-### Search API with Date Math
-
-```csharp
-[HttpGet("logs")]
-public async Task<IActionResult> SearchLogs(
-    [FromQuery] string q = "level:error AND created:[now-1h TO now]")
-{
-    var parser = new ElasticsearchQueryParser(config =>
-    {
-        config.IsDateField = f => f == "created" || f == "timestamp";
-        config.DefaultTimeZone = "UTC";
-    });
-
-    var query = parser.BuildQuery(q);
-    
-    var response = await _client.SearchAsync<LogEntry>(s => s
-        .Index("logs")
-        .Query(query)
-        .Sort(so => so.Field("timestamp", f => f.Order(SortOrder.Desc)))
-    );
-
-    return Ok(response.Documents);
-}
-```
-
-### Predefined Date Filters
-
-```csharp
-public static class DateFilters
-{
-    public static string Today => "created:[now/d TO now]";
-    public static string Yesterday => "created:[now-1d/d TO now/d}";
-    public static string ThisWeek => "created:[now/w TO now]";
-    public static string LastWeek => "created:[now-1w/w TO now/w}";
-    public static string ThisMonth => "created:[now/M TO now]";
-    public static string LastMonth => "created:[now-1M/M TO now/M}";
-    public static string Last7Days => "created:[now-7d TO now]";
-    public static string Last30Days => "created:[now-30d TO now]";
-    public static string Last90Days => "created:[now-90d TO now]";
-    public static string ThisYear => "created:[now/y TO now]";
-}
-
-// Usage
-var query = $"{DateFilters.Last7Days} AND level:error";
-```
-
-## Testing Date Math
-
-When testing, use a fixed reference time:
-
-```csharp
-[Fact]
-public void DateMath_EvaluatesCorrectly()
-{
-    // Arrange
-    var result = LuceneQuery.Parse("date:[now-1d TO now]");
-    var referenceTime = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
-
-    // Act
-    new DateMathEvaluatorVisitor(referenceTime).Evaluate(result.Document);
-
-    // Assert - check the resolved values
-    // Expected: date:[2024-06-14T12:00:00Z TO 2024-06-15T12:00:00Z]
-}
-```
-
-## Next Steps
-
-- [Query Syntax](./query-syntax) - Complete query syntax reference
-- [Elasticsearch](./elasticsearch) - Elasticsearch integration
-- [Visitors](./visitors) - Date math evaluation visitor

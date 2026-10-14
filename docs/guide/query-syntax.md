@@ -1,419 +1,236 @@
 # Query Syntax
 
-Foundatio.Lucene supports the full Lucene query syntax. This page documents all supported syntax elements.
+Foundatio.Lucene parses the Lucene query syntax used by Elasticsearch's `query_string` query and Foundatio.Parsers, with a few precisely defined extensions. This page describes every construct and exactly how it is interpreted.
 
 ## Terms
 
-Simple terms search for exact matches:
+A term is a word to search for. Without a field it searches the configured default fields.
 
 ```
 hello
 ```
 
+Terms may contain any character except whitespace and `: ( ) [ ] { } " ^ ~`. Characters such as `- + ! / . @ # $ & | = < > *` and any Unicode (including emoji) are allowed inside a term: `a-b`, `C#`, `price:$100`, `.net`, `日本語`.
+
 ### Wildcards
 
-Use `*` for multiple characters and `?` for single characters:
+`*` matches any number of characters and `?` matches exactly one:
 
 ```
-hello*      // Matches: hello, helloworld, hello123
-hel?o       // Matches: hello, helpo, helao
-*world      // Matches: world, helloworld (leading wildcard)
+hello*      prefix match
+hel?o       single-character wildcard
+*world      leading wildcard
+f*o?bar*    any combination
 ```
+
+A term whose only wildcard is a single trailing `*` is a **prefix** query; anything else with an unescaped `*` or `?` is a **wildcard** query.
 
 ::: warning
-Leading wildcards (`*world`) can be expensive. Use `QueryValidationOptions.AllowLeadingWildcards = false` to disable them.
+Leading wildcards (`*world`) are expensive in most data stores. Set `QueryValidationOptions.AllowLeadingWildcards = false` to reject them.
 :::
+
+### Escaping
+
+A backslash makes the next character literal: `foo\*bar` searches for `foo*bar`, `c\:\\temp` for `c:\temp`, `my\ field:x` uses the field `my field`, and `\AND` searches for the word AND. Any character can be escaped.
 
 ## Phrases
 
-Use quotes for exact phrase matching:
+Quotes search for an exact phrase. Inside quotes, `\"` and `\\` are the only escapes you normally need.
 
 ```
 "hello world"
+"say \"hi\""
 ```
 
-### Proximity Search
+### Proximity
 
-Add `~N` to find words within N positions of each other:
-
-```
-"hello world"~2    // "hello" and "world" within 2 words of each other
-```
-
-## Fuzzy Search
-
-Add `~` to a term to perform fuzzy matching based on edit distance (Levenshtein distance):
+`~N` after a phrase allows the words to be up to N positions apart:
 
 ```
-roam~              // Fuzzy search with default edit distance of 2
-roam~1             // Fuzzy search with edit distance of 1
-roam~0             // Exact match (edit distance of 0)
+"hello world"~2
 ```
 
-The edit distance specifies the maximum number of character changes (insertions, deletions, substitutions) allowed to match a term. For example, `roam~1` would match:
+## Fuzzy terms
 
-- `roam` (exact)
-- `foam` (1 substitution)
-- `roams` (1 insertion)
-
-::: tip
-Edit distance must be an integer. The default value is 2 when omitted. Lower values (0-1) are more restrictive and generally faster.
-:::
-
-::: info AST Representation
-The AST preserves whether the fuzzy distance was explicitly specified:
-- `term~` → `FuzzyDistance = TermNode.DefaultFuzzyDistance` (sentinel value -1)
-- `term~2` → `FuzzyDistance = 2` (explicitly specified)
-
-Both resolve to an effective distance of 2, but you can distinguish between default and explicit using `GetEffectiveFuzzyDistance()`.
-:::
-
-### Fuzzy with Field Queries
-
-Fuzzy search works with field queries:
+`~` after a term matches terms within an edit distance (insertions, deletions, substitutions):
 
 ```
-title:hello~2      // Fuzzy search in the "title" field
-user.name:john~1   // Fuzzy search in nested field
+roam~       default distance (2)
+roam~1      distance 1
+roam~AUTO   Elasticsearch AUTO fuzziness
 ```
 
-## Field Queries
+## Boosting
 
-Specify which field to search:
+`^N` raises the relevance of a clause when scoring:
+
+```
+title:important^2 body:important
+(a OR b)^1.5
+```
+
+The `^` value is kept as text on the node (`BoostText`), so providers can give it other meanings where a boost makes no sense: on a date range it is the time zone (`created:[2024-01-01 TO *]^"America/Chicago"`), and in aggregation expressions it is a time zone, minimum document count, or precision threshold.
+
+## Fields
+
+`field:value` restricts a clause to a field. Whitespace around the colon is allowed.
 
 ```
 title:hello
-user.name:john       // Nested field
-status:active
+user.name:john
+title:"hello world"
+title:hel*
 ```
 
-### Default Field
+### Field groups
 
-Terms without a field prefix search the default field (or all fields depending on configuration):
-
-```
-hello                // Searches default field(s)
-title:hello          // Searches only "title" field
-```
-
-## Ranges
-
-### Inclusive Ranges
-
-Use square brackets for inclusive ranges (includes boundaries):
+A field followed by a group applies the field to everything inside it that has no field of its own:
 
 ```
-price:[100 TO 500]           // 100 <= price <= 500
-date:[2020-01-01 TO 2020-12-31]
+title:(quick OR brown)
+status:(open OR regressed) AND title:(crash -test)
+price:(>=10 AND <20)
 ```
 
-### Exclusive Ranges
+### Wildcard fields
 
-Use curly braces for exclusive ranges (excludes boundaries):
+A field name may contain wildcards (`book.*:quick`) for data stores that support them. When `AllowedFields` or `RestrictedFields` are configured, wildcard field names are rejected because they can't be checked.
 
-```
-price:{100 TO 500}           // 100 < price < 500
-```
+### Operators must come before the field
 
-### Mixed Ranges
+`title:-foo`, `title:NOT foo`, and `price:-[1 TO 5]` are errors: put the operator before the field (`-title:foo`), or quote or escape the value (`title:"-foo"`, `title:\-foo`). Inside a field group operators are fine: `title:(-foo bar)`.
 
-Mix inclusive and exclusive boundaries:
+## Boolean logic
 
-```
-price:[100 TO 500}           // 100 <= price < 500
-price:{100 TO 500]           // 100 < price <= 500
-```
+### Operators
 
-### Open-Ended Ranges
+| Syntax | Meaning |
+|---|---|
+| `a AND b`, `a && b` | both |
+| `a OR b`, `a \|\| b` | either |
+| `NOT a`, `!a` | not |
+| `+a` | a is required |
+| `-a` | a is prohibited |
+| `a b` | the **default operator** (AND unless configured otherwise) |
 
-Use `*` for unbounded ranges:
+Keywords are case-sensitive: `and`, `or`, and `not` are ordinary terms. `&&` and `||` must be surrounded by whitespace or parentheses; `a&&b` is a single term. A `+`, `-`, or `!` followed by whitespace is literal text, so `One - Two` searches for three terms.
 
-```
-price:[100 TO *]             // price >= 100
-price:[* TO 500]             // price <= 500
-age:{18 TO *}                // age > 18
-```
+### Precedence
 
-## Boolean Operators
+NOT binds tightest, then AND, then OR. Juxtaposed clauses use the default operator at that operator's precedence. Use parentheses to be explicit.
 
-### AND
+| Query (default AND) | Means |
+|---|---|
+| `a OR b AND c` | `a OR (b AND c)` |
+| `a AND b OR c` | `(a AND b) OR c` |
+| `a b OR c` | `(a AND b) OR c` |
+| `(a OR b) c` | `(a OR b) AND c` |
 
-Both terms must match:
+::: info Foundatio.Parsers compatibility
+Foundatio.Parsers had no precedence and grouped everything to the right, so it read `a AND b OR c` as `a AND (b OR c)`. Queries that mix AND and OR without parentheses can change meaning when you migrate; see [Migrating from Foundatio.Parsers](./migrating-from-parsers).
+:::
 
-```
-title:hello AND status:active
-title:hello && status:active   // Alternative syntax
-```
+### Required and prohibited clauses
 
-### OR
+`+` and `-` follow Lucene: within a boolean level, every required clause must match, no prohibited clause may match, and when there are no required clauses at least one of the others must match. With required clauses present, the other clauses only affect scoring.
 
-Either term must match:
-
-```
-status:active OR status:pending
-status:active || status:pending  // Alternative syntax
-```
+| Query | Default OR | Default AND |
+|---|---|---|
+| `a b` | a or b | a and b |
+| `+a b` | a (b only boosts the score) | a and b |
+| `-a b` | b and not a | b and not a |
+| `a -b c` | (a or c) and not b | a and c and not b |
 
 ### NOT
 
-Exclude matches:
+`NOT x` (and `!x`) excludes, exactly like `-x`, with one exception: an alternative of an explicit OR is a boolean negation.
+
+| Query | Means |
+|---|---|
+| `a NOT b` | a and not b (with either default operator) |
+| `a AND NOT b` | a and not b |
+| `a OR NOT b` | a, or anything that is not b |
+| `NOT a OR b` | anything that is not a, or b |
+| `NOT a` | everything except a |
+
+A query made only of prohibited clauses matches everything those clauses exclude.
+
+## Ranges
+
+Brackets are inclusive and braces exclusive; they can be mixed. `*` is an open end, and `..` can replace `TO`.
 
 ```
-status:active NOT archived:true
-status:active !archived:true     // Alternative syntax
+price:[10 TO 100]
+price:{10 TO 100}
+price:[10 TO 100}
+price:[10 TO *]
+created:[2024-01-01 TO now]
+price:[1..5]
+temperature:[-10 TO -5]
+name:["a b" TO "c d"]
 ```
 
-### Prefix Operators
+`TO` is only a keyword inside a range; elsewhere it's an ordinary term (`go TO school`).
 
-Use `+` (must match) and `-` (must not match):
-
-```
-+status:active              // Must match
--archived:true              // Must not match
-+title:hello -status:draft  // Must match title, must not be draft
-```
-
-## Grouping
-
-Use parentheses to group clauses:
+### Comparison operators
 
 ```
-(status:active OR status:pending) AND priority:high
-title:(hello OR goodbye)
+price:>10
+price:>=10
+price:<100
+price:<=100
+temperature:<-5
+created:>=2024-01-01T10:30:00
 ```
 
-## Special Queries
+Times such as `10:30:00` can be written without quotes in field values and ranges. A colon that isn't between digits ends the value, so `a:b:c` is an error.
 
-### Exists / Missing
+## Special queries
 
-Check if a field exists or is missing:
+| Syntax | Meaning |
+|---|---|
+| `_exists_:field` or `field:*` | the field has a value |
+| `_missing_:field` | the field has no value |
+| `*` or `*:*` | all documents |
+| `/regex/` | regular expression (on a field: `name:/jo.*/`) |
+| `@include:name` | expands a saved query (see [Includes](./configuration#includes)) |
 
-```
-_exists_:email           // Documents with email field
-_missing_:phone          // Documents without phone field
-```
+Regular expressions keep their escapes (`/a\/b/`), and support depends on the data store.
 
-### Match All
+## Date math
 
-Match all documents:
-
-```
-*:*
-```
-
-## Regular Expressions
-
-Use forward slashes for regex patterns:
+Date values in ranges and terms can use Elasticsearch date math:
 
 ```
-/joh?n(athan)?/          // Matches: john, jon, jonathan, jonatan
-name:/[a-z]+/
+created:[now-7d TO now]
+created:>=now/d
+created:[2024-01-01||+1M/d TO *]
 ```
 
-::: tip
-Regex patterns follow the .NET `Regex` syntax.
-:::
+See [Date Math](./date-math) for the full syntax, rounding, and time zones.
 
-## Date Math
+## Errors
 
-Elasticsearch-style date math is supported for date fields:
+Parsing never throws for malformed input. `LuceneQuery.Parse` returns every problem (with position, line, and column) and a document containing everything that could be parsed. Unexpected tokens, dangling operators (`a AND`), unmatched parentheses or brackets, unterminated phrases or regular expressions, a trailing lone backslash, empty groups, operators after a field's colon, and duplicate modifiers are all reported.
 
-### Relative Dates
-
-```
-created:now              // Current time
-created:now-1d           // 1 day ago
-created:now+1h           // 1 hour from now
-created:now-1w           // 1 week ago
+```csharp
+var result = LuceneQuery.Parse("title:(hello OR");
+if (!result.IsSuccess)
+{
+    foreach (var error in result.Errors)
+        Console.WriteLine($"{error.Line}:{error.Column} {error.Message}");
+}
 ```
 
-### Date Math Units
+Parenthesized groups can be nested at most `LuceneParserOptions.MaxDepth` (default 100) levels deep; deeper input is reported as an error instead of exhausting the stack.
 
-| Unit | Description |
-|------|-------------|
-| `y`  | Year        |
-| `M`  | Month       |
-| `w`  | Week        |
-| `d`  | Day         |
-| `h`  | Hour        |
-| `m`  | Minute      |
-| `s`  | Second      |
+## Round-tripping
 
-### Anchored Date Math
+`QueryStringBuilder.ToQueryString(document)` turns a parsed (or modified) tree back into query text. The result parses back into a tree with the same meaning, and the operators and prefixes the user wrote are kept where they are still valid:
 
-Start from a specific date:
-
-```
-2024-01-01||+1M          // January 1st 2024 plus one month
-2024-01-01||+1M/d        // Same, rounded to day
+```csharp
+var document = LuceneQuery.Parse("title:(a OR b) -status:closed").Document;
+string text = QueryStringBuilder.ToQueryString(document); // title:(a OR b) -status:closed
 ```
 
-### Rounding
-
-Use `/` to round to a time unit:
-
-```
-now/d                    // Round to start of current day
-now/M                    // Round to start of current month
-now-1d/d                 // Start of yesterday
-```
-
-### Rounding with Inclusive/Exclusive Ranges
-
-Rounding behavior changes depending on whether a range boundary is inclusive or exclusive. This follows Elasticsearch's conventions:
-
-**Inclusive boundaries** round to maximize the matched range:
-
-- Inclusive min (`[`): rounds **down** (start of period) — e.g., `[now/d` → start of today
-- Inclusive max (`]`): rounds **up** (end of period) — e.g., `now/d]` → end of today
-
-**Exclusive boundaries** round to minimize the matched range:
-
-- Exclusive min (`{`): rounds **up** (end of period) — e.g., `{now/d` → end of today, then `>`
-- Exclusive max (`}`): rounds **down** (start of period) — e.g., `now/d}` → start of today, then `<`
-
-This applies to all rounding units (`/d`, `/M`, `/h`, `/y`, etc.) and to short-form operators:
-
-| Query | Rounding | Effective |
-| ----- | -------- | --------- |
-| `[now/d TO now/d]` | min→start, max→end | Entire current day |
-| `[now/d TO now/d}` | min→start, max→start | Empty (start ≤ x < start) |
-| `{now/d TO now/d]` | min→end, max→end | Empty (end < x ≤ end) |
-| `>=now/d` | start of day | From start of today onward |
-| `>now/d` | end of day | After today |
-| `<now/d` | start of day | Before today |
-| `<=now/d` | end of day | Through end of today |
-| `[now/M TO now/M]` | min→start of month, max→end of month | Entire current month |
-| `>=now/h` | start of hour | From start of current hour |
-
-::: tip
-The same `/unit` rounding expression produces different concrete dates depending on whether the boundary is inclusive or exclusive. This matches [Elasticsearch's native date math rounding behavior](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-range-query#range-query-date-math-rounding).
-:::
-
-### Common Date Range Patterns
-
-```
-// This month (start of current month through end of current month)
-created:[now/M TO now/M]
-
-// Last month
-created:[now-1M/M TO now-1M/M]
-
-// Year to date (start of current year through now)
-created:[now/y TO now]
-
-// Last year
-created:[now-1y/y TO now-1y/y]
-
-// Today
-created:[now/d TO now/d]
-
-// Yesterday
-created:[now-1d/d TO now-1d/d]
-
-// Last 7 full days (not including today)
-created:[now-7d/d TO now-1d/d]
-
-// Last 30 days (rolling, including partial today)
-created:[now-30d TO now]
-
-// This week (start of current week through end of current week)
-created:[now/w TO now/w]
-
-// Last hour
-created:[now-1h/h TO now-1h/h]
-
-// Last 15 minutes (rolling)
-created:[now-15m TO now]
-
-// Last 4 hours (rolling)
-created:[now-4h TO now]
-
-// Last 4 full hours (rounded to hour boundaries)
-created:[now-4h/h TO now/h]
-```
-
-## Includes
-
-Reference saved or named queries:
-
-```
-@include:savedQuery
-@include:my-filter
-```
-
-::: info
-Include expansion requires supplying the referenced queries via the parser's `Includes` dictionary
-(or per-request options). Names are resolved against that pre-resolved content.
-:::
-
-## Escaping Special Characters
-
-Escape special characters with backslash:
-
-```
-title:hello\:world       // Searches for "hello:world" in title
-name:John\ Doe           // Searches for "John Doe"
-```
-
-Special characters that need escaping: `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /`
-
-## Query Examples
-
-Here are some real-world query examples:
-
-### E-commerce Product Search
-
-```
-category:electronics AND price:[100 TO 500] AND brand:(apple OR samsung) AND _exists_:inStock
-```
-
-### Log Analysis
-
-```
-level:error AND timestamp:[now-1h TO now] AND (service:api OR service:web) NOT test:true
-```
-
-### User Search
-
-```
-name:john* AND role:(admin OR moderator) AND status:active AND lastLogin:[now-30d TO *]
-```
-
-### Fuzzy Name Search
-
-```
-firstName:john~1 AND lastName:smith~2
-```
-
-### Document Search
-
-```
-"annual report" AND year:2024 AND department:(finance OR legal) -draft:true
-```
-
-## AST Node Types
-
-When parsing, queries are converted to these AST node types:
-
-| Node Type | Description | Example |
-|-----------|-------------|---------|
-| `QueryDocument` | Root node | - |
-| `TermNode` | Simple term | `hello` |
-| `PhraseNode` | Quoted phrase | `"hello world"` |
-| `FieldQueryNode` | Field:value pair | `title:test` |
-| `RangeNode` | Range query | `[1 TO 10]` |
-| `BooleanQueryNode` | Boolean combination | `a AND b` |
-| `GroupNode` | Parenthetical group | `(a OR b)` |
-| `NotNode` | Negation wrapper | `NOT a` |
-| `ExistsNode` | `_exists_:field` check | `_exists_:email` |
-| `MissingNode` | `_missing_:field` check | `_missing_:phone` |
-| `MatchAllNode` | `*:*` match all | `*:*` |
-| `RegexNode` | Regular expression | `/pattern/` |
-| `MultiTermNode` | Multiple terms without operators | `hello world` |
-
-## Next Steps
-
-- [Visitors](./visitors) - Transform and analyze the AST
-- [Field Mapping](./field-mapping) - Map field names
-- [Validation](./validation) - Validate queries
+When the text will be parsed with a different default operator, pass it: `QueryStringBuilder.ToQueryString(document, BooleanOperator.Or)` makes juxtaposed AND clauses explicit.

@@ -1,127 +1,137 @@
+using System.Collections.Frozen;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Foundatio.Lucene.EntityFramework;
 
 /// <summary>
-/// Represents metadata about an entity field discovered from Entity Framework.
+/// The kind of member an <see cref="EntityFieldInfo"/> describes.
 /// </summary>
-[DebuggerDisplay("{FullName} IsNumber: {IsNumber} IsDate: {IsDate} IsBoolean: {IsBoolean} IsCollection: {IsCollection} IsNavigation: {IsNavigation}")]
-public class EntityFieldInfo
+public enum EntityFieldKind
 {
+    /// <summary>A field registered by the application (for example a dynamic or EAV field). Queries on it need a
+    /// <see cref="CustomFieldExpressionBuilder"/>.</summary>
+    Custom,
+    /// <summary>A scalar property of the EF Core model (including primitive collections).</summary>
+    Property,
+    /// <summary>A reference or collection navigation (including owned types).</summary>
+    Navigation,
+    /// <summary>A many-to-many skip navigation.</summary>
+    SkipNavigation,
+    /// <summary>A complex property (EF Core complex type).</summary>
+    ComplexProperty
+}
+
+/// <summary>
+/// Describes a queryable field: a property or navigation discovered from the EF Core model, or a custom field
+/// registered with <see cref="EntityFrameworkQueryOptions.AdditionalFields"/>. Instances are immutable and shared
+/// between requests.
+/// </summary>
+[DebuggerDisplay("{FullName} ({Kind}, {ClrType.Name})")]
+public sealed class EntityFieldInfo
+{
+    private readonly string? _fullName;
+    private SortKey? _sortKey;
+
     /// <summary>
-    /// The simple name of the field.
+    /// The member name (for a nested field, the last path segment).
     /// </summary>
     public required string Name { get; init; }
 
     /// <summary>
-    /// The full path name of the field (e.g., "Company.Address.City").
+    /// The dotted path from the queried entity, for example <c>Company.Address.City</c>. Defaults to <see cref="Name"/>.
     /// </summary>
-    public required string FullName { get; init; }
-
-    /// <summary>
-    /// The CLR type of the field.
-    /// </summary>
-    public Type? ClrType { get; set; }
-
-    /// <summary>
-    /// Whether the field is a numeric type.
-    /// </summary>
-    public bool IsNumber { get; set; }
-
-    /// <summary>
-    /// Whether the field is a DateTime type.
-    /// </summary>
-    public bool IsDate { get; set; }
-
-    /// <summary>
-    /// Whether the field is a DateOnly type.
-    /// </summary>
-    public bool IsDateOnly { get; set; }
-
-    /// <summary>
-    /// Whether the field is a boolean type.
-    /// </summary>
-    public bool IsBoolean { get; set; }
-
-    /// <summary>
-    /// Whether the field is a string type.
-    /// </summary>
-    public bool IsString { get; set; }
-
-    /// <summary>
-    /// Whether the field is a collection (e.g., ICollection&lt;T&gt;).
-    /// </summary>
-    public bool IsCollection { get; set; }
-
-    /// <summary>
-    /// Whether the field is a navigation property.
-    /// </summary>
-    public bool IsNavigation { get; set; }
-
-    /// <summary>
-    /// Whether the field has a full-text search index.
-    /// When true, queries will use EF.Functions.Contains() for full-text search.
-    /// </summary>
-    public bool IsFullTextIndexed { get; set; }
-
-    /// <summary>
-    /// The name of the CLR type that declares this field (e.g., "Employee" for Employee.Name).
-    /// Used for full-text field configuration matching.
-    /// </summary>
-    public string? DeclaringTypeName { get; set; }
-
-    /// <summary>
-    /// The parent field info for nested fields.
-    /// </summary>
-    public EntityFieldInfo? Parent { get; set; }
-
-    /// <summary>
-    /// Additional custom data associated with this field.
-    /// </summary>
-    public IDictionary<string, object> Data { get; set; } = new Dictionary<string, object>();
-
-    /// <summary>
-    /// The EF property metadata if this is a scalar property.
-    /// </summary>
-    public IProperty? Property { get; set; }
-
-    /// <summary>
-    /// The EF navigation metadata if this is a navigation property.
-    /// </summary>
-    public INavigationBase? Navigation { get; set; }
-
-    /// <summary>
-    /// Gets the navigation prefix for building expressions with nested collections.
-    /// </summary>
-    public string GetNavigationPrefix()
+    public string FullName
     {
-        if (!IsNavigation || Parent is null)
-            return string.Empty;
-
-        var parts = new List<string>();
-        var current = this;
-        while (current != null && current.IsNavigation)
-        {
-            parts.Insert(0, current.Name);
-            current = current.Parent;
-        }
-
-        return parts.Count > 0 ? string.Join(".", parts) + "." : string.Empty;
+        get => _fullName ?? Name;
+        init => _fullName = value;
     }
 
-    /// <inheritdoc />
-    protected bool Equals(EntityFieldInfo other) => string.Equals(FullName, other.FullName, StringComparison.Ordinal);
+    /// <summary>
+    /// The CLR type of the member. For collections this is the collection type; see <see cref="ElementType"/>.
+    /// </summary>
+    public required Type ClrType { get; init; }
 
-    /// <inheritdoc />
-    public override bool Equals(object? obj)
+    /// <summary>
+    /// The element type of a collection navigation or primitive collection, otherwise null.
+    /// </summary>
+    public Type? ElementType { get; init; }
+
+    /// <summary>
+    /// What the field describes. Defaults to <see cref="EntityFieldKind.Custom"/> for fields created by the application.
+    /// </summary>
+    public EntityFieldKind Kind { get; init; } = EntityFieldKind.Custom;
+
+    /// <summary>
+    /// Whether the member is a collection (a collection navigation or a primitive collection).
+    /// </summary>
+    public bool IsCollection => ElementType is not null;
+
+    /// <summary>
+    /// Whether the member is a navigation or skip navigation.
+    /// </summary>
+    public bool IsNavigation => Kind is EntityFieldKind.Navigation or EntityFieldKind.SkipNavigation;
+
+    /// <summary>
+    /// Whether the field has a full-text index, so terms are matched with <c>EF.Functions.Contains</c>.
+    /// </summary>
+    public bool IsFullTextSearch { get; init; }
+
+    /// <summary>
+    /// The field that declares this one (for <c>Company.Name</c>, the <c>Company</c> navigation), or null for fields
+    /// of the queried entity.
+    /// </summary>
+    public EntityFieldInfo? Parent { get; init; }
+
+    /// <summary>
+    /// The EF Core metadata (<see cref="IProperty"/>, <see cref="INavigationBase"/>, or <see cref="IComplexProperty"/>),
+    /// or null for custom fields.
+    /// </summary>
+    public IPropertyBase? Metadata { get; init; }
+
+    /// <summary>
+    /// Application data for custom field expression builders (for example a data definition id).
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Data { get; init; } = EmptyData;
+
+    /// <summary>
+    /// The scalar value type of the field: the element type for collections, otherwise <see cref="ClrType"/>, with
+    /// <see cref="Nullable{T}"/> removed.
+    /// </summary>
+    public Type ValueType => Nullable.GetUnderlyingType(ElementType ?? ClrType) ?? ElementType ?? ClrType;
+
+    /// <summary>
+    /// Whether the value type is <see cref="string"/>.
+    /// </summary>
+    public bool IsString => ValueType == typeof(string);
+
+    /// <summary>
+    /// Whether the value type is numeric.
+    /// </summary>
+    public bool IsNumber => QueryValueParser.IsNumeric(ValueType);
+
+    /// <summary>
+    /// Whether the value type is <see cref="DateTime"/>, <see cref="DateTimeOffset"/>, or <see cref="DateOnly"/>.
+    /// </summary>
+    public bool IsDate => QueryValueParser.IsDate(ValueType);
+
+    /// <summary>
+    /// Whether the value type is <see cref="bool"/>.
+    /// </summary>
+    public bool IsBoolean => ValueType == typeof(bool);
+
+    internal bool IsScalar => Kind is EntityFieldKind.Property or EntityFieldKind.Custom;
+
+    internal ITypeBase? TargetType { get; init; }
+
+    internal SortKey? SortKey
     {
-        if (obj is null) return false;
-        if (ReferenceEquals(this, obj)) return true;
-        if (obj.GetType() != GetType()) return false;
-        return Equals((EntityFieldInfo)obj);
+        get => Volatile.Read(ref _sortKey);
+        set => Volatile.Write(ref _sortKey, value);
     }
 
+    internal static IReadOnlyDictionary<string, object?> EmptyData { get; } = FrozenDictionary<string, object?>.Empty;
+
     /// <inheritdoc />
-    public override int GetHashCode() => FullName.GetHashCode(StringComparison.Ordinal);
+    public override string ToString() => FullName;
 }

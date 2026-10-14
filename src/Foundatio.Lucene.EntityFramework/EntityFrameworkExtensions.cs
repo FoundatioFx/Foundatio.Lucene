@@ -1,199 +1,166 @@
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Query;
 
 namespace Foundatio.Lucene.EntityFramework;
 
 /// <summary>
-/// Extension methods for Entity Framework integration with Lucene query parsing.
+/// Extension methods that apply Lucene queries and sort expressions to EF Core queries.
 /// </summary>
 public static class EntityFrameworkExtensions
 {
+    private static readonly ConditionalWeakTable<Action<EntityFrameworkQueryParserConfiguration>, EntityFrameworkQueryParser> ConfiguredParsers = new();
+
     /// <summary>
-    /// Filters the query using a Lucene query string, retrieving the parser from the DbContext's service provider.
+    /// Filters <paramref name="source"/> with a Lucene query. The entity's fields are discovered from the model of the
+    /// query's <c>DbSet</c>. A null or blank query returns <paramref name="source"/> unchanged.
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="source">The DbSet source.</param>
-    /// <param name="query">The Lucene query string.</param>
-    /// <returns>The filtered queryable.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when EntityFrameworkQueryParser is not registered in the DbContext.</exception>
-    public static IQueryable<T> Where<T>(this DbSet<T> source, string query) where T : class
+    /// <exception cref="QueryValidationException">The query has syntax errors or is invalid.</exception>
+    public static IQueryable<T> Where<T>(this IQueryable<T> source, string? query, EntityFrameworkQueryParser parser, EntityFrameworkQueryOptions? options = null) where T : class
     {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(parser);
         if (string.IsNullOrWhiteSpace(query))
             return source;
 
-        var context = source.GetDbContext();
-        var parser = context.GetQueryParser();
-
-        if (parser == null)
-            throw new InvalidOperationException(
-                $"EntityFrameworkQueryParser is not registered in the DbContext. " +
-                $"Use AddLuceneQuery() when configuring the DbContext options.");
-
-        var filter = parser.BuildFilter<T>(query);
+        var filter = (Expression<Func<T, bool>>)parser.BuildFilter(GetEntityType(source, parser, options), query, options);
         return source.Where(filter);
     }
 
     /// <summary>
-    /// Filters the query using a Lucene query string.
+    /// Filters <paramref name="source"/> with a Lucene query using the parser registered with
+    /// <see cref="AddLuceneQuery(DbContextOptionsBuilder, EntityFrameworkQueryParser)"/>. A null or blank query
+    /// returns <paramref name="source"/> unchanged.
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="source">The queryable source.</param>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="parser">The query parser to use.</param>
-    /// <returns>The filtered queryable.</returns>
-    public static IQueryable<T> Where<T>(this IQueryable<T> source, string query, EntityFrameworkQueryParser parser) where T : class
+    /// <exception cref="InvalidOperationException">No parser is registered for the context.</exception>
+    /// <inheritdoc cref="Where{T}(IQueryable{T}, string?, EntityFrameworkQueryParser, EntityFrameworkQueryOptions?)"/>
+    public static IQueryable<T> Where<T>(this DbSet<T> source, string? query, EntityFrameworkQueryOptions? options = null) where T : class
     {
+        ArgumentNullException.ThrowIfNull(source);
         if (string.IsNullOrWhiteSpace(query))
             return source;
 
-        var filter = parser.BuildFilter<T>(query);
-        return source.Where(filter);
+        return source.Where(query, GetRequiredQueryParser(source), options);
     }
 
     /// <summary>
-    /// Filters the query using a Lucene query string with a custom context.
+    /// Filters <paramref name="source"/> with a Lucene query, first running the parser's asynchronous resolution phase
+    /// (include and field resolvers).
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="source">The queryable source.</param>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="parser">The query parser to use.</param>
-    /// <param name="context">The query visitor context.</param>
-    /// <returns>The filtered queryable.</returns>
-    public static IQueryable<T> Where<T>(this IQueryable<T> source, string query, EntityFrameworkQueryParser parser, EntityFrameworkQueryVisitorContext context) where T : class
+    /// <inheritdoc cref="Where{T}(IQueryable{T}, string?, EntityFrameworkQueryParser, EntityFrameworkQueryOptions?)"/>
+    public static async ValueTask<IQueryable<T>> WhereAsync<T>(this IQueryable<T> source, string? query, EntityFrameworkQueryParser parser, EntityFrameworkQueryOptions? options = null, CancellationToken cancellationToken = default) where T : class
     {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(parser);
         if (string.IsNullOrWhiteSpace(query))
             return source;
 
-        var filter = parser.BuildFilter<T>(query, context);
-        return source.Where(filter);
+        var filter = await parser.BuildFilterAsync(GetEntityType(source, parser, options), query, options, cancellationToken).ConfigureAwait(false);
+        return source.Where((Expression<Func<T, bool>>)filter);
     }
 
     /// <summary>
-    /// Filters the DbSet using a Lucene query string.
+    /// Orders <paramref name="source"/> by a sort expression such as <c>-created +name</c>.
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="source">The DbSet source.</param>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="parser">The query parser to use.</param>
-    /// <returns>The filtered queryable.</returns>
-    public static IQueryable<T> Where<T>(this DbSet<T> source, string query, EntityFrameworkQueryParser parser) where T : class
+    /// <exception cref="QueryValidationException">The sort expression is empty or invalid.</exception>
+    public static IOrderedQueryable<T> OrderBy<T>(this IQueryable<T> source, string sort, EntityFrameworkQueryParser parser, EntityFrameworkQueryOptions? options = null) where T : class
     {
-        if (string.IsNullOrWhiteSpace(query))
-            return source;
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(sort);
+        ArgumentNullException.ThrowIfNull(parser);
 
-        var filter = parser.BuildFilter<T>(query);
-        return source.Where(filter);
+        return parser.BuildSort<T>(GetEntityType(source, parser, options), sort, options).Apply(source);
     }
 
     /// <summary>
-    /// Filters the DbSet using a Lucene query string with entity type metadata.
+    /// Gets the parser registered for the context with <c>AddLuceneQuery</c>, or null.
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="source">The DbSet source.</param>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="parser">The query parser to use.</param>
-    /// <param name="context">The DbContext to get entity type metadata from.</param>
-    /// <returns>The filtered queryable.</returns>
-    public static IQueryable<T> Where<T>(this DbSet<T> source, string query, EntityFrameworkQueryParser parser, DbContext context) where T : class
-    {
-        if (string.IsNullOrWhiteSpace(query))
-            return source;
-
-        var entityType = context.Model.FindEntityType(typeof(T));
-        if (entityType == null)
-        {
-            throw new InvalidOperationException($"Entity type {typeof(T).Name} is not registered in the DbContext model.");
-        }
-
-        var filter = parser.BuildFilter<T>(query, entityType);
-        return source.Where(filter);
-    }
-
-    /// <summary>
-    /// Gets the query parser from the DbContext service provider if registered.
-    /// </summary>
-    /// <param name="context">The DbContext.</param>
-    /// <returns>The registered EntityFrameworkQueryParser or null.</returns>
     public static EntityFrameworkQueryParser? GetQueryParser(this DbContext context)
     {
-        return context.GetService<EntityFrameworkQueryParser>();
+        ArgumentNullException.ThrowIfNull(context);
+        return context.GetService<IDbContextOptions>().FindExtension<LuceneQueryOptionsExtension>()?.Parser;
     }
 
     /// <summary>
-    /// Gets a service from the DbContext infrastructure service provider.
+    /// Associates <paramref name="parser"/> with the contexts built from these options, for use by
+    /// <see cref="Where{T}(DbSet{T}, string?, EntityFrameworkQueryOptions?)"/> and <see cref="GetQueryParser"/>. Share one
+    /// parser instance across contexts so field metadata is discovered once.
     /// </summary>
-    private static T? GetService<T>(this DbContext context) where T : class
+    public static DbContextOptionsBuilder AddLuceneQuery(this DbContextOptionsBuilder optionsBuilder, EntityFrameworkQueryParser parser)
     {
-        return ((IInfrastructure<IServiceProvider>)context).Instance.GetService(typeof(T)) as T;
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+        ArgumentNullException.ThrowIfNull(parser);
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(new LuceneQueryOptionsExtension(parser));
+        return optionsBuilder;
     }
 
     /// <summary>
-    /// Gets the DbContext from a DbSet.
+    /// Associates a parser created with <paramref name="configure"/> with the contexts built from these options. The
+    /// parser is reused whenever the same delegate instance is passed again (as it is for lambdas that capture
+    /// nothing); otherwise prefer <see cref="AddLuceneQuery(DbContextOptionsBuilder, EntityFrameworkQueryParser)"/>
+    /// with a shared parser.
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="dbSet">The DbSet.</param>
-    /// <returns>The DbContext that owns the DbSet.</returns>
-#pragma warning disable EF1001 // Internal EF Core API usage
-    private static DbContext GetDbContext<T>(this DbSet<T> dbSet) where T : class
+    public static DbContextOptionsBuilder AddLuceneQuery(this DbContextOptionsBuilder optionsBuilder, Action<EntityFrameworkQueryParserConfiguration>? configure = null)
     {
-        var infrastructure = dbSet as IInfrastructure<IServiceProvider>;
-        var serviceProvider = infrastructure?.Instance
-            ?? throw new InvalidOperationException("Unable to get service provider from DbSet.");
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+        var parser = configure is null
+            ? new EntityFrameworkQueryParser()
+            : ConfiguredParsers.GetValue(configure, static c => new EntityFrameworkQueryParser(c));
 
-        var contextService = serviceProvider.GetService<ICurrentDbContext>()
-            ?? throw new InvalidOperationException("Unable to get ICurrentDbContext from service provider.");
-
-        return contextService.Context;
+        return optionsBuilder.AddLuceneQuery(parser);
     }
-#pragma warning restore EF1001 // Internal EF Core API usage
 
-    /// <summary>
-    /// Creates a filter expression from a Lucene query using a new parser instance.
-    /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="query">The Lucene query string.</param>
-    /// <param name="configure">Optional parser configuration.</param>
-    /// <returns>A filter expression.</returns>
-    public static Expression<Func<T, bool>> ToExpression<T>(string query, Action<EntityFrameworkQueryParserConfiguration>? configure = null) where T : class
+    /// <inheritdoc cref="AddLuceneQuery(DbContextOptionsBuilder, EntityFrameworkQueryParser)"/>
+    public static DbContextOptionsBuilder<TContext> AddLuceneQuery<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder, EntityFrameworkQueryParser parser) where TContext : DbContext
     {
-        var parser = new EntityFrameworkQueryParser(configure);
-        return parser.BuildFilter<T>(query);
+        ((DbContextOptionsBuilder)optionsBuilder).AddLuceneQuery(parser);
+        return optionsBuilder;
     }
 
-    /// <summary>
-    /// Adds the Lucene query parser to the DbContext options.
-    /// </summary>
-    /// <typeparam name="TContext">The DbContext type.</typeparam>
-    /// <param name="optionsBuilder">The DbContext options builder.</param>
-    /// <param name="configure">Optional parser configuration.</param>
-    /// <returns>The options builder for chaining.</returns>
-    public static DbContextOptionsBuilder<TContext> AddLuceneQuery<TContext>(
-        this DbContextOptionsBuilder<TContext> optionsBuilder,
-        Action<EntityFrameworkQueryParserConfiguration>? configure = null) where TContext : DbContext
+    /// <inheritdoc cref="AddLuceneQuery(DbContextOptionsBuilder, Action{EntityFrameworkQueryParserConfiguration}?)"/>
+    public static DbContextOptionsBuilder<TContext> AddLuceneQuery<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder, Action<EntityFrameworkQueryParserConfiguration>? configure = null) where TContext : DbContext
     {
         ((DbContextOptionsBuilder)optionsBuilder).AddLuceneQuery(configure);
         return optionsBuilder;
     }
 
-    /// <summary>
-    /// Adds the Lucene query parser to the DbContext options.
-    /// </summary>
-    /// <param name="optionsBuilder">The DbContext options builder.</param>
-    /// <param name="configure">Optional parser configuration.</param>
-    /// <returns>The options builder for chaining.</returns>
-    public static DbContextOptionsBuilder AddLuceneQuery(
-        this DbContextOptionsBuilder optionsBuilder,
-        Action<EntityFrameworkQueryParserConfiguration>? configure = null)
+    private static EntityFrameworkQueryParser GetRequiredQueryParser<T>(DbSet<T> source) where T : class
     {
-        var parser = new EntityFrameworkQueryParser(configure);
+        return source.GetService<IDbContextOptions>().FindExtension<LuceneQueryOptionsExtension>()?.Parser
+            ?? throw new InvalidOperationException("No EntityFrameworkQueryParser is registered for the DbContext. Call AddLuceneQuery() when configuring the DbContext options, or pass a parser.");
+    }
 
-        var extension = optionsBuilder.Options.FindExtension<LuceneQueryOptionsExtension>()
-            ?? new LuceneQueryOptionsExtension(parser);
+    private static IEntityType GetEntityType<T>(IQueryable<T> source, EntityFrameworkQueryParser parser, EntityFrameworkQueryOptions? options)
+    {
+        if (options?.Model is null && FindQueryRoot(source.Expression) is { } root)
+        {
+            if (root.EntityType.ClrType == typeof(T))
+                return root.EntityType;
 
-        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+            if (root.EntityType.Model.FindEntityType(typeof(T)) is { } entityType)
+                return entityType;
+        }
 
-        return optionsBuilder;
+        return parser.GetEntityType(typeof(T), options);
+    }
+
+    private static EntityQueryRootExpression? FindQueryRoot(Expression expression)
+    {
+        while (true)
+        {
+            switch (expression)
+            {
+                case EntityQueryRootExpression root:
+                    return root;
+                case MethodCallExpression { Arguments.Count: > 0 } call:
+                    expression = call.Arguments[0];
+                    break;
+                default:
+                    return null;
+            }
+        }
     }
 }

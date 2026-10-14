@@ -1,75 +1,96 @@
 using Elastic.Clients.Elasticsearch.QueryDsl;
-using Foundatio.Lucene.Ast;
 using Foundatio.Lucene.Visitors;
 
 namespace Foundatio.Lucene.Elasticsearch;
 
 /// <summary>
-/// Context interface for Elasticsearch query building.
+/// The visitor context used by <see cref="ElasticsearchQueryParser"/>. After a build it also exposes the runtime
+/// fields the query needs.
 /// </summary>
-public interface IElasticsearchQueryVisitorContext : IQueryVisitorContext
+public class ElasticsearchQueryVisitorContext : QueryVisitorContext
 {
-    /// <summary>
-    /// Whether to use scoring queries (match) vs filter queries (term).
-    /// </summary>
-    bool UseScoring { get; set; }
+    private List<ElasticRuntimeField>? _runtimeFields;
+    private Dictionary<string, string>? _geoLocations;
+    private Dictionary<(string Path, string Field), Query?>? _nestedFilters;
 
     /// <summary>
-    /// Default fields to search when no field is specified.
+    /// Whether the query runs in scoring context.
     /// </summary>
-    string[]? DefaultFields { get; set; }
-
-    /// <summary>
-    /// Default boolean operator for implicit combinations.
-    /// </summary>
-    BooleanOperator DefaultOperator { get; set; }
-
-    /// <summary>
-    /// Function to check if a field is a date field.
-    /// </summary>
-    Func<string, bool>? IsDateField { get; set; }
-
-    /// <summary>
-    /// Default timezone for date range queries.
-    /// </summary>
-    string? DefaultTimeZone { get; set; }
-
-    /// <summary>
-    /// Stack used during query building to accumulate Query objects.
-    /// This is internal state for the stateless visitor pattern.
-    /// </summary>
-    Stack<Query> QueryStack { get; }
-
-    /// <summary>
-    /// Current field being processed during query building.
-    /// This is internal state for the stateless visitor pattern.
-    /// </summary>
-    string? CurrentField { get; set; }
-}
-
-/// <summary>
-/// Default implementation of the Elasticsearch query visitor context.
-/// </summary>
-public class ElasticsearchQueryVisitorContext : QueryVisitorContext, IElasticsearchQueryVisitorContext
-{
-    /// <inheritdoc />
     public bool UseScoring { get; set; }
 
-    /// <inheritdoc />
-    public string[]? DefaultFields { get; set; }
+    /// <summary>
+    /// The index mapping, or null when none is configured.
+    /// </summary>
+    public ElasticMappingResolver? MappingResolver { get; set; }
 
-    /// <inheritdoc />
-    public BooleanOperator DefaultOperator { get; set; } = BooleanOperator.Or;
-
-    /// <inheritdoc />
-    public Func<string, bool>? IsDateField { get; set; }
-
-    /// <inheritdoc />
+    /// <summary>
+    /// The time zone applied to date ranges and date histograms that do not specify one.
+    /// </summary>
     public string? DefaultTimeZone { get; set; }
 
-    /// <inheritdoc />
-    public Stack<Query> QueryStack { get; } = new();
+    /// <summary>
+    /// Whether nested fields are queried with nested queries.
+    /// </summary>
+    public bool UseNested { get; set; } = true;
 
-    /// <inheritdoc />
-    public string? CurrentField { get; set; }
+    /// <summary>
+    /// Resolves location text in geo distance queries.
+    /// </summary>
+    public GeoLocationResolver? GeoLocationResolver { get; set; }
+
+    /// <summary>
+    /// Provides runtime field definitions for unmapped fields.
+    /// </summary>
+    public RuntimeFieldResolver? RuntimeFieldResolver { get; set; }
+
+    /// <summary>
+    /// Provides extra filters for nested queries, sorts, and aggregations.
+    /// </summary>
+    public NestedFilterResolver? NestedFilterResolver { get; set; }
+
+    /// <summary>
+    /// The start of the time range being queried, used for automatic date histogram intervals.
+    /// </summary>
+    public DateTimeOffset? StartDate { get; set; }
+
+    /// <summary>
+    /// The end of the time range being queried, used for automatic date histogram intervals.
+    /// </summary>
+    public DateTimeOffset? EndDate { get; set; }
+
+    /// <summary>
+    /// Runtime fields the expression uses. Add them to the search request's <c>runtime_mappings</c>.
+    /// </summary>
+    public IReadOnlyList<ElasticRuntimeField> RuntimeFields => _runtimeFields ?? (IReadOnlyList<ElasticRuntimeField>)[];
+
+    /// <summary>
+    /// Adds a runtime field definition.
+    /// </summary>
+    public void AddRuntimeField(ElasticRuntimeField field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        _runtimeFields ??= [];
+        if (!_runtimeFields.Exists(f => string.Equals(f.Name, field.Name, StringComparison.OrdinalIgnoreCase)))
+            _runtimeFields.Add(field);
+
+        RuntimeFieldSink?.AddRuntimeField(field);
+    }
+
+    /// <summary>
+    /// Another context that also receives every runtime field added to this one, used when several expressions are
+    /// built for the same search request.
+    /// </summary>
+    internal ElasticsearchQueryVisitorContext? RuntimeFieldSink { get; set; }
+
+    internal ElasticRuntimeField? GetRuntimeField(string field) =>
+        _runtimeFields?.Find(f => string.Equals(f.Name, field, StringComparison.OrdinalIgnoreCase));
+
+    internal void SetGeoLocation(string text, string location) => (_geoLocations ??= new(StringComparer.Ordinal))[text] = location;
+
+    internal string? GetGeoLocation(string text) => _geoLocations is not null && _geoLocations.TryGetValue(text, out string? location) ? location : null;
+
+    internal void SetNestedFilter(string path, string field, Query? filter) => (_nestedFilters ??= [])[(path, field)] = filter;
+
+    internal Query? GetNestedFilter(string path, string field) =>
+        _nestedFilters is not null && _nestedFilters.TryGetValue((path, field), out var filter) ? filter : null;
 }

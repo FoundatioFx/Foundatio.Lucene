@@ -152,6 +152,7 @@ public class QueryException : Exception
     /// </summary>
     public string? FieldName { get; init; }
 
+    /// <inheritdoc/>
     public override string ToString()
     {
         var result = $"[{ErrorCode}] {Message}";
@@ -168,15 +169,27 @@ public class QueryException : Exception
 /// </summary>
 public class QueryParseException : QueryException
 {
+    /// <summary>
+    /// Creates a parse exception.
+    /// </summary>
     public QueryParseException(string message)
         : base(message, QueryErrorCode.ParseError) { }
 
+    /// <summary>
+    /// Creates a parse exception with a specific error code.
+    /// </summary>
     public QueryParseException(string message, QueryErrorCode errorCode)
         : base(message, errorCode) { }
 
+    /// <summary>
+    /// Creates a parse exception that wraps another exception.
+    /// </summary>
     public QueryParseException(string message, Exception innerException)
         : base(message, QueryErrorCode.ParseError, innerException) { }
 
+    /// <summary>
+    /// Creates a parse exception with a specific error code that wraps another exception.
+    /// </summary>
     public QueryParseException(string message, QueryErrorCode errorCode, Exception innerException)
         : base(message, errorCode, innerException) { }
 
@@ -191,12 +204,18 @@ public class QueryParseException : QueryException
 /// </summary>
 public class QueryValidationException : QueryException
 {
+    /// <summary>
+    /// Creates a validation exception. The error code is that of the first validation error, if any.
+    /// </summary>
     public QueryValidationException(string message, QueryValidationResult? result = null, Exception? inner = null)
-        : base(message, QueryErrorCode.ValidationError, inner!)
+        : base(message, GetErrorCode(result), inner!)
     {
         Result = result ?? new QueryValidationResult();
     }
 
+    /// <summary>
+    /// Creates a validation exception with a specific error code.
+    /// </summary>
     public QueryValidationException(string message, QueryErrorCode errorCode, QueryValidationResult? result = null)
         : base(message, errorCode)
     {
@@ -212,6 +231,11 @@ public class QueryValidationException : QueryException
     /// The validation errors.
     /// </summary>
     public ICollection<QueryValidationError> Errors => Result.ValidationErrors;
+
+    private static QueryErrorCode GetErrorCode(QueryValidationResult? result)
+    {
+        return result is { IsValid: false } ? result.ValidationErrors[0].Code : QueryErrorCode.ValidationError;
+    }
 }
 
 /// <summary>
@@ -219,15 +243,27 @@ public class QueryValidationException : QueryException
 /// </summary>
 public class QueryBuildException : QueryException
 {
+    /// <summary>
+    /// Creates a build exception.
+    /// </summary>
     public QueryBuildException(string message)
         : base(message, QueryErrorCode.BuildError) { }
 
+    /// <summary>
+    /// Creates a build exception with a specific error code.
+    /// </summary>
     public QueryBuildException(string message, QueryErrorCode errorCode)
         : base(message, errorCode) { }
 
+    /// <summary>
+    /// Creates a build exception that wraps another exception.
+    /// </summary>
     public QueryBuildException(string message, Exception innerException)
         : base(message, QueryErrorCode.BuildError, innerException) { }
 
+    /// <summary>
+    /// Creates a build exception with a specific error code that wraps another exception.
+    /// </summary>
     public QueryBuildException(string message, QueryErrorCode errorCode, Exception innerException)
         : base(message, errorCode, innerException) { }
 }

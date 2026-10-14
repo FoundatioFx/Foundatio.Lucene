@@ -3,152 +3,190 @@ using Foundatio.Lucene.Ast;
 namespace Foundatio.Lucene.Visitors;
 
 /// <summary>
-/// A visitor that expands @include:name references by replacing them
-/// with their resolved query content from a pre-resolved dictionary.
+/// Expands <c>@include:name</c> references with query text from <see cref="IQueryVisitorContext.Includes"/>.
+/// Each expansion is wrapped in a group so it keeps its meaning, and it takes the place of the reference, so a
+/// prefix such as <c>-@include:name</c> applies to the whole expansion. Includes may reference other includes;
+/// recursion, depth, and the total number of expansions are bounded by <see cref="QueryValidationOptions"/>.
+/// In aggregation expressions only references outside of aggregations are expanded: inside an aggregation, such as
+/// <c>terms:(status @include:active)</c>, <c>@include</c> is an aggregation modifier.
 /// </summary>
 public class IncludeVisitor : QueryVisitor
 {
     /// <summary>
-    /// Maximum depth for nested includes to prevent infinite recursion.
+    /// The field name that marks an include reference.
     /// </summary>
-    public const int MaxIncludeDepth = 50;
-
-    private readonly IReadOnlyDictionary<string, string>? _includes;
+    public const string IncludeField = "@include";
 
     /// <summary>
-    /// Creates a new IncludeVisitor with no includes.
-    /// Includes can be set on the context instead.
+    /// The <see cref="QueryNode.Data"/> key set on each expansion's group, holding the include name.
     /// </summary>
-    public IncludeVisitor()
-    {
-    }
+    public const string IncludeNameKey = "@IncludeName";
+
+    private const string StateKey = "@IncludeState";
 
     /// <summary>
-    /// Creates a new IncludeVisitor with the specified pre-resolved includes.
+    /// A shared instance. The visitor is stateless.
     /// </summary>
-    /// <param name="includes">Dictionary mapping include names to their query content.</param>
-    public IncludeVisitor(IReadOnlyDictionary<string, string>? includes)
-    {
-        _includes = includes;
-    }
+    public static IncludeVisitor Instance { get; } = new();
 
-    /// <summary>
-    /// Visits a FieldQueryNode and expands @include references.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
-        // Check if this is an @include field
-        if (!IsIncludeField(node))
-        {
-            // Not an include, visit children normally
-            return base.Visit(node, context);
-        }
+        if (!IsInclude(node))
+            return context.QueryType == QueryType.Aggregation ? node : base.Visit(node, context);
 
-        // Get the include name from the query
-        var includeName = GetIncludeName(node);
-        if (string.IsNullOrEmpty(includeName))
+        string? name = GetIncludeName(node);
+        var result = context.ValidationResult;
+        if (string.IsNullOrEmpty(name))
         {
-            context.AddValidationError($"Invalid @include syntax: missing include name");
+            result.AddError($"Invalid {IncludeField}: missing include name", node.StartPosition, QueryErrorCode.UnresolvedInclude);
             return node;
         }
 
-        // Track for validation
-        context.GetValidationResult().ReferencedIncludes.Add(includeName);
-
-        // Check skip function
-        var shouldSkip = context.GetShouldSkipIncludeFunc();
-        if (shouldSkip?.Invoke(node, context) == true)
+        result.ReferencedIncludes.Add(name);
+        if (context.ShouldSkipInclude?.Invoke(node, context) == true)
             return node;
 
-        // Check for circular references
-        if (context.IsIncludeInStack(includeName))
+        var state = GetState(context);
+        var options = context.ValidationOptions ?? QueryValidationOptions.Default;
+        if (state.Stack.Contains(name))
         {
-            context.AddValidationError($"Circular @include reference detected: {includeName}");
+            result.AddError($"Recursive {IncludeField} ({name})", node.StartPosition, QueryErrorCode.UnresolvedInclude);
             return node;
         }
 
-        // Check max depth
-        var stack = context.GetIncludeStack();
-        if (stack.Count >= MaxIncludeDepth)
+        if (state.Stack.Count >= options.MaxIncludeDepth)
         {
-            context.AddValidationError($"Maximum include depth ({MaxIncludeDepth}) exceeded at: {includeName}");
+            result.AddError($"Maximum {IncludeField} depth of {options.MaxIncludeDepth} exceeded at ({name})", node.StartPosition, QueryErrorCode.MaxDepthExceeded);
             return node;
         }
 
-        // Resolve the include from context or constructor-provided includes
-        var includes = context.GetIncludes() ?? _includes;
-        if (includes is null || !includes.TryGetValue(includeName, out var includeContent))
+        if (++state.Expansions > options.MaxIncludeExpansions)
         {
-            context.GetValidationResult().UnresolvedIncludes.Add(includeName);
+            if (state.Expansions == options.MaxIncludeExpansions + 1)
+                result.AddError($"Maximum number of {IncludeField} expansions ({options.MaxIncludeExpansions}) exceeded", node.StartPosition, QueryErrorCode.MaxDepthExceeded);
             return node;
         }
 
-        if (string.IsNullOrWhiteSpace(includeContent))
+        var parsed = state.GetParsed(name, context);
+        if (parsed is null)
         {
-            context.GetValidationResult().UnresolvedIncludes.Add(includeName);
+            result.UnresolvedIncludes.Add(name);
             return node;
         }
 
-        // Parse the include content
-        var parseResult = LuceneQuery.Parse(includeContent);
-        if (!parseResult.IsSuccess || parseResult.Document?.Query is null)
+        if (!parsed.IsSuccess)
         {
-            var errorMessage = parseResult.Errors.Count > 0 ? parseResult.Errors[0].Message : "Unknown error";
-            context.AddValidationError($"Invalid query in @include:{includeName}: {errorMessage}");
+            result.AddError($"Invalid query in {IncludeField}:{name}: {parsed.Errors[0].Message}", node.StartPosition, QueryErrorCode.UnresolvedInclude);
             return node;
         }
 
-        // Push onto stack for circular reference detection
-        context.PushInclude(includeName);
-
+        state.Stack.Add(name);
+        QueryNode? expanded;
         try
         {
-            // Recursively expand any nested includes
-            var expandedNode = Accept(parseResult.Document.Query, context);
-
-            // Wrap in a group to preserve precedence
-            return new GroupNode { Query = expandedNode };
+            expanded = parsed.Document.Query is { } query ? Accept(query.Clone(), context) : null;
         }
         finally
         {
-            context.PopInclude();
+            state.Stack.RemoveAt(state.Stack.Count - 1);
         }
+
+        var group = new GroupNode
+        {
+            Query = expanded,
+            BoostText = (node.Query as IBoostable)?.BoostText,
+            StartPosition = node.StartPosition,
+            EndPosition = node.EndPosition,
+            StartLine = node.StartLine,
+            StartColumn = node.StartColumn
+        };
+        group.SetData(IncludeNameKey, name);
+        return group;
     }
-
-    private static bool IsIncludeField(FieldQueryNode node)
-    {
-        return string.Equals(node.Field, "@include", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? GetIncludeName(FieldQueryNode node)
-    {
-        // The include name can be in Query (if parsed as term) or in the field query
-        if (node.Query is TermNode termNode)
-            return termNode.Term;
-
-        if (node.Query is PhraseNode phraseNode)
-            return phraseNode.Phrase;
-
-        return null;
-    }
-
-    #region Static Run Methods
 
     /// <summary>
-    /// Expands includes in a query document using the specified includes dictionary.
+    /// Whether the node is an <c>@include:name</c> reference.
     /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="includes">Dictionary mapping include names to their query content.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document with includes expanded.</returns>
-    public static QueryDocument ExpandIncludes(QueryDocument document, IReadOnlyDictionary<string, string> includes, IQueryVisitorContext? context = null)
+    public static bool IsInclude(FieldQueryNode node) => node.FieldMemory.Span.Equals(IncludeField, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets the include name referenced by an <c>@include:name</c> node.
+    /// </summary>
+    public static string? GetIncludeName(FieldQueryNode node)
     {
-        context ??= new QueryVisitorContext();
-        context.SetIncludes(includes);
-        return new IncludeVisitor().Run(document, context);
+        return node.Query switch
+        {
+            TermNode term => term.UnescapedTerm,
+            PhraseNode phrase => phrase.Phrase,
+            _ => null
+        };
     }
 
-    #endregion
+    private static IncludeState GetState(IQueryVisitorContext context)
+    {
+        var state = context.GetValue<IncludeState>(StateKey);
+        if (state is null)
+        {
+            state = new IncludeState();
+            context.SetValue(StateKey, state);
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// Expands includes in a document using the specified includes.
+    /// </summary>
+    public static QueryDocument ExpandIncludes(QueryDocument document, IReadOnlyDictionary<string, string> includes, IQueryVisitorContext? context = null)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(includes);
+
+        context ??= new QueryVisitorContext();
+        context.Includes = includes;
+        return (QueryDocument)Instance.Accept(document, context);
+    }
+
+    private sealed class IncludeState
+    {
+        private Dictionary<string, LuceneParseResult?>? _parsed;
+
+        public List<string> Stack { get; } = [];
+
+        public int Expansions { get; set; }
+
+        public LuceneParseResult? GetParsed(string name, IQueryVisitorContext context)
+        {
+            _parsed ??= new Dictionary<string, LuceneParseResult?>(StringComparer.OrdinalIgnoreCase);
+            if (_parsed.TryGetValue(name, out var result))
+                return result;
+
+            result = context.Includes is { } includes && TryGetInclude(includes, name, out string? text) && !string.IsNullOrWhiteSpace(text)
+                ? LuceneQuery.Parse(text, context.ParserOptions)
+                : null;
+
+            _parsed[name] = result;
+            return result;
+        }
+
+        private static bool TryGetInclude(IReadOnlyDictionary<string, string> includes, string name, out string? text)
+        {
+            if (includes.TryGetValue(name, out text))
+                return true;
+
+            foreach (var include in includes)
+            {
+                if (string.Equals(include.Key, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    text = include.Value;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 }
 
 /// <summary>
@@ -157,25 +195,10 @@ public class IncludeVisitor : QueryVisitor
 public static class IncludeExtensions
 {
     /// <summary>
-    /// Expands includes in a query document using the specified includes dictionary.
+    /// Expands includes in a document using the specified includes.
     /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="includes">Dictionary mapping include names to their query content.</param>
-    /// <param name="context">Optional context. If null, a new context is created.</param>
-    /// <returns>The processed query document with includes expanded.</returns>
     public static QueryDocument ExpandIncludes(this QueryDocument document, IReadOnlyDictionary<string, string> includes, IQueryVisitorContext? context = null)
     {
         return IncludeVisitor.ExpandIncludes(document, includes, context);
-    }
-
-    /// <summary>
-    /// Expands includes in a query document using the includes from the context.
-    /// </summary>
-    /// <param name="document">The query document to process.</param>
-    /// <param name="context">The context containing the includes.</param>
-    /// <returns>The processed query document with includes expanded.</returns>
-    public static QueryDocument ExpandIncludes(this QueryDocument document, IQueryVisitorContext context)
-    {
-        return new IncludeVisitor().Run(document, context);
     }
 }

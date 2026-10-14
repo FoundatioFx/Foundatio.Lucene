@@ -1,259 +1,286 @@
 using Foundatio.Lucene.Ast;
+using Foundatio.Lucene.Extensions;
 
 namespace Foundatio.Lucene.Visitors;
 
 /// <summary>
-/// A visitor that validates query nodes against configured options.
-/// Collects referenced fields, tracks operations, and applies validation rules.
+/// Collects the fields, operations, and nesting depth a query uses into
+/// <see cref="IQueryVisitorContext.ValidationResult"/>. When it visits a <see cref="QueryDocument"/> it then applies
+/// the context's <see cref="QueryValidationOptions"/> (see <see cref="ApplyRestrictions"/>).
 /// </summary>
 public class ValidationVisitor : QueryVisitor
 {
+    private const string FieldStackKey = "@ValidationFieldStack";
+
     /// <summary>
-    /// Visits a GroupNode and tracks nesting depth.
+    /// A shared instance. The visitor is stateless.
     /// </summary>
+    public static ValidationVisitor Instance { get; } = new();
+
+    /// <inheritdoc/>
+    public override QueryNode Accept(QueryNode node, IQueryVisitorContext context)
+    {
+        var result = base.Accept(node, context);
+        if (node is QueryDocument)
+            ApplyRestrictions(context);
+
+        return result;
+    }
+
+    /// <inheritdoc/>
     protected override QueryNode Visit(GroupNode node, IQueryVisitorContext context)
     {
-        var result = context.GetValidationResult();
-
-        // Track nesting depth
+        var result = context.ValidationResult;
         result.CurrentNodeDepth++;
-
-        var visitedNode = base.Visit(node, context);
-
-        result.CurrentNodeDepth--;
-
-        return visitedNode;
+        try
+        {
+            return base.Visit(node, context);
+        }
+        finally
+        {
+            result.CurrentNodeDepth--;
+        }
     }
 
-    /// <summary>
-    /// Visits a FieldQueryNode and validates the field.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(FieldQueryNode node, IQueryVisitorContext context)
     {
-        var result = context.GetValidationResult();
+        RecordField(node, context);
 
-        // Add field to referenced fields
-        if (!string.IsNullOrEmpty(node.Field))
+        var fields = GetFieldStack(context);
+        fields.Push(node.Field);
+        try
         {
-            result.ReferencedFields.Add(node.Field);
+            return base.Visit(node, context);
         }
-
-        // Add operation
-        result.AddOperation("field", node.Field);
-
-        return base.Visit(node, context);
+        finally
+        {
+            fields.Pop();
+        }
     }
 
-    /// <summary>
-    /// Visits a TermNode and validates wildcards.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(TermNode node, IQueryVisitorContext context)
     {
-        var result = context.GetValidationResult();
-        var options = context.GetValidationOptions();
+        string operation = node.IsPrefix ? QueryOperations.Prefix
+            : node.IsWildcard ? QueryOperations.Wildcard
+            : node.IsFuzzy ? QueryOperations.Fuzzy
+            : QueryOperations.Term;
+        AddOperation(operation, context);
 
-        // Add operation
-        result.AddOperation("term", null);
-
-        // Check for leading wildcards
-        if (!options.AllowLeadingWildcards &&
-            !string.IsNullOrEmpty(node.Term) &&
-            (node.Term.StartsWith('*') || node.Term.StartsWith('?')))
-        {
-            context.AddValidationError($"Terms must not start with a wildcard: {node.Term}");
-        }
+        var options = context.ValidationOptions;
+        if (options is { AllowLeadingWildcards: false } && node.IsWildcard && StartsWithWildcard(node.TermMemory.Span))
+            context.ValidationResult.AddError($"Terms must not start with a wildcard: {node.Term}", node.StartPosition, QueryErrorCode.LeadingWildcardNotAllowed);
 
         return node;
     }
 
-    /// <summary>
-    /// Visits a PhraseNode.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(PhraseNode node, IQueryVisitorContext context)
     {
-        var result = context.GetValidationResult();
-        result.AddOperation("phrase", null);
+        AddOperation(QueryOperations.Phrase, context);
         return node;
     }
 
-    /// <summary>
-    /// Visits a RangeNode.
-    /// </summary>
-    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
-    {
-        var result = context.GetValidationResult();
-        result.AddOperation("range", null);
-        return node;
-    }
-
-    /// <summary>
-    /// Visits an ExistsNode.
-    /// </summary>
-    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
-    {
-        var result = context.GetValidationResult();
-
-        if (!string.IsNullOrEmpty(node.Field))
-        {
-            result.ReferencedFields.Add(node.Field);
-        }
-
-        result.AddOperation("exists", node.Field);
-        return node;
-    }
-
-    /// <summary>
-    /// Visits a MissingNode.
-    /// </summary>
-    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
-    {
-        var result = context.GetValidationResult();
-
-        if (!string.IsNullOrEmpty(node.Field))
-        {
-            result.ReferencedFields.Add(node.Field);
-        }
-
-        result.AddOperation("missing", node.Field);
-        return node;
-    }
-
-    /// <summary>
-    /// Visits a RegexNode.
-    /// </summary>
+    /// <inheritdoc/>
     protected override QueryNode Visit(RegexNode node, IQueryVisitorContext context)
     {
-        var result = context.GetValidationResult();
-        result.AddOperation("regex", null);
+        AddOperation(QueryOperations.Regex, context);
         return node;
     }
 
-    /// <summary>
-    /// Visits a NotNode.
-    /// </summary>
-    protected override QueryNode Visit(NotNode node, IQueryVisitorContext context)
+    /// <inheritdoc/>
+    protected override QueryNode Visit(RangeNode node, IQueryVisitorContext context)
     {
-        var result = context.GetValidationResult();
-        result.AddOperation("not", null);
-        return base.Visit(node, context);
+        AddOperation(QueryOperations.Range, context);
+        return node;
+    }
+
+    /// <inheritdoc/>
+    protected override QueryNode Visit(MatchAllNode node, IQueryVisitorContext context)
+    {
+        // In a field group (title:(*)) a bare * is an exists query on the group's field.
+        bool inField = context.GetValue<Stack<string>>(FieldStackKey) is { Count: > 0 };
+        AddOperation(inField ? QueryOperations.Exists : QueryOperations.MatchAll, context);
+        return node;
+    }
+
+    /// <inheritdoc/>
+    protected override QueryNode Visit(ExistsNode node, IQueryVisitorContext context)
+    {
+        RecordField(node, context);
+        context.ValidationResult.AddOperation(QueryOperations.Exists, node.Field);
+        return node;
+    }
+
+    /// <inheritdoc/>
+    protected override QueryNode Visit(MissingNode node, IQueryVisitorContext context)
+    {
+        RecordField(node, context);
+        context.ValidationResult.AddOperation(QueryOperations.Missing, node.Field);
+        return node;
+    }
+
+    private static void RecordField<T>(T node, IQueryVisitorContext context) where T : QueryNode, IFieldNode
+    {
+        string field = node.Field;
+        if (field.Length == 0 || field[0] == '@')
+            return;
+
+        var result = context.ValidationResult;
+        result.ReferencedFields.Add(node.GetOriginalField());
+        result.ResolvedFields.Add(field);
+    }
+
+    private static void AddOperation(string operation, IQueryVisitorContext context)
+    {
+        var fields = context.GetValue<Stack<string>>(FieldStackKey);
+        string? field = fields is { Count: > 0 } ? fields.Peek() : null;
+        if (field is { Length: > 0 } && field[0] == '@')
+            return;
+
+        if (field is null && operation != QueryOperations.MatchAll)
+            RecordDefaultFields(context);
+
+        context.ValidationResult.AddOperation(operation, field);
+    }
+
+    private static void RecordDefaultFields(IQueryVisitorContext context)
+    {
+        if (context.DefaultFields is not { Length: > 0 } defaultFields)
+            return;
+
+        var result = context.ValidationResult;
+        foreach (string defaultField in defaultFields)
+        {
+            if (string.IsNullOrEmpty(defaultField) || !result.ReferencedFields.Add(defaultField))
+                continue;
+
+            FieldResolverQueryVisitor.TryResolveField(defaultField, context, out string resolved);
+            result.ResolvedFields.Add(resolved);
+        }
+    }
+
+    private static Stack<string> GetFieldStack(IQueryVisitorContext context)
+    {
+        var stack = context.GetValue<Stack<string>>(FieldStackKey);
+        if (stack is null)
+        {
+            stack = new Stack<string>();
+            context.SetValue(FieldStackKey, stack);
+        }
+
+        return stack;
+    }
+
+    private static bool StartsWithWildcard(ReadOnlySpan<char> term)
+    {
+        return term.Length > 0 && term[0] is '*' or '?';
     }
 
     /// <summary>
-    /// Applies query restrictions after visiting all nodes.
+    /// Applies the context's <see cref="QueryValidationOptions"/> to the information collected so far, adding
+    /// errors to <see cref="IQueryVisitorContext.ValidationResult"/>.
     /// </summary>
-    public void ApplyRestrictions(IQueryVisitorContext context)
+    public static void ApplyRestrictions(IQueryVisitorContext context)
     {
-        var options = context.GetValidationOptions();
-        var result = context.GetValidationResult();
+        ArgumentNullException.ThrowIfNull(context);
 
-        // Check restricted fields
-        if (options.RestrictedFields.Count > 0 && result.ReferencedFields.Count > 0)
+        var options = context.ValidationOptions ?? QueryValidationOptions.Default;
+        var result = context.ValidationResult;
+
+        bool hasFieldRules = options.AllowedFields.Count > 0 || options.RestrictedFields.Count > 0;
+        if (hasFieldRules)
         {
-            var restrictedFieldsUsed = result.ReferencedFields
-                .Where(f => options.RestrictedFields.Contains(f))
-                .ToList();
-
-            if (restrictedFieldsUsed.Count > 0)
-            {
-                context.AddValidationError($"Query uses field(s) ({string.Join(", ", restrictedFieldsUsed)}) that are restricted from use.");
-            }
+            var wildcardFields = result.ReferencedFields.Where(f => f.AsSpan().IndexOfAny('*', '?') >= 0).ToList();
+            if (wildcardFields.Count > 0)
+                result.AddError($"Query uses wildcard field name(s) ({string.Join(", ", wildcardFields)}) which are not allowed when field restrictions are configured.", code: QueryErrorCode.FieldNotAllowed);
         }
 
-        // Check allowed fields
-        if (options.AllowedFields.Count > 0 && result.ReferencedFields.Count > 0)
+        if (options.RestrictedFields.Count > 0)
         {
-            var nonAllowedFields = result.ReferencedFields
-                .Where(f => !string.IsNullOrWhiteSpace(f) && !options.AllowedFields.Contains(f))
+            var restricted = result.ReferencedFields.Concat(result.ResolvedFields)
+                .Where(f => MatchesAny(f, options.RestrictedFields))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-
-            if (nonAllowedFields.Count > 0)
-            {
-                context.AddValidationError($"Query uses field(s) ({string.Join(", ", nonAllowedFields)}) that are not allowed.");
-            }
+            if (restricted.Count > 0)
+                result.AddError($"Query uses field(s) ({string.Join(", ", restricted)}) that are restricted from use.", code: QueryErrorCode.FieldRestricted);
         }
 
-        // Check allowed operations
-        if (options.AllowedOperations.Count > 0)
+        if (options.AllowedFields.Count > 0)
         {
-            var nonAllowedOperations = result.Operations
-                .Where(op => !options.AllowedOperations.Contains(op.Key))
-                .Select(op => op.Key)
-                .ToList();
-
-            if (nonAllowedOperations.Count > 0)
-            {
-                context.AddValidationError($"Query uses operation(s) ({string.Join(", ", nonAllowedOperations)}) that are not allowed.");
-            }
+            var notAllowed = result.ReferencedFields.Where(f => !MatchesAny(f, options.AllowedFields)).ToList();
+            if (notAllowed.Count > 0)
+                result.AddError($"Query uses field(s) ({string.Join(", ", notAllowed)}) that are not allowed to be used.", code: QueryErrorCode.FieldNotAllowed);
         }
 
-        // Check restricted operations
-        if (options.RestrictedOperations.Count > 0)
-        {
-            var restrictedOperationsUsed = result.Operations
-                .Where(op => options.RestrictedOperations.Contains(op.Key))
-                .Select(op => op.Key)
-                .ToList();
+        if (!options.AllowUnresolvedFields && result.HasUnresolvedFields)
+            result.AddError($"Query uses field(s) ({string.Join(", ", result.UnresolvedFields)}) that can't be resolved.", code: QueryErrorCode.UnresolvedField);
 
-            if (restrictedOperationsUsed.Count > 0)
-            {
-                context.AddValidationError($"Query uses operation(s) ({string.Join(", ", restrictedOperationsUsed)}) that are restricted from use.");
-            }
+        if (!options.AllowUnresolvedIncludes && result.HasUnresolvedIncludes)
+            result.AddError($"Query uses include(s) ({string.Join(", ", result.UnresolvedIncludes)}) that can't be resolved.", code: QueryErrorCode.UnresolvedInclude);
+
+        if (options.AllowedOperations.Count > 0 && result.HasOperations)
+        {
+            var notAllowed = result.Operations.Keys.Where(op => !options.AllowedOperations.Contains(op)).ToList();
+            if (notAllowed.Count > 0)
+                result.AddError($"Query uses operation(s) ({string.Join(", ", notAllowed)}) that are not allowed to be used.", code: QueryErrorCode.OperationNotAllowed);
         }
 
-        // Check max node depth
+        if (options.RestrictedOperations.Count > 0 && result.HasOperations)
+        {
+            var restricted = result.Operations.Keys.Where(options.RestrictedOperations.Contains).ToList();
+            if (restricted.Count > 0)
+                result.AddError($"Query uses operation(s) ({string.Join(", ", restricted)}) that are restricted from use.", code: QueryErrorCode.OperationRestricted);
+        }
+
         if (options.AllowedMaxNodeDepth > 0 && result.MaxNodeDepth > options.AllowedMaxNodeDepth)
-        {
-            context.AddValidationError($"Query has a nesting depth of {result.MaxNodeDepth} which exceeds the maximum allowed depth of {options.AllowedMaxNodeDepth}.");
-        }
-
-        // Throw if configured to do so
-        if (options.ShouldThrow && !result.IsValid)
-        {
-            throw new QueryValidationException($"Invalid query: {result.Message}", result);
-        }
+            result.AddError($"Query has a node depth {result.MaxNodeDepth} greater than the allowed maximum {options.AllowedMaxNodeDepth}.", code: QueryErrorCode.MaxDepthExceeded);
     }
 
     /// <summary>
-    /// Runs the validation visitor on a query node.
+    /// Whether <paramref name="field"/> is one of <paramref name="fields"/> or a sub-field of one.
     /// </summary>
-    /// <param name="node">The node to validate.</param>
-    /// <param name="context">Optional context (created if not provided).</param>
-    /// <returns>The validation result.</returns>
+    internal static bool MatchesAny(string field, ICollection<string> fields)
+    {
+        if (fields.Contains(field))
+            return true;
+
+        int dot = field.IndexOf('.');
+        while (dot > 0)
+        {
+            if (fields.Contains(field[..dot]))
+                return true;
+            dot = field.IndexOf('.', dot + 1);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Validates a node using the context's options and returns the result.
+    /// </summary>
     public static QueryValidationResult Run(QueryNode node, IQueryVisitorContext? context = null)
     {
+        ArgumentNullException.ThrowIfNull(node);
+
         context ??= new QueryVisitorContext();
-        var visitor = new ValidationVisitor();
-        visitor.Accept(node, context);
-        visitor.ApplyRestrictions(context);
-        return context.GetValidationResult();
+        Instance.Accept(node, context);
+        if (node is not QueryDocument)
+            ApplyRestrictions(context);
+
+        return context.ValidationResult;
     }
 
     /// <summary>
-    /// Runs the validation visitor on a query node with options.
+    /// Validates a node using the specified options and returns the result.
     /// </summary>
-    /// <param name="node">The node to validate.</param>
-    /// <param name="options">The validation options.</param>
-    /// <param name="context">Optional context (created if not provided).</param>
-    /// <returns>The validation result.</returns>
     public static QueryValidationResult Run(QueryNode node, QueryValidationOptions options, IQueryVisitorContext? context = null)
     {
-        context ??= new QueryVisitorContext();
-        context.SetValidationOptions(options);
-        return Run(node, context);
-    }
+        ArgumentNullException.ThrowIfNull(options);
 
-    /// <summary>
-    /// Runs the validation visitor on a query node with a list of allowed fields.
-    /// </summary>
-    /// <param name="node">The node to validate.</param>
-    /// <param name="allowedFields">The fields that are allowed.</param>
-    /// <param name="context">Optional context (created if not provided).</param>
-    /// <returns>The validation result.</returns>
-    public static QueryValidationResult Run(QueryNode node, IEnumerable<string> allowedFields, IQueryVisitorContext? context = null)
-    {
-        var options = new QueryValidationOptions();
-        foreach (var field in allowedFields)
-            options.AllowedFields.Add(field);
-        return Run(node, options, context);
+        context ??= new QueryVisitorContext();
+        context.ValidationOptions = options;
+        return Run(node, context);
     }
 }
