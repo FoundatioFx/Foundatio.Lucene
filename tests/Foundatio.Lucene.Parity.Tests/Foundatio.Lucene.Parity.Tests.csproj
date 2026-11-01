@@ -4,7 +4,7 @@
     <PackageReference Include="Elastic.Clients.Elasticsearch" Version="9.5.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
-    <PackageReference Include="Testcontainers.MsSql" Version="4.15.0" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.16.0" />
   </ItemGroup>
 
   <ItemGroup>
